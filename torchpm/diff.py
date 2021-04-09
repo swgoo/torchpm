@@ -1,3 +1,8 @@
+from dataclasses import dataclass, field
+from typing import ClassVar, List, Optional, Dict, Iterable, Union
+
+import torch as tc
+
 import .scale
 
 @dataclass(repr=False, eq=False)
