@@ -1,3 +1,9 @@
+import time
+from dataclasses import dataclass, field
+from typing import ClassVar, List, Optional, Dict, Iterable, Union
+import torch as tc
+from torchdiffeq import odeint
+
 import .funcgen
 import .scale
 @dataclass(repr=False, eq=False)
