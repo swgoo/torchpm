@@ -1,6 +1,8 @@
 import abc
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 
+import torch as tc
+
 class PKParameterGenerator(metaclass=abc.ABCMeta) :
     
     @abc.abstractmethod
