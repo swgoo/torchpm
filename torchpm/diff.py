@@ -1,9 +1,11 @@
+import .scale
+
 @dataclass(repr=False, eq=False)
 class DifferentialModule(tc.nn.Module) :
     omega_diagonals : Iterable[bool]
     sigma_diagonals : Iterable[bool]
-    omega_scales : Optional[Iterable[Scale]] = None
-    sigma_scales : Optional[Iterable[Scale]] = None
+    omega_scales : Optional[Iterable[scale.Scale]] = None
+    sigma_scales : Optional[Iterable[scale.Scale]] = None
 
     def __post_init__(self):
         super(DifferentialModule, self).__init__()
