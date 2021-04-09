@@ -6,6 +6,7 @@ from typing import ClassVar, List, Optional, Dict, Iterable, Union
 
 from torchdiffeq import odeint
 import torch as tc
+import numpy as np
 
 class CSVDataset(tc.utils.data.Dataset):
     """
