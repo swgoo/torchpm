@@ -1,3 +1,8 @@
+import abc
+from dataclasses import dataclass, field
+from typing import ClassVar, List, Optional, Dict, Iterable, Union
+import torch as tc
+
 class Scale(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     def __call__(vector : tc.Tensor) -> Union[tc.Tensor, Iterable[tc.Tensor]]:
