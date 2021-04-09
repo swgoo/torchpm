@@ -125,7 +125,7 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         cov = dataset.t().index_select(0, cov_indice).unbind()
 
         y_pred = self.error_fn(f, eps.t(), theta, eta, cmts, pk_parameter_value, *cov)
-        mdv_mask = dataset[:,column_names.index('MDV')] == 0
+        mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
         return y_pred, self.etas[id], self.epss[id], mdv_mask
 
