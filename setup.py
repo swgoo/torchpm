@@ -18,7 +18,7 @@ setuptools.setup(
     version=version,
     author="Sungwoo Goo",
     author_email="yeoun9@gmail.com",
-    description="pharmacometrics in PyTorch.",
+    description="Pharmacometrics in PyTorch.",
     url="https://github.com/yeoun9/torchpm",
     packages=setuptools.find_packages(),
     install_requires=['torch>=1.8.0', 'scipy>=1.4.0', 'torchdiffeq>=0.2.1'],
