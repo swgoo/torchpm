@@ -3,7 +3,7 @@ from typing import ClassVar, List, Optional, Dict, Iterable, Union
 
 import torch as tc
 
-import .scale
+from . import scale
 
 @dataclass(repr=False, eq=False)
 class DifferentialModule(tc.nn.Module) :
