@@ -4,8 +4,8 @@ from typing import ClassVar, List, Optional, Dict, Iterable, Union
 import torch as tc
 from torchdiffeq import odeint
 
-import .funcgen
-import .scale
+from . import funcgen
+from . import scale
 @dataclass(repr=False, eq=False)
 class PredictionFunctionModule(tc.nn.Module):
     dataset : tc.utils.data.Dataset
