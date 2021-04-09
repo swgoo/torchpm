@@ -9,5 +9,5 @@ import torch as tc
 import numpy as np
 import sympy as sym
 
-from ._impl.misc import *
+from .misc import *
 __version__ = "0.2.1"
