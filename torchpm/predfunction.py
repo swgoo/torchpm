@@ -6,6 +6,7 @@ from torchdiffeq import odeint
 
 from . import funcgen
 from . import scale
+from .misc import *
 @dataclass(repr=False, eq=False)
 class PredictionFunctionModule(tc.nn.Module):
     dataset : tc.utils.data.Dataset
