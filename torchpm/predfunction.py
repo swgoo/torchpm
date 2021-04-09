@@ -1,3 +1,5 @@
+import .funcgen
+import .scale
 @dataclass(repr=False, eq=False)
 class PredictionFunctionModule(tc.nn.Module):
     dataset : tc.utils.data.Dataset
@@ -5,10 +7,10 @@ class PredictionFunctionModule(tc.nn.Module):
     theta_size : int
     eta_size : int
     eps_size : int
-    pk_parameter : PKParameterGenerator
-    pred_fn  : PredFunctionGenerator
-    error_fn : ErrorFunctionGenerator
-    theta_scale : Optional[Scale]
+    pk_parameter : funcgen.PKParameterGenerator
+    pred_fn  : funcgen.PredFunctionGenerator
+    error_fn : funcgen.ErrorFunctionGenerator
+    theta_scale : Optional[scale.Scale]
 
     def __post_init__(self):
         super(PredictionFunctionModule, self).__init__()
