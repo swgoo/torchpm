@@ -228,6 +228,6 @@ class PredictionFunctionByODE(PredictionFunctionModule):
             
             y_pred_arr.append(y_pred)
 
-        mdv_mask = dataset[:,column_names.index('MDV')] == 0
+        mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
         return tc.cat(y_pred_arr), self.etas[id], self.epss[id], mdv_mask
