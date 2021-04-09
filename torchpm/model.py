@@ -1,9 +1,13 @@
+import .predfunction
+import .diff
+import .loss
+
 class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
-                 pred_function_module : PredictionFunctionModule,
-                differential_module : DifferentialModule,
-                objective_function : ObjectiveFunction = FOCEInterObjectiveFunction()):
+                 pred_function_module : predfunction.PredictionFunctionModule,
+                differential_module : diff.DifferentialModule,
+                objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
         super(FOCEInter, self).__init__()
         self.pred_function_module = pred_function_module
         self.differential_module = differential_module
@@ -11,9 +15,9 @@ class FOCEInter(tc.nn.Module) :
         
     def forward(self, dataset):
         
-        y_pred, eta, eps, mdv_mask = pred_function_module(dataset)
+        y_pred, eta, eps, mdv_mask = self.pred_function_module(dataset)
 
-        y_pred, g, h, omega, sigma = differential_module(y_pred, eta, eps)
+        y_pred, g, h, omega, sigma = self.differential_module(y_pred, eta, eps)
 
         return y_pred, eta, eps, g, h, omega, sigma, mdv_mask
     
