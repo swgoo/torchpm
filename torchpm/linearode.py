@@ -5,9 +5,9 @@ import sympy as sym
 
 class LinearODE :
     def _check_square_matrix(m, error_massage) :
-        length = len(distribution_bool_matrix)
-        for distribution_bool_row in distribution_bool_matrix :
-            if len(distribution_bool_row) != length :
+        length = len(m)
+        for row in m :
+            if len(row) != length :
                 raise RuntimeError(error_massage)
 
     def get_eqs_and_ics(distribution_bool_matrix: Iterable[Iterable[bool]], is_infusion: bool) :
