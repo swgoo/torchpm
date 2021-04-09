@@ -3,7 +3,7 @@ class LinearODE :
         length = len(distribution_bool_matrix)
         for distribution_bool_row in distribution_bool_matrix :
             if len(distribution_bool_row) != length :
-                raise Exception(error_massage)
+                raise RuntimeError(error_massage)
 
     def get_eqs_and_ics(distribution_bool_matrix: Iterable[Iterable[bool]], is_infusion: bool) :
         """
