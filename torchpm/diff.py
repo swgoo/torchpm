@@ -4,6 +4,7 @@ from typing import ClassVar, List, Optional, Dict, Iterable, Union
 import torch as tc
 
 from . import scale
+from .misc import *
 
 @dataclass(repr=False, eq=False)
 class DifferentialModule(tc.nn.Module) :
