@@ -1,6 +1,14 @@
+import time
+from dataclasses import dataclass, field
+from typing import ClassVar, List, Optional, Dict, Iterable, Union
+import torch as tc
+
+from torchdiffeq import odeint
+
 import .predfunction
 import .diff
 import .loss
+
 
 class FOCEInter(tc.nn.Module) :
 
