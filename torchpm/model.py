@@ -209,7 +209,7 @@ class FOCEInter(tc.nn.Module) :
             etas_cur = etas[i,:,:]
             epss_cur = epss[i,:,:]
 
-            time_data = data[:,column_names.index('TIME')].t()
+            time_data = data[:,self.pred_function_module.column_names.index('TIME')].t()
 
             times[id] = time_data
             etas_result[id] = etas_cur
