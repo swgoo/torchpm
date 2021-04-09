@@ -5,9 +5,9 @@ import torch as tc
 
 from torchdiffeq import odeint
 
-import .predfunction
-import .diff
-import .loss
+from . import predfunction
+from . import diff
+from . import loss
 
 
 class FOCEInter(tc.nn.Module) :
