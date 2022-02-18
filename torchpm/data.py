@@ -1,16 +1,10 @@
-import time
-import csv
-import abc
-from dataclasses import dataclass, field
-from typing import ClassVar, List, Optional, Dict, Iterable, Union
+from typing import Iterable
 
-from torchdiffeq import odeint
 import torch as tc
 import numpy as np
 
 class CSVDataset(tc.utils.data.Dataset):
     """
-    scaling for vector
     Args:
         file_path: csv file path
         column_names: csv file's column names
@@ -82,3 +76,45 @@ class DataPartitioner(object):
 
     def use(self, partition_index : int):
         return Partition(self.data, self.partitions[partition_index], self.devices[partition_index])
+
+
+class CSVCOVDataset(tc.utils.data.Dataset):
+    """
+    Args:
+        file_path: csv file path
+        column_names: csv file's column names
+        device: (optional) data loaded location 
+    """
+    
+    ESSENTIAL_COLUMNS : Iterable[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
+    
+    def __init__(self, 
+                 pk_file_path : str,
+                 covariate_file_path : str,
+                 column_names : Iterable[str],
+                 device : tc.DeviceObjType = tc.device("cpu")):
+        self.pk_file_path = pk_file_path
+        self.covariate_file_path = covariate_file_path
+        self.column_names = column_names
+        self.device = device
+        
+        dataset_total = np.loadtxt(self.pk_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+        y_true_total = dataset_total[:,self.column_names.index('DV')]
+
+        cov_np = np.loadtxt(self.covariate_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+        
+        ids, ids_start_idx = np.unique(dataset_total[:, column_names.index('ID')], return_index=True)
+        ids_start_idx = ids_start_idx[1:]
+        dataset_np = np.split(dataset_total, ids_start_idx)
+        y_true_np = np.split(y_true_total, ids_start_idx)
+
+        self.dataset = [tc.from_numpy(data_np).to(device) for data_np in dataset_np]
+        self.cov = [tc.from_numpy(cov_cur).to(device) for cov_cur in cov_np]
+        self.y_true = [tc.from_numpy(y_true_cur).to(device) for y_true_cur in y_true_np]
+        self.len = len(self.dataset)
+
+    def __getitem__(self, index):
+        return self.dataset[index], self.cov[index], self.y_true[index]
+
+    def __len__(self):
+        return self.len

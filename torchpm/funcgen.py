@@ -24,6 +24,16 @@ class PredFunctionGenerator(metaclass=abc.ABCMeta) :
         """
         pass
 
+class CovPredFunctionGenerator(tc.nn.Module) :
+
+    def forward(self, t, y, theta, eta, cmt, amt, rate, pk, cov_matrix) :
+        """
+        predicted value calculation
+        returns: 
+            vector of predicted values with respect to t
+        """
+        pass
+
 class ErrorFunctionGenerator(metaclass=abc.ABCMeta) :
     @abc.abstractmethod
     def __call__(self, y_pred, eps, theta, eta, cmt, pk, *cov) :

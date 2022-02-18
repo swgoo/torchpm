@@ -31,8 +31,9 @@ class PredictionFunctionModule(tc.nn.Module):
             self.max_record_length = max(data[0].size()[0], self.max_record_length)
 
         self.theta = tc.nn.Parameter(tc.zeros(self.theta_size))
-        self.etas = tc.nn.ParameterDict({})
+        self.etas = tc.nn.ParameterDict({})      
         self.epss = tc.nn.ParameterDict({})
+
         with tc.no_grad() :
             for id in self.ids :
                 eta_value = tc.zeros(self.eta_size)
@@ -211,7 +212,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
                 infusion_during_time_vector[cmt] = time + amt / rate
  
                 self.infusion_rate = self.infusion_rate * mask + rate_vector
-                self.infusion_end_time = infusion_end_time * mask + infusion_during_time_vector
+                self.infusion_end_time = self.infusion_end_time * mask + infusion_during_time_vector
                 
             result = odeint(self.ode_function, y_init, times, rtol=self.rtol, atol=self.atol)
             

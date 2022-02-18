@@ -171,7 +171,8 @@ class FOCEInter(tc.nn.Module) :
                 'preds': preds, 
                 'cwress': cwress,
                 'mdv_masks': mdv_masks}
-
+    
+    #TODO: 다른 모듈로 분리
     def simulate(self, dataset, repeat) :
         """
         simulationg
@@ -235,7 +236,7 @@ class FOCEInter(tc.nn.Module) :
                 self.pred_function_module.etas.update({str(int(id)): tc.nn.Parameter(etas_original[str(int(id))])})
         return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result}
     
- 
+    #TODO: 다른 모듈로 분리
     def covariance_step(self) :
 
         dataset = self.pred_function_module.dataset
@@ -360,5 +361,3 @@ class FOCEInter(tc.nn.Module) :
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
 
         optimizer.step(opt_fn)
-    
-    
