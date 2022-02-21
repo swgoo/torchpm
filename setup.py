@@ -1,21 +1,8 @@
-import os
-import re
 import setuptools
-
-
-# for simplicity we actually store the version in the __version__ attribute in the source
-here = os.path.realpath(os.path.dirname(__file__))
-with open(os.path.join(here, 'torchpm', '__init__.py')) as f:
-    meta_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
-    if meta_match:
-        version = meta_match.group(1)
-    else:
-        raise RuntimeError("Unable to find __version__ string.")
-
 
 setuptools.setup(
     name="torchpm",
-    version=version,
+    version='0.0.1',
     author="Sungwoo Goo",
     author_email="yeoun9@gmail.com",
     description="Pharmacometrics in PyTorch.",

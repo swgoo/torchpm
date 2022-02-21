@@ -1,2 +1,2 @@
-from . import data, diff, funcgen, linearode, loss, misc, model, predfunction, scale, tests
-__version__ = "0.0.1"
+# from . import data, diff, funcgen, linearode, loss, misc, models, predfunction, scale
+__all__ = ['torchpm']

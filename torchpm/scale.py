@@ -3,7 +3,9 @@ from dataclasses import dataclass, field
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 import torch as tc
 
+#TODO: relative import 오류수정
 from .misc import *
+# from misc import *
 
 class Scale(metaclass=abc.ABCMeta):
     @abc.abstractmethod
@@ -60,7 +62,8 @@ class ScaledMatrix(Scale) :
 
     def _set_scale(self, lower_triangular_vector_init) :
         var_mat = lower_triangular_vector_to_covariance_matrix(lower_triangular_vector_init, self.diagonal)
-        m1 = var_mat.cholesky(upper=True)
+        m1 = tc.linalg.cholesky(var_mat).transpose(-2, -1).conj()
+        # m1 = var_mat.cholesky(upper=True)
         v1 = m1.diag()
         m2 = tc.abs(10 * (m1 - v1.diag()) + (v1/tc.exp(tc.tensor(0.1))).diag())
         return m2.t()
