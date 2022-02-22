@@ -5,6 +5,8 @@ class CovariateStep :
     def __init__(self) -> None:
         pass
 
+    #TODO: model 집어넣어서 covariance step 계산하는 형태로 변경할것,
+    #TODO: descale 필수
     def covariance_step(self) :
 
         dataset = self.pred_function_module.dataset

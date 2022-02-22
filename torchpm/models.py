@@ -177,10 +177,12 @@ class FOCEInter(tc.nn.Module) :
         for m in self.differential_module.sigma : 
             parameters.append(m)
 
-        parameters.append(self.pred_function_module.theta)
-
-        for k, p in self.pred_function_module.etas.items() :
-            parameters.append(p)
+        # parameters.append(self.pred_function_module.theta)
+        # for k, p in self.pred_function_module.etas.items() :
+        #     parameters.append(p)
+        
+        for m in self.pred_function_module.parameters() :
+            parameters.append(m)
 
         return parameters
     

@@ -1,5 +1,7 @@
 import unittest
 import torch as tc
+import torch.nn as nn
+import torch.nn.functional as F
 from torchpm import funcgen, scale, predfunction, diff, models
 from torchpm.data import CSVDataset
 
@@ -20,14 +22,15 @@ class CSVDatasetTest(unittest.TestCase) :
         #     print(data)
         
         assert(0, 0)
-    
-
-
-
 
 class TotalTest(unittest.TestCase) :
+    def test_normal_layer(self) :
+        v = tc.tensor([60.,60.,60.,60.,60.])
+        r = F.layer_norm(v, [5])
+        print(r)
+
     def test(self):
-        dataset_file_path = 'https://raw.githubusercontent.com/yeoun9/torchpm/main/examples/THEO.csv'
+        dataset_file_path = './examples/THEO.csv'
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
 
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
@@ -38,15 +41,42 @@ class TotalTest(unittest.TestCase) :
                 k_a = theta[0]*tc.exp(eta[0])
                 v = theta[1]*tc.exp(eta[1])
                 k_e = theta[2]*tc.exp(eta[2])
+
+                # k_a = 1.5*tc.exp(eta[0])
+                # v = 32.45*tc.exp(eta[1])
+                # k_e = 0.087*tc.exp(eta[2])
+
+                # k_a = 1.5*tc.exp(eta[0])
+                # v = 1000*tc.exp(eta[1])
+                # k_e = 0.087*tc.exp(eta[2])
+
                 return {'k_a': k_a, 'v' : v, 'k_e': k_e}
         pk_parameter = PKParameter()
 
-        class PredFunction(funcgen.PredFunctionGenerator) :
-            def __call__(self, t, y, theta, eta, cmt, amt, rate, pk, bwt, tmpcov) :
-                k_a = pk['k_a']
-                v = pk['v']
-                k = pk['k_e']
-                return (320 / v * k_a) / (k_a - k) * (tc.exp(-k*t) - tc.exp(-k_a*t))
+        class PredFunction(tc.nn.Module) :
+        
+
+            def __init__(self):
+                super(PredFunction, self).__init__()
+
+                #TODO:cov의 평균값을 받아서 scale문제를 해결
+                #TODO: Normalization Layer 사용시 주의. 
+                #TODO: 모델 개선 scale문제로 작동을 안하는 경우임.
+                self.lin = nn.Sequential(nn.Linear(1,3),
+                                    nn.SELU(),
+                                    nn.Linear(3,3))
+                
+            def forward(self, t, y, theta, eta, cmt, amt, rate, pk, bwt, tmpcov) :
+                
+                cov = tc.stack([bwt/70])
+                cov = tc.exp(self.lin(cov.t()).t())
+
+                dose = 320
+                k_a = pk['k_a']  * cov[0]
+                v = pk['v'] * cov[1] 
+                k = pk['k_e'] * cov[2]
+                
+                return (dose / v * k_a) / (k_a - k) * (tc.exp(-k*t) - tc.exp(-k_a*t))
         pred_fn = PredFunction()
 
 
@@ -104,9 +134,10 @@ class TotalTest(unittest.TestCase) :
         model.differential_module.sigma = tc.nn.ParameterList([tc.nn.Parameter(tensor) for tensor in sigma_inits])
         model.differential_module.omega = tc.nn.ParameterList([tc.nn.Parameter(tensor) for tensor in omega_inits])
         model = model.to(device)
-
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
 
+        for p in model.pred_function_module.named_parameters():
+            print(p)
         assert(0, 0)
 
 

@@ -25,8 +25,10 @@ class PredFunctionGenerator(metaclass=abc.ABCMeta) :
         pass
 
 class CovPredFunctionGenerator(tc.nn.Module) :
+    def __init__(self) -> None:
+            super().__init__()
 
-    def forward(self, t, y, theta, eta, cmt, amt, rate, pk, cov_matrix) :
+    def forward(self, t, y, theta, eta, cmt, amt, rate, pk, *cov) :
         """
         predicted value calculation
         returns: 
