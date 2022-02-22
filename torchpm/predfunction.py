@@ -2,6 +2,7 @@ import time
 from dataclasses import dataclass, field
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 import torch as tc
+import torch.nn as nn
 from torchdiffeq import odeint
 
 from . import funcgen
@@ -33,15 +34,15 @@ class PredictionFunctionModule(tc.nn.Module):
 
         self.theta = tc.nn.Parameter(tc.zeros(self.theta_size))
         self.etas = tc.nn.ParameterDict({})      
-        self.epss = tc.nn.ParameterDict({})
+        self.epss : Dict[str, tc.TensorType] = {}
 
         with tc.no_grad() :
             for id in self.ids :
                 eta_value = tc.zeros(self.eta_size)
                 self.etas.update({str(int(id)): tc.nn.Parameter(eta_value)})
 
-                eps_value = tc.zeros(self.record_lengths[str(int(id))], self.eps_size)
-                self.epss.update({str(int(id)): tc.nn.Parameter(eps_value)})
+                eps_value = tc.zeros(self.record_lengths[str(int(id))], self.eps_size, requires_grad=True, device=self.dataset.device)
+                self.epss[str(int(id))] = eps_value
 
         self.cov_indice = self._get_cov_indice(self.column_names)
     

@@ -66,7 +66,6 @@ class DifferentialModule(tc.nn.Module) :
                 else :
                     para.data = matrix_to_lower_triangular_vector(matrix)
 
-
         with tc.no_grad() :
             if self.omega_scales is not None :
                 fn(self.omega, self.omega_scales, self.omega_diagonals)

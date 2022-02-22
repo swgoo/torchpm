@@ -1,10 +1,10 @@
 import unittest
 import torch as tc
 from torchpm import funcgen, scale, predfunction, diff, models
-from torchpm.data import CSVCOVDataset, CSVDataset
+from torchpm.data import CSVDataset
 
 
-class CSVCOVDatasetTest(unittest.TestCase) :
+class CSVDatasetTest(unittest.TestCase) :
     def setUp(self):
         pass
     
@@ -14,7 +14,7 @@ class CSVCOVDatasetTest(unittest.TestCase) :
     def test_post_init(self):
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
 
-        dataset = CSVCOVDataset("./examples/THEO.csv", "./examples/THEO_COV.csv", column_names)
+        dataset = CSVDataset("./examples/THEO.csv", column_names)
 
         # for data in dataset :
         #     print(data)
