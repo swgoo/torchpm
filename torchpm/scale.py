@@ -58,6 +58,7 @@ class ScaledMatrix(Scale) :
     def __init__(self, lower_triangular_vector_init , diagonal : bool):
         self.diagonal = diagonal
         self.scale = self._set_scale(lower_triangular_vector_init)
+        self.lower_triangular_vector_length = lower_triangular_vector_init.size()[0]
         
 
     def _set_scale(self, lower_triangular_vector_init) :

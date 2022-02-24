@@ -14,17 +14,7 @@ class PKParameterGenerator(metaclass=abc.ABCMeta) :
         """
         pass
 
-class PredFunctionGenerator(metaclass=abc.ABCMeta) :
-    @abc.abstractmethod
-    def __call__(self, t, y, theta, eta, cmt, amt, rate, pk, *cov) :
-        """
-        predicted value calculation
-        returns: 
-            vector of predicted values with respect to t
-        """
-        pass
-
-class CovPredFunctionGenerator(tc.nn.Module) :
+class PredFunctionGenerator(tc.nn.Module) :
     def __init__(self) -> None:
             super().__init__()
 

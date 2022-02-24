@@ -7,19 +7,9 @@ from torchdiffeq import odeint
 
 from . import funcgen
 from . import scale
-#TODO: relative import 오류수정
 from .misc import *
-# @dataclass(repr=False, eq=False)
+
 class PredictionFunctionModule(tc.nn.Module):
-    # dataset : tc.utils.data.Dataset
-    # column_names : Iterable[str]
-    # theta_size : int
-    # eta_size : int
-    # eps_size : int
-    # pk_parameter : funcgen.PKParameterGenerator
-    # pred_fn  : funcgen.PredFunctionGenerator
-    # error_fn : funcgen.ErrorFunctionGenerator
-    # theta_scale : Optional[scale.Scale]
 
     def __init__(self,
                 dataset : tc.utils.data.Dataset,
@@ -42,6 +32,7 @@ class PredictionFunctionModule(tc.nn.Module):
         self.error_fn : funcgen.ErrorFunctionGenerator = error_fn
         self.theta_scale : Optional[scale.Scale] = theta_scale
 
+
         self.ids = set()
         self.record_lengths : Dict[str, int] = {}
         self.max_record_length = 0
@@ -52,8 +43,12 @@ class PredictionFunctionModule(tc.nn.Module):
             self.max_record_length = max(data[0].size()[0], self.max_record_length)
 
         self.theta = tc.nn.Parameter(tc.zeros(self.theta_size))
+        if self.theta_scale is not None :
+            self.theta.data = tc.tensor([ 0.1]*self.theta_size, device=self.dataset.device)
         self.etas = tc.nn.ParameterDict({})      
         self.epss : Dict[str, tc.TensorType] = {}
+
+        
 
         with tc.no_grad() :
             for id in self.ids :
@@ -64,32 +59,6 @@ class PredictionFunctionModule(tc.nn.Module):
                 self.epss[str(int(id))] = eps_value
 
         self.cov_indice = self._get_cov_indice(self.column_names)
-
-
-    # def __post_init__(self):
-    #     super(PredictionFunctionModule, self).__init__()
-    #     self.ids = set()
-    #     self.record_lengths : Dict[str, int] = {}
-    #     self.max_record_length = 0
-    #     for data in self.dataset :
-    #         id = data[0][:, self.column_names.index('ID')][0]
-    #         self.ids.add(int(id))
-    #         self.record_lengths[str(int(id))] = data[0].size()[0]
-    #         self.max_record_length = max(data[0].size()[0], self.max_record_length)
-
-    #     self.theta = tc.nn.Parameter(tc.zeros(self.theta_size))
-    #     self.etas = tc.nn.ParameterDict({})      
-    #     self.epss : Dict[str, tc.TensorType] = {}
-
-    #     with tc.no_grad() :
-    #         for id in self.ids :
-    #             eta_value = tc.zeros(self.eta_size)
-    #             self.etas.update({str(int(id)): tc.nn.Parameter(eta_value)})
-
-    #             eps_value = tc.zeros(self.record_lengths[str(int(id))], self.eps_size, requires_grad=True, device=self.dataset.device)
-    #             self.epss[str(int(id))] = eps_value
-
-    #     self.cov_indice = self._get_cov_indice(self.column_names)
     
     def _get_cov_indice(self, column_name) :
         ESSENTIAL_COLUMNS : Iterable[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
@@ -121,6 +90,13 @@ class PredictionFunctionModule(tc.nn.Module):
                 self.theta.data = self.theta_scale(self.theta)
             self.theta_scale = None
         return self
+    
+    def get_descaled_theta(self):
+        with tc.no_grad() :
+            if self.theta_scale is not None :
+                return self.theta_scale(self.theta)
+            else :
+                return self.theta
     
     def forward(self, dataset):
         pass

@@ -17,7 +17,16 @@ class DifferentialModule(tc.nn.Module) :
         super(DifferentialModule, self).__init__()
 
         self.omega = tc.nn.ParameterList([])
+        if self.omega_scales is not None :
+            for scale in self.omega_scales :
+                tensor = tc.tensor([0.1] * scale.lower_triangular_vector_length)
+                self.omega.append(tc.nn.Parameter(tensor))
+
         self.sigma = tc.nn.ParameterList([])
+        if self.sigma_scales is not None :
+            for scale in self.sigma_scales :
+                tensor = tc.tensor([0.1] * scale.lower_triangular_vector_length)
+                self.sigma.append(tc.nn.Parameter(tensor))
         
     def forward(self, y_pred, eta, eps):
         
@@ -77,3 +86,27 @@ class DifferentialModule(tc.nn.Module) :
         self.sigma_scales = None
         
         return self
+    
+    def get_descaled_parameters(self):
+        def fn(scaled_matrix_parameters, scales, diagonals) :
+            matrixes = []
+            for vector, scale, diagonal in zip(scaled_matrix_parameters, scales, diagonals) :
+                matrixes.append(scale(lower_triangular_vector_to_covariance_matrix(vector, diagonal)))
+            
+            result = []
+            for matrix, diagonal in zip(matrixes, diagonals) :
+                if diagonal :
+                    result.append(tc.diag(matrix, 0))
+                else :
+                    result.append(matrix_to_lower_triangular_vector(matrix))
+            return result
+
+        result = {}
+        with tc.no_grad() :
+            if self.omega_scales is not None :
+                result['omega'] = fn(self.omega, self.omega_scales, self.omega_diagonals)
+
+            if self.sigma_scales is not None :
+                result['sigma'] = fn(self.sigma, self.sigma_scales, self.sigma_diagonals)
+        
+        return result

@@ -63,8 +63,8 @@ class TotalTest(unittest.TestCase) :
                 #TODO: Normalization Layer 사용시 주의. 
                 #TODO: 모델 개선 scale문제로 작동을 안하는 경우임.
                 self.lin = nn.Sequential(nn.Linear(1,3),
-                                    nn.SELU(),
-                                    nn.Linear(3,3))
+                                        nn.SELU(),
+                                        nn.Linear(3,3))
                 
             def forward(self, t, y, theta, eta, cmt, amt, rate, pk, bwt, tmpcov) :
                 
@@ -87,31 +87,22 @@ class TotalTest(unittest.TestCase) :
         error_fn = ErrorFunction()
 
         theta_size = 3
-        theta_init = tc.tensor([ 1.5, 30,  0.1], device=device)
+        theta_init = tc.tensor([ 1.5, 32,  0.08], device=device)
         theta_lower_boundary  = tc.tensor([0.,0.,0.], device = device)
         theta_upper_boundary  = tc.tensor([10,100,10], device = device)
         theta_scale = scale.ScaledVector(theta_init, lower_boundary = theta_lower_boundary, upper_boundary = theta_upper_boundary)
-        theta_init = tc.tensor([ 0.1, 0.1,  0.1], device=device)
-
-
-
+        
         eta_size = 3
-        omega_init = [tc.tensor([0.2,
-                                0.1, 0.2,
-                                0.1, 0.1, 0.2], device = device)]
+        omega_inits = [tc.tensor([0.4397,
+                                0.0575,  0.0198, 
+                                -0.0069,  0.0116,  0.0205], device = device)]
         omega_diagonals = [False]
-        omega_scales = [scale.ScaledMatrix(omega_init[0], omega_diagonals[0])]
-        omega_inits = [tc.tensor([ 0.1,
-                                0.1,  0.1,
-                                0.1,  0.1,  0.1], device = device)]
+        omega_scales = [scale.ScaledMatrix(omega_block, omega_diagonal) for omega_block, omega_diagonal in zip(omega_inits, omega_diagonals)]
 
         eps_size = 2
-        sigma_init = [tc.tensor([0.2, 0.1], device = device)]
+        sigma_inits = [tc.tensor([0.0177, 0.0762], device = device)]
         sigma_diagonals = [True]
-        sigma_scales = [scale.ScaledMatrix(sigma_init[0], sigma_diagonals[0])]
-        sigma_inits = [tc.tensor([0.1, 0.1], device = device)]
-
-
+        sigma_scales = [scale.ScaledMatrix(sigma_block, sigma_diagonal) for sigma_block, sigma_diagonal in zip(sigma_inits, sigma_diagonals)]
 
         pred_function_module = predfunction.PredictionFunctionByTime(dataset = dataset,
                                                         column_names = column_names,
@@ -129,15 +120,14 @@ class TotalTest(unittest.TestCase) :
                                                 sigma_scales = sigma_scales)
 
         model = models.FOCEInter(pred_function_module, differential_module)
-
-        model.pred_function_module.theta = tc.nn.Parameter(theta_init)
-        model.differential_module.sigma = tc.nn.ParameterList([tc.nn.Parameter(tensor) for tensor in sigma_inits])
-        model.differential_module.omega = tc.nn.ParameterList([tc.nn.Parameter(tensor) for tensor in omega_inits])
+        
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
 
-        for p in model.pred_function_module.named_parameters():
+        for p in model.descale().named_parameters():
             print(p)
+
+        print(model.descale().covariance_step())
         assert(0, 0)
 
 
