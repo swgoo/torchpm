@@ -306,3 +306,58 @@ class Comp1InjectionModelFunction(tc.autograd.Function) :
             grad_k00 = tc.stack(grad_k00) * grad_output
 
         return grad_t, grad_k00, None, None
+
+
+class Comp1InfusionModelFunction(tc.autograd.Function) :
+    distribution_bool_matrix = [[True]]
+    t_sym, dose_sym, r_sym = sym.symbols('t d r')
+
+    infusion = LinearODE.solve(*LinearODE.get_eqs_and_ics(distribution_bool_matrix, True))
+    eqs, ics = LinearODE.get_eqs_and_ics(distribution_bool_matrix, False)
+    ics[sym.symbols('c_0', cls=sym.Function)(0)] = infusion[0].rhs.subs({t_sym: dose_sym/r_sym})
+    function = LinearODE.solve(eqs, ics)
+    function = [sym.Eq(eq.lhs, eq.rhs.subs({'t': 't - d/r'})) for eq in function]
+    diff_functions = LinearODE.diff_functions(distribution_bool_matrix=distribution_bool_matrix, function=function, eqs=eqs)
+    function_numpy = LinearODE.lambdify(distribution_bool_matrix, function, **diff_functions)
+    
+    @staticmethod
+    def forward(ctx, t, k00, dose, r):
+
+        t = t.detach()
+        k00 = k00.detach()
+        dose = dose.detach()
+        r = r.detach()
+
+        # t = t - dose/r
+
+        output = tc.stack([tc.Tensor(fn(t.numpy(), k00.numpy(), dose.numpy(), r.numpy())) \
+                           for fn in Comp1InfusionModelFunction.function_numpy['function']])
+                           
+        ctx.save_for_backward(t, k00, dose, r, output)
+
+        return output
+
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        t, k00, dose, r, output = ctx.saved_tensors
+
+        # t=t-dose/r
+
+        grad_t = grad_k00 = None
+        if ctx.needs_input_grad[0]:
+            grad_t = tc.stack([fn(t.numpy(), k00, dose.numpy(), r.numpy(), output.numpy().sqeeze(axis=0)) \
+                               for fn in Comp1InfusionModelFunction.function_numpy['diff_function_t']])*grad_output
+
+        if ctx.needs_input_grad[1]:
+
+            grad_k00 =[]
+            for fn in Comp1InfusionModelFunction.function_numpy['diff_function_distribution_rate'][0][0] :
+                if fn is None :
+                    grad_k00.append(tc.zeros(output.size()[-1]))
+                else :
+                    grad_k00.append(tc.Tensor(fn(t.numpy(), k00.numpy(), dose.numpy(), r.numpy())))
+            
+            grad_k00 = tc.stack(grad_k00) * grad_output
+
+        return grad_t, grad_k00, None, None
