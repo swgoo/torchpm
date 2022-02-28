@@ -28,6 +28,7 @@ class TotalTest(unittest.TestCase) :
         v = tc.tensor([60.,60.,60.,60.,60.])
         r = F.layer_norm(v, [5])
 
+    #TODO Test
     def test_pred_time(self):
         dataset_file_path = './examples/THEO.csv'
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
@@ -123,7 +124,7 @@ class TotalTest(unittest.TestCase) :
         print(model.descale().covariance_step())
         assert(0, 0)
     
-    def test_ODE(self):
+    def ODE(self):
 
         dataset_file_path = './examples/THEO_ODE.csv'
 

@@ -24,7 +24,7 @@ class FOCEInter(tc.nn.Module) :
         
     def forward(self, dataset, scaled=True):
         
-        y_pred, eta, eps, mdv_mask = self.pred_function_module(dataset)
+        y_pred, eta, eps, mdv_mask, pk_values = self.pred_function_module(dataset)
 
         y_pred, g, h, omega, sigma = self.differential_module(y_pred, eta, eps)
 

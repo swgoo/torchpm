@@ -153,7 +153,10 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         y_pred = self.error_fn(f, eps.t(), theta, eta, cmts, pk_parameter_value, *cov)
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
-        return y_pred, self.etas[id], self.epss[id], mdv_mask
+        pk_parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
+        pk_parameter_value['ID'] = dataset.t()[self.column_names.index('ID')]
+
+        return y_pred, self.etas[id], self.epss[id], mdv_mask, pk_parameter_value
 
 # @dataclass(repr=False, eq=False)
 class PredictionFunctionByODE(PredictionFunctionModule):
@@ -174,7 +177,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         cmt = self._get_element(self.cur_dataset, 'CMT', index)
         # cov_cur = (cov_vector[index] for cov_vector in self.cur_cov)
         pk_cur = {}
-        
+
         for k, v in self.pk_parameter_value.items():
             pk_cur[k] = v[index]
         
@@ -263,4 +266,8 @@ class PredictionFunctionByODE(PredictionFunctionModule):
 
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
-        return tc.cat(y_pred_arr), self.etas[id], self.epss[id], mdv_mask
+        self.pk_parameter_value['ID'] = dataset.t()[self.column_names.index('ID')]
+
+        self.pk_parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
+
+        return tc.cat(y_pred_arr), self.etas[id], self.epss[id], mdv_mask, self.pk_parameter_value

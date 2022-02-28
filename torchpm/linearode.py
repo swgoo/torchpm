@@ -257,7 +257,7 @@ class Comp1InfusionModelFunction(tc.autograd.Function) :
 
         return grad_t, grad_k00, None, None
 
-class Comp1InjectionModelFunction(tc.autograd.Function) :
+class Comp1BolusModelFunction(tc.autograd.Function) :
     distribution_bool_matrix = [[True]]
     
     
@@ -278,7 +278,7 @@ class Comp1InjectionModelFunction(tc.autograd.Function) :
         # r = r.detach()
 
         output = tc.stack([tc.Tensor(fn(t.numpy(), k00.numpy(), dose.numpy(), None)) \
-                           for fn in Comp1InjectionModelFunction.function_numpy['function']])
+                           for fn in Comp1BolusModelFunction.function_numpy['function']])
                            
         ctx.save_for_backward(t, k00, dose, r, output)
 
@@ -292,12 +292,12 @@ class Comp1InjectionModelFunction(tc.autograd.Function) :
         grad_t = grad_k00 = None
         if ctx.needs_input_grad[0]:
             grad_t = tc.stack([fn(t.numpy(), k00, dose.numpy(), None, output.numpy().sqeeze(axis=0)) \
-                               for fn in Comp1InjectionModelFunction.function_numpy['diff_function_t']])*grad_output
+                               for fn in Comp1BolusModelFunction.function_numpy['diff_function_t']])*grad_output
 
         if ctx.needs_input_grad[1]:
 
             grad_k00 =[]
-            for fn in Comp1InjectionModelFunction.function_numpy['diff_function_distribution_rate'][0][0] :
+            for fn in Comp1BolusModelFunction.function_numpy['diff_function_distribution_rate'][0][0] :
                 if fn is None :
                     grad_k00.append(tc.zeros(output.size()[-1]))
                 else :
