@@ -27,7 +27,6 @@ class TotalTest(unittest.TestCase) :
     def test_normal_layer(self) :
         v = tc.tensor([60.,60.,60.,60.,60.])
         r = F.layer_norm(v, [5])
-        print(r)
 
     def test(self):
         dataset_file_path = './examples/THEO.csv'
@@ -41,14 +40,6 @@ class TotalTest(unittest.TestCase) :
                 k_a = theta[0]*tc.exp(eta[0])
                 v = theta[1]*tc.exp(eta[1])
                 k_e = theta[2]*tc.exp(eta[2])
-
-                # k_a = 1.5*tc.exp(eta[0])
-                # v = 32.45*tc.exp(eta[1])
-                # k_e = 0.087*tc.exp(eta[2])
-
-                # k_a = 1.5*tc.exp(eta[0])
-                # v = 1000*tc.exp(eta[1])
-                # k_e = 0.087*tc.exp(eta[2])
 
                 return {'k_a': k_a, 'v' : v, 'k_e': k_e}
         pk_parameter = PKParameter()
@@ -68,7 +59,7 @@ class TotalTest(unittest.TestCase) :
                 
             def forward(self, t, y, theta, eta, cmt, amt, rate, pk, bwt, tmpcov) :
                 
-                cov = tc.stack([bwt/70])
+                cov = tc.stack([bwt/10])
                 cov = tc.exp(self.lin(cov.t()).t())
 
                 dose = 320
@@ -129,6 +120,98 @@ class TotalTest(unittest.TestCase) :
 
         print(model.descale().covariance_step())
         assert(0, 0)
+    
+    #TODO test_ 붙이기
+    def pediatric(self):
+        dataset_file_path = 'D:/nonmem/vanco.csv'
+        #TODO DAT2 때문에 time 변환해줘야함.
+        column_names = ['ID', 'TIME', 'TAD', 'AMT', 'RATE', 'ORIDV', 'LNDV', 'DV', 'MDV', 'CMT',
+         'SEXF', 'WT', 'HT', 'BSA', 'GA', 'PCA', 'PNA', 'CYSC', 'SCR', 'URPK', 'TPRO', 'ALB', 'CONDRUG', 'TWIN', 'MRSA', 
+         'CRPZERO', 'PCAZERO', 'PREWT', 'RECORDTIME', 'PRETIME']
+
+        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        dataset = CSVDataset(dataset_file_path, column_names, device)
+
+        class PKParameter(funcgen.PKParameterGenerator) :
+            def __call__(self, theta, eta) :
+                k_a = theta[0]*tc.exp(eta[0])
+                v = theta[1]*tc.exp(eta[1])
+                k_e = theta[2]*tc.exp(eta[2])
+                return {'k_a': k_a, 'v' : v, 'k_e': k_e}
+        pk_parameter = PKParameter()
+
+        class PredFunction(funcgen.PredFunctionGenerator) :
+            def __call__(self, t, y, theta, eta, cmt, amt, rate, pk, COV) :
+                mat = tc.zeros(1,1, device=y.device)
+                mat[0,0] = -pk['k_a']
+                return mat @ y
+        pred_fn = PredFunction()
+
+        class ErrorFunction(funcgen.ErrorFunctionGenerator):
+            def __call__(self, y_pred, eps, theta, eta, cmt, pk, COV) :
+                v = pk['v']
+                return y_pred/v + y_pred/v * eps[0] + eps[1]
+
+        error_fn = ErrorFunction()
+
+        theta_size = 3
+        theta_init = tc.tensor([ 1.5, 30,  0.1], device=device)
+        theta_lower_boundary  = tc.tensor([0.,0.,0.], device = device)
+        theta_upper_boundary  = tc.tensor([10,100,10], device = device)
+        theta_scale = scale.ScaledVector(theta_init, lower_boundary = theta_lower_boundary, upper_boundary = theta_upper_boundary)
+        theta_init = tc.tensor([ 0.1, 0.1,  0.1], device=device)
+
+        eta_size = 3
+        omega_init = [tc.tensor([0.2,
+                                0.1, 0.2,
+                                0.1, 0.1, 0.2], device = device)]
+        omega_diagonals = [False]
+        omega_scales = [scale.ScaledMatrix(omega_init[0], omega_diagonals[0])]
+        omega_inits = [tc.tensor([ 0.1,
+                                0.1,  0.1,
+                                0.1,  0.1,  0.1], device = device)]
+
+        eps_size = 2
+        sigma_init = [tc.tensor([0.2, 0.1], device = device)]
+        sigma_diagonals = [True]
+        sigma_scales = [scale.ScaledMatrix(sigma_init[0], sigma_diagonals[0])]
+        sigma_inits = [tc.tensor([0.1, 0.1], device = device)]
+
+        pred_function_module = predfunction.PredictionFunctionByODE(dataset = dataset,
+                                                        column_names = column_names,
+                                                        theta_size = theta_size,
+                                                        eta_size = eta_size,
+                                                        eps_size = eps_size,
+                                                        pk_parameter = pk_parameter,
+                                                        pred_fn  = pred_fn,
+                                                        error_fn = error_fn,
+                                                        theta_scale = theta_scale)
+
+        differential_module = diff.DifferentialModule(omega_diagonals = omega_diagonals,
+                                                sigma_diagonals = sigma_diagonals,
+                                                omega_scales = omega_scales,
+                                                sigma_scales = sigma_scales)
+
+        model = model.FOCEInter(pred_function_module, differential_module)
+
+        model.pred_function_module.theta = tc.nn.Parameter(theta_init)
+        model.differential_module.sigma = tc.nn.ParameterList([tc.nn.Parameter(tensor) for tensor in sigma_inits])
+        model.differential_module.omega = tc.nn.ParameterList([tc.nn.Parameter(tensor) for tensor in omega_inits])
+        model = model.to(device)
+
+        for p in model.descale().named_parameters():
+            print(p)
+
+        print(model.descale().covariance_step())
+        assert(0, 0)
+    
+
+
+
+
+
+
+    
 
 
 if __name__ == '__main__' :
