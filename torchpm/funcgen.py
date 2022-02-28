@@ -3,10 +3,11 @@ from typing import ClassVar, List, Optional, Dict, Iterable, Union
 
 import torch as tc
 
-class PKParameterGenerator(metaclass=abc.ABCMeta) :
-    
-    @abc.abstractmethod
-    def __call__(self, theta, eta) -> Dict[str, tc.Tensor] :
+class PKParameterGenerator(tc.nn.Module) :
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, theta, eta, *cov) -> Dict[str, tc.Tensor] :
         """
         pk parameter calculation
         returns: 

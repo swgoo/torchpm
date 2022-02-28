@@ -118,8 +118,10 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         id = str(int(dataset[:,self.column_names.index('ID')][0]))
         eta = self.etas[id]
         eps = self.epss[id]
+
+        cov = dataset.t().index_select(0, cov_indice).unbind()
         
-        pk_parameter_value = self.pk_parameter(theta, eta)
+        pk_parameter_value = self.pk_parameter(theta, eta, *cov)
  
         for i in range(len(amt_indice) - 1):
             start_time_index = amt_indice[i]
@@ -140,13 +142,13 @@ class PredictionFunctionByTime(PredictionFunctionModule):
  
             cmts_cur = dataset_cur_tp[self.column_names.index('CMT'), :]
  
-            cov_cur = dataset_cur_tp.index_select(0, cov_indice).unbind()
+            # cov_cur = dataset_cur_tp.index_select(0, cov_indice).unbind()
             
-            f_cur = self.pred_fn(times, None, theta, eta, cmts_cur, amt_cur, rate_cur, pk_parameter_value, *cov_cur)
+            f_cur = self.pred_fn(times, None, theta, eta, cmts_cur, amt_cur, rate_cur, pk_parameter_value)
             f = f + tc.cat([f_pre, f_cur], 0)
         
         cmts = dataset[:, self.column_names.index('CMT')]
-        cov = dataset.t().index_select(0, cov_indice).unbind()
+        # cov = dataset.t().index_select(0, cov_indice).unbind()
 
         y_pred = self.error_fn(f, eps.t(), theta, eta, cmts, pk_parameter_value, *cov)
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
@@ -170,14 +172,18 @@ class PredictionFunctionByODE(PredictionFunctionModule):
     def ode_function(self, t, y):
         index = (self.cur_times < t).sum() -1
         cmt = self._get_element(self.cur_dataset, 'CMT', index)
-        cov_cur = (cov_vector[index] for cov_vector in self.cur_cov)
+        # cov_cur = (cov_vector[index] for cov_vector in self.cur_cov)
+        pk_cur = {}
+        
+        for k, v in self.pk_parameter_value.items():
+            pk_cur[k] = v[index]
         
         if self.theta_scale is not None :
             theta = self.theta_scale(self.theta)
         else :
             theta = self.theta
 
-        return self.pred_fn(t, y, theta, self.cur_eta, cmt, None, None, self.pk_parameter_value, *cov_cur) + self.infusion_rate * (self.infusion_end_time > t)
+        return self.pred_fn(t, y, theta, self.cur_eta, cmt, None, None, pk_cur) + self.infusion_rate * (self.infusion_end_time > t)
  
     def forward(self, dataset) :
         if self.theta_scale is not None :
@@ -190,14 +196,19 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         self.max_cmt = int(dataset[:,self.column_names.index('CMT')].max())
 
         self.cur_dataset = dataset
-        self.cur_cov = self.cur_dataset.t().index_select(0, cov_indice).unbind()
+        # self.cur_cov = self.cur_dataset.t().index_select(0, cov_indice).unbind()
         self.cur_times = self.cur_dataset[:,self.column_names.index('TIME')]
         id = str(int(dataset[:, self.column_names.index('ID')][0]))
         
         self.cur_eta = self.etas[id]
         eps = self.epss[id]
 
-        self.pk_parameter_value = self.pk_parameter(theta, self.cur_eta)
+        cov = dataset.t().index_select(0, cov_indice).unbind()
+
+        theta_repeated = theta.repeat([self.record_lengths[id], 1]).t()
+        eta_repeated = self.cur_eta.repeat([self.record_lengths[id], 1]).t()
+
+        self.pk_parameter_value = self.pk_parameter(theta_repeated, eta_repeated, *cov)
 
         y_pred_arr = []
  
@@ -245,8 +256,6 @@ class PredictionFunctionByODE(PredictionFunctionModule):
             cmts_cur = dataset_cur[:, self.column_names.index('CMT')]
             cmt_mask = tc.nn.functional.one_hot(cmts_cur.to(tc.int64)).to(dataset.device)
             y_integrated = y_integrated.masked_select(cmt_mask==1)
-            
-            cov = dataset_cur.t().index_select(0, cov_indice).unbind()
  
             y_pred = self.error_fn(y_integrated, eps.t(), theta, self.cur_eta, cmts_cur, self.pk_parameter_value, *cov)
             
