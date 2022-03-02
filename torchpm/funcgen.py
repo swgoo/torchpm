@@ -7,7 +7,7 @@ class PKParameterGenerator(tc.nn.Module) :
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, theta, eta, *cov) -> Dict[str, tc.Tensor] :
+    def forward(self, theta, eta, amt, *cov) -> Dict[str, tc.Tensor] :
         """
         pk parameter calculation
         returns: 

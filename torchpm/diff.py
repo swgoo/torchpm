@@ -29,23 +29,31 @@ class DifferentialModule(tc.nn.Module) :
                 self.sigma.append(tc.nn.Parameter(tensor))
         
     def forward(self, y_pred, eta, eps):
-        
-        omega = self.make_covariance_matrix(self.omega, self.omega_diagonals, self.omega_scales)
-
-        sigma = self.make_covariance_matrix(self.sigma, self.sigma_diagonals, self.sigma_scales)
-
         eta_size = eta.size()[-1]
         eps_size = eps.size()[-1]
+        
+        if eta_size > 0 :
+            omega = self.make_covariance_matrix(self.omega, self.omega_diagonals, self.omega_scales)
+        else :
+            omega = None
+
+        if eps_size > 0 :
+            sigma = self.make_covariance_matrix(self.sigma, self.sigma_diagonals, self.sigma_scales)
+        else : 
+            sigma = None
+        
 
         g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
         for i_g, y_pred_elem in enumerate(y_pred) :
-            g_elem = tc.autograd.grad(y_pred_elem, eta, create_graph=True, retain_graph=True, allow_unused=True)
-            g[i_g] = g_elem[0]
+            if eta_size > 0 :
+                g_elem = tc.autograd.grad(y_pred_elem, eta, create_graph=True, retain_graph=True, allow_unused=True)
+                g[i_g] = g_elem[0]
         
         h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
         for i_h, y_pred_elem in enumerate(y_pred) :
-            h_elem = tc.autograd.grad(y_pred_elem, eps, create_graph=True, retain_graph=True, allow_unused=True)
-            h[i_h] = h_elem[0][i_h]
+            if eps_size > 0 :
+                h_elem = tc.autograd.grad(y_pred_elem, eps, create_graph=True, retain_graph=True, allow_unused=True)
+                h[i_h] = h_elem[0][i_h]
 
         return y_pred, g, h, omega, sigma
     

@@ -48,8 +48,6 @@ class PredictionFunctionModule(tc.nn.Module):
         self.etas = tc.nn.ParameterDict({})      
         self.epss : Dict[str, tc.TensorType] = {}
 
-        
-
         with tc.no_grad() :
             for id in self.ids :
                 eta_value = tc.zeros(self.eta_size)
@@ -120,8 +118,14 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         eps = self.epss[id]
 
         cov = dataset.t().index_select(0, cov_indice).unbind()
+
+        amt = dataset[:, self.column_names.index('AMT')].t()
         
-        pk_parameter_value = self.pk_parameter(theta, eta, *cov)
+        
+        pk_parameter_value = self.pk_parameter(theta, eta, amt, *cov)
+        if "AMT" in pk_parameter_value.keys():
+            amt = pk_parameter_value["AMT"]
+
  
         for i in range(len(amt_indice) - 1):
             start_time_index = amt_indice[i]
@@ -129,9 +133,11 @@ class PredictionFunctionByTime(PredictionFunctionModule):
             #누적하기 위해 앞부분 생성
             dataset_pre = dataset[:start_time_index, :]
             f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
+
+            amt_cur = amt[start_time_index]
  
             dataset_cur = dataset[start_time_index:, :]
-            amt_cur = dataset_cur[0, self.column_names.index('AMT')]
+            # amt_cur = dataset_cur[0, self.column_names.index('AMT')]
             rate_cur = dataset_cur[0, self.column_names.index('RATE')]
             start_time = dataset_cur[0, self.column_names.index('TIME')]
             
@@ -211,7 +217,11 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         theta_repeated = theta.repeat([self.record_lengths[id], 1]).t()
         eta_repeated = self.cur_eta.repeat([self.record_lengths[id], 1]).t()
 
-        self.pk_parameter_value = self.pk_parameter(theta_repeated, eta_repeated, *cov)
+        amt = dataset[:, self.column_names.index('AMT')].t()
+
+        self.pk_parameter_value = self.pk_parameter(theta_repeated, eta_repeated, amt, *cov)
+        if "AMT" in self.pk_parameter_value.keys():
+            amt = self.pk_parameter_value["AMT"]
 
         y_pred_arr = []
  
@@ -229,12 +239,13 @@ class PredictionFunctionByODE(PredictionFunctionModule):
  
             rate = self._get_element(dataset_cur, 'RATE', 0)
             cmt = self._get_element(dataset_cur, 'CMT', 0)
-            amt = self._get_element(dataset_cur, 'AMT', 0)
+            # amt = self._get_element(dataset_cur, 'AMT', 0)
+            amt_cur = amt[amt_slice][0]
             rate = self._get_element(dataset_cur, 'RATE', 0)
             if  rate == 0 :                    
                 injection = tc.zeros(self.max_cmt + 1, device = dataset.device)
                 
-                injection[cmt.to(tc.int64)] = amt
+                injection[cmt.to(tc.int64)] = amt_cur
                 y_init = y_init + injection
             else :
                 time = self._get_element(dataset_cur, 'TIME', 0)
@@ -246,7 +257,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
                 rate_vector[cmt] = rate
  
                 infusion_during_time_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
-                infusion_during_time_vector[cmt] = time + amt / rate
+                infusion_during_time_vector[cmt] = time + amt_cur / rate
  
                 self.infusion_rate = self.infusion_rate * mask + rate_vector
                 self.infusion_end_time = self.infusion_end_time * mask + infusion_during_time_vector

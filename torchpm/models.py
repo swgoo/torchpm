@@ -51,9 +51,11 @@ class FOCEInter(tc.nn.Module) :
  
                 y_pred = y_pred.masked_select(mdv_mask)
                 eta_size = g.size()[-1]
-                g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
+                if eta_size > 0 :
+                    g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
                 eps_size = h.size()[-1]
-                h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
+                if eps_size > 0:
+                    h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
  
                 y_true_masked = y_true.masked_select(mdv_mask)
                 loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
@@ -265,8 +267,12 @@ class FOCEInter(tc.nn.Module) :
             print('id', id)
  
             y_pred = y_pred.masked_select(mdv_mask)
-            g = g.t().masked_select(mdv_mask).reshape((self.pred_function_module.eta_size,-1)).t()
-            h = h.t().masked_select(mdv_mask).reshape((self.pred_function_module.eps_size,-1)).t()
+
+            if eta.size()[-1] > 0 :
+                g = g.t().masked_select(mdv_mask).reshape((self.pred_function_module.eta_size,-1)).t()
+            
+            if eps.size()[-1] > 0 :
+                h = h.t().masked_select(mdv_mask).reshape((self.pred_function_module.eps_size,-1)).t()
  
             y_true_masked = y_true.masked_select(mdv_mask)
             loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
