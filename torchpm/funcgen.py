@@ -3,7 +3,7 @@ from typing import ClassVar, List, Optional, Dict, Iterable, Union
 
 import torch as tc
 
-class PKParameterGenerator(tc.nn.Module) :
+class ParameterGenerator(tc.nn.Module) :
     def __init__(self) -> None:
         super().__init__()
 

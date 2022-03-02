@@ -17,7 +17,7 @@ class PredictionFunctionModule(tc.nn.Module):
                 theta_size : int,
                 eta_size : int,
                 eps_size : int,
-                pk_parameter : funcgen.PKParameterGenerator,
+                parameter : funcgen.ParameterGenerator,
                 pred_fn  : funcgen.PredFunctionGenerator,
                 error_fn : funcgen.ErrorFunctionGenerator,
                 theta_scale : Optional[scale.Scale]):
@@ -27,7 +27,7 @@ class PredictionFunctionModule(tc.nn.Module):
         self.theta_size : int = theta_size
         self.eta_size : int = eta_size
         self.eps_size : int = eps_size
-        self.pk_parameter : funcgen.PKParameterGenerator = pk_parameter
+        self.parameter : funcgen.ParameterGenerator = parameter
         self.pred_fn  : funcgen.PredFunctionGenerator = pred_fn
         self.error_fn : funcgen.ErrorFunctionGenerator = error_fn
         self.theta_scale : Optional[scale.Scale] = theta_scale
@@ -122,7 +122,7 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         amt = dataset[:, self.column_names.index('AMT')].t()
         
         
-        pk_parameter_value = self.pk_parameter(theta, eta, amt, *cov)
+        pk_parameter_value = self.parameter(theta, eta, amt, *cov)
         if "AMT" in pk_parameter_value.keys():
             amt = pk_parameter_value["AMT"]
 
@@ -219,7 +219,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
 
         amt = dataset[:, self.column_names.index('AMT')].t()
 
-        self.pk_parameter_value = self.pk_parameter(theta_repeated, eta_repeated, amt, *cov)
+        self.pk_parameter_value = self.parameter(theta_repeated, eta_repeated, amt, *cov)
         if "AMT" in self.pk_parameter_value.keys():
             amt = self.pk_parameter_value["AMT"]
 

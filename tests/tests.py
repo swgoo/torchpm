@@ -32,7 +32,7 @@ class TotalTest(unittest.TestCase) :
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         dataset = CSVDataset(dataset_file_path, column_names, device)
 
-        class PKParameter(funcgen.PKParameterGenerator) :
+        class PKParameter(funcgen.ParameterGenerator) :
             def __init__(self) -> None:
                 super().__init__()
                 #TODO:cov의 평균값을 받아서 scale문제를 해결
@@ -99,7 +99,7 @@ class TotalTest(unittest.TestCase) :
                                                         theta_size = theta_size,
                                                         eta_size = eta_size,
                                                         eps_size = eps_size,
-                                                        pk_parameter = pk_parameter,
+                                                        parameter = pk_parameter,
                                                         pred_fn  = pred_fn,
                                                         error_fn = error_fn,
                                                         theta_scale = theta_scale)
@@ -128,7 +128,7 @@ class TotalTest(unittest.TestCase) :
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         dataset = CSVDataset(dataset_file_path, column_names, device)
 
-        class PKParameter(funcgen.PKParameterGenerator) :
+        class PKParameter(funcgen.ParameterGenerator) :
             def __init__(self) -> None:
                 super().__init__()
 
@@ -187,7 +187,7 @@ class TotalTest(unittest.TestCase) :
                                                         theta_size = theta_size,
                                                         eta_size = eta_size,
                                                         eps_size = eps_size,
-                                                        pk_parameter = pk_parameter,
+                                                        parameter = pk_parameter,
                                                         pred_fn  = pred_fn,
                                                         error_fn = error_fn,
                                                         theta_scale = theta_scale)
@@ -273,7 +273,7 @@ class TotalTest(unittest.TestCase) :
                                                         theta_size = theta_size,
                                                         eta_size = eta_size,
                                                         eps_size = eps_size,
-                                                        pk_parameter = pk_parameter,
+                                                        parameter = pk_parameter,
                                                         pred_fn  = pred_fn,
                                                         error_fn = error_fn,
                                                         theta_scale = theta_scale)
