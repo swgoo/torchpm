@@ -42,7 +42,7 @@ class TotalTest(unittest.TestCase) :
                                         nn.SELU(),
                                         nn.Linear(3,3))
 
-            def forward(self, theta, eta, amt, bwt, tmpcov) :
+            def forward(self, theta, eta, cmt, amt, bwt, tmpcov) :
 
                 cov = tc.stack([bwt/70])
                 cov = tc.exp(self.lin(cov.t()).t())
@@ -132,7 +132,7 @@ class TotalTest(unittest.TestCase) :
             def __init__(self) -> None:
                 super().__init__()
 
-            def forward(self, theta, eta, amt, bwt, tmpcov) :
+            def forward(self, theta, eta, cmt, amt, bwt, tmpcov) :
 
                 k_a = 1.4901 
                 v = 32.4667
@@ -211,7 +211,7 @@ class TotalTest(unittest.TestCase) :
         assert(0, 0)
     
     #TODO Test
-    def ODE(self):
+    def test_ODE(self):
 
         dataset_file_path = './examples/THEO_ODE.csv'
 
@@ -224,7 +224,7 @@ class TotalTest(unittest.TestCase) :
             def __init__(self) -> None:
                 super().__init__()
 
-            def forward(self, theta, eta, amt, cov) :
+            def forward(self, theta, eta, cmt, amt, cov) :
                 k_a = theta[0]*tc.exp(eta[0])
                 v = theta[1]*tc.exp(eta[1])
                 k_e = theta[2]*tc.exp(eta[2])

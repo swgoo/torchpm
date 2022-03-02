@@ -7,7 +7,7 @@ class ParameterGenerator(tc.nn.Module) :
     def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, theta, eta, amt, *cov) -> Dict[str, tc.Tensor] :
+    def forward(self, theta, eta, cmt, amt, *cov) -> Dict[str, tc.Tensor] :
         """
         pk parameter calculation
         returns: 
@@ -19,7 +19,7 @@ class PredFunctionGenerator(tc.nn.Module) :
     def __init__(self) -> None:
             super().__init__()
 
-    def forward(self, t, y, theta, eta, cmt, amt, rate, pk, *cov) :
+    def forward(self, t, y, theta, eta, cmt, amt, rate, pk) :
         """
         predicted value calculation
         returns: 

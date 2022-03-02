@@ -119,10 +119,11 @@ class PredictionFunctionByTime(PredictionFunctionModule):
 
         cov = dataset.t().index_select(0, cov_indice).unbind()
 
+        cmt = dataset[:, self.column_names.index('CMT')].t()
         amt = dataset[:, self.column_names.index('AMT')].t()
         
         
-        pk_parameter_value = self.parameter(theta, eta, amt, *cov)
+        pk_parameter_value = self.parameter(theta, eta, cmt, amt, *cov)
         if "AMT" in pk_parameter_value.keys():
             amt = pk_parameter_value["AMT"]
 
@@ -181,7 +182,6 @@ class PredictionFunctionByODE(PredictionFunctionModule):
     def ode_function(self, t, y):
         index = (self.cur_times < t).sum() -1
         cmt = self._get_element(self.cur_dataset, 'CMT', index)
-        # cov_cur = (cov_vector[index] for cov_vector in self.cur_cov)
         pk_cur = {}
 
         for k, v in self.pk_parameter_value.items():
@@ -217,9 +217,10 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         theta_repeated = theta.repeat([self.record_lengths[id], 1]).t()
         eta_repeated = self.cur_eta.repeat([self.record_lengths[id], 1]).t()
 
+        cmt = dataset[:, self.column_names.index('CMT')].t()
         amt = dataset[:, self.column_names.index('AMT')].t()
 
-        self.pk_parameter_value = self.parameter(theta_repeated, eta_repeated, amt, *cov)
+        self.pk_parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
         if "AMT" in self.pk_parameter_value.keys():
             amt = self.pk_parameter_value["AMT"]
 
