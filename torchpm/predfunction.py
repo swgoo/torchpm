@@ -122,8 +122,10 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         cmt = dataset[:, self.column_names.index('CMT')].t()
         amt = dataset[:, self.column_names.index('AMT')].t()
         
+        theta_repeated = theta.repeat([self.record_lengths[id], 1]).t()
+        eta_repeated = eta.repeat([self.record_lengths[id], 1]).t()
         
-        pk_parameter_value = self.parameter(theta, eta, cmt, amt, *cov)
+        pk_parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
         if "AMT" in pk_parameter_value.keys():
             amt = pk_parameter_value["AMT"]
 
