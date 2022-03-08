@@ -125,9 +125,9 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         theta_repeated = theta.repeat([self.record_lengths[id], 1]).t()
         eta_repeated = eta.repeat([self.record_lengths[id], 1]).t()
         
-        pk_parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
-        if "AMT" in pk_parameter_value.keys():
-            amt = pk_parameter_value["AMT"]
+        parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
+        if "AMT" in parameter_value.keys():
+            amt = parameter_value["AMT"]
 
  
         for i in range(len(amt_indice) - 1):
@@ -153,19 +153,19 @@ class PredictionFunctionByTime(PredictionFunctionModule):
  
             # cov_cur = dataset_cur_tp.index_select(0, cov_indice).unbind()
             
-            f_cur = self.pred_fn(times, None, theta, eta, cmts_cur, amt_cur, rate_cur, pk_parameter_value)
+            f_cur = self.pred_fn(times, None, theta, eta, cmts_cur, amt_cur, rate_cur, parameter_value)
             f = f + tc.cat([f_pre, f_cur], 0)
         
         cmts = dataset[:, self.column_names.index('CMT')]
         # cov = dataset.t().index_select(0, cov_indice).unbind()
 
-        y_pred = self.error_fn(f, eps.t(), theta, eta, cmts, pk_parameter_value, *cov)
+        y_pred = self.error_fn(f, eps.t(), theta, eta, cmts, parameter_value, *cov)
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
-        pk_parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
-        pk_parameter_value['ID'] = dataset.t()[self.column_names.index('ID')]
+        parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
+        parameter_value['ID'] = dataset.t()[self.column_names.index('ID')]
 
-        return y_pred, self.etas[id], self.epss[id], mdv_mask, pk_parameter_value
+        return y_pred, self.etas[id], self.epss[id], mdv_mask, parameter_value
 
 # @dataclass(repr=False, eq=False)
 class PredictionFunctionByODE(PredictionFunctionModule):
@@ -186,7 +186,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         cmt = self._get_element(self.cur_dataset, 'CMT', index)
         pk_cur = {}
 
-        for k, v in self.pk_parameter_value.items():
+        for k, v in self.parameter_value.items():
             pk_cur[k] = v[index]
         
         if self.theta_scale is not None :
@@ -222,9 +222,9 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         cmt = dataset[:, self.column_names.index('CMT')].t()
         amt = dataset[:, self.column_names.index('AMT')].t()
 
-        self.pk_parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
-        if "AMT" in self.pk_parameter_value.keys():
-            amt = self.pk_parameter_value["AMT"]
+        self.parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
+        if "AMT" in self.parameter_value.keys():
+            amt = self.parameter_value["AMT"]
 
         y_pred_arr = []
  
@@ -274,14 +274,14 @@ class PredictionFunctionByODE(PredictionFunctionModule):
             cmt_mask = tc.nn.functional.one_hot(cmts_cur.to(tc.int64)).to(dataset.device)
             y_integrated = y_integrated.masked_select(cmt_mask==1)
  
-            y_pred = self.error_fn(y_integrated, eps.t(), theta, self.cur_eta, cmts_cur, self.pk_parameter_value, *cov)
+            y_pred = self.error_fn(y_integrated, eps.t(), theta, self.cur_eta, cmts_cur, self.parameter_value, *cov)
             
             y_pred_arr.append(y_pred)
 
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
-        self.pk_parameter_value['ID'] = dataset.t()[self.column_names.index('ID')]
+        self.parameter_value['ID'] = dataset.t()[self.column_names.index('ID')]
 
-        self.pk_parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
+        self.parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
 
-        return tc.cat(y_pred_arr), self.etas[id], self.epss[id], mdv_mask, self.pk_parameter_value
+        return tc.cat(y_pred_arr), self.etas[id], self.epss[id], mdv_mask, self.parameter_value

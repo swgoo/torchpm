@@ -14,10 +14,10 @@ class TestTemplate(unittest.TestCase) :
         pass
 
     def test_post_init(self):
-        assert(0,0)
+        pass
     
 class PytorchTest(unittest.TestCase):
-    def test(self):
+    def ddd_test(self):
         t = tc.tensor([[],[],[]])
         print(t)
         # print(t.inverse())
@@ -25,7 +25,7 @@ class PytorchTest(unittest.TestCase):
 
 class TotalTest(unittest.TestCase) :
     #TODO Test
-    def test_pred_time(self):
+    def pred_time(self):
         dataset_file_path = './examples/THEO.csv'
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
 
@@ -45,11 +45,11 @@ class TotalTest(unittest.TestCase) :
             def forward(self, theta, eta, cmt, amt, bwt, tmpcov) :
 
                 cov = tc.stack([bwt/70])
-                cov = tc.exp(self.lin(cov.t()).t())
+                cov = self.lin(cov.t()).t()
 
-                k_a = theta[0]*tc.exp(eta[0])*tc.exp(cov[0])
-                v = theta[1]*tc.exp(eta[1])*tc.exp(cov[1])
-                k_e = theta[2]*tc.exp(eta[2])*tc.exp(cov[2])
+                k_a = theta[0]*tc.exp(eta[0]*cov[0])#*tc.exp(cov[0])
+                v = theta[1]*tc.exp(eta[1]*cov[1])#*tc.exp(cov[1])
+                k_e = theta[2]*tc.exp(eta[2]*cov[2])#*tc.exp(cov[2])
 
                 return {'k_a': k_a, 'v' : v, 'k_e': k_e}
         pk_parameter = PKParameter()
@@ -121,7 +121,7 @@ class TotalTest(unittest.TestCase) :
         assert(0, 0)
     
     #TODO test
-    def pred_time_transformer(self):
+    def test_pred_time_attention(self):
         dataset_file_path = './examples/THEO.csv'
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
 
@@ -134,26 +134,58 @@ class TotalTest(unittest.TestCase) :
                 #TODO:cov의 평균값을 받아서 scale문제를 해결
                 #TODO: Normalization Layer 사용시 주의. 
                 #TODO: 모델 개선 scale문제로 작동을 안하는 경우임.
-                self.transformer = nn.Transformer(1, 1, 2, 2, 3)
-                # self.lin = nn.Sequential(nn.Linear(1,3),
-                #                         nn.SELU(),
-                #                         nn.Linear(3,3))
+                d_model = 1
+                self.self_attention = nn.MultiheadAttention(d_model, 1, dropout=0)
+                self.multi_head_attention = nn.MultiheadAttention(d_model,1,dropout=0, batch_first=True)
+                self.norm = nn.LayerNorm(d_model)
+
+                self.lin = nn.Sequential(nn.Linear(3,3),
+                                        nn.SELU(),
+                                        nn.Linear(3,3))
+
+                # self.lin = nn.Sequential(nn.Linear(3,3))
 
             def forward(self, theta, eta, cmt, amt, bwt, tmpcov) :
 
-                cov = tc.stack([bwt/70])
-                print(cov)
-                print(eta)
+                cov = tc.stack([bwt/70, tmpcov]).t().unsqueeze(-1)
 
-                out = self.transformer(cov.t(), eta.t())
-                out = out.t()
-                # cov = tc.exp(self.lin(cov.t()).t())
+                # print(cov.t().unsqueeze(-1).size())
+                # print(eta.t().unsqueeze(-1).size())
+                
+                #Decoder용
+                # cov = self.transformer(eta.t().unsqueeze(-1), cov.t().unsqueeze(-1))
+                
+                #attention만 적용
+                cov = self.self_attention(cov, cov, cov)[0]
 
-                k_a = theta[0]*tc.exp(out[0])
-                v = theta[1]*tc.exp(out[1])
-                k_e = theta[2]*tc.exp(out[2])
+                #TODO LayerNorm이 최적화시 안정화를 유도함? 없으면 불안정한듯
 
-                return {'k_a': k_a, 'v' : v, 'k_e': k_e}
+                cov, attention_score = self.multi_head_attention(eta.t().unsqueeze(-1), cov, cov)
+                # print(attention_score)
+
+                cov = eta.t().unsqueeze(-1) + self.norm(cov)
+
+                # print(cov)
+
+                cov = cov.squeeze(-1).t()
+                cov = self.lin(cov.t()).t()
+
+                # print(tc.exp(cov))
+
+                k_a = theta[0]*tc.exp(eta[0]*cov[0])
+                v = theta[1]*tc.exp(eta[1]*cov[1])
+                k_e = theta[2]*tc.exp(eta[2]*cov[2])
+
+                # k_a = theta[0]*tc.exp(eta[0])
+                # v = theta[1]*tc.exp(eta[1])
+                # k_e = theta[2]*tc.exp(eta[2])
+
+                # k_a = theta[0]*tc.exp(cov[0])
+                # v = theta[1]*tc.exp(cov[1])
+                # k_e = theta[2]*tc.exp(cov[2])
+
+                return {'k_a': k_a, 'v' : v, 'k_e': k_e, "attention_score": attention_score}
+
         pk_parameter = PKParameter()
 
         class PredFunction(tc.nn.Module) :
