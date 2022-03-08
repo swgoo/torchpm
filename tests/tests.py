@@ -121,7 +121,7 @@ class TotalTest(unittest.TestCase) :
         assert(0, 0)
     
     #TODO test
-    def test_pred_time_attention(self):
+    def pred_time_attention(self):
         dataset_file_path = './examples/THEO.csv'
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
 
@@ -256,7 +256,7 @@ class TotalTest(unittest.TestCase) :
 
 
     #TODO TEST
-    def pred_amt(self):
+    def test_pred_amt(self):
         dataset_file_path = './examples/THEO_AMT.csv'
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
 
@@ -274,7 +274,7 @@ class TotalTest(unittest.TestCase) :
                 k_e = 0.0873
 
                 amt = amt * theta[0] #* bwt
-                return {'k_a': k_a, 'v' : v, 'k_e': k_e, 'AMT': amt}
+                return {'k_a': k_a, 'v' : v, 'k_e': k_e, 'AMT': amt, 'bwt': bwt}
         pk_parameter = PKParameter()
 
         class PredFunction(tc.nn.Module) :
@@ -341,6 +341,12 @@ class TotalTest(unittest.TestCase) :
 
         for p in model.descale().named_parameters():
             print(p)
+        
+        eval_values = model.descale().evaluate()
+        for k, v in eval_values.items() :
+            print(k)
+            print(v)
+
         #TODO
         # print(model.descale().covariance_step())
         assert(0, 0)

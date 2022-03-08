@@ -99,7 +99,6 @@ class PredictionFunctionModule(tc.nn.Module):
     def forward(self, dataset):
         pass
 
-# @dataclass(repr=False, eq=False)
 class PredictionFunctionByTime(PredictionFunctionModule):
  
     def forward(self, dataset) :
@@ -128,7 +127,6 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
         if "AMT" in parameter_value.keys():
             amt = parameter_value["AMT"]
-
  
         for i in range(len(amt_indice) - 1):
             start_time_index = amt_indice[i]

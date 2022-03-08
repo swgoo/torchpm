@@ -24,8 +24,13 @@ def matrix_to_lower_triangular_vector(m):
     return m[tril_indices[0], tril_indices[1]]
 
 def cwres(y_true, y_pred, g, h, eta, omega, sigma) :    
-    c = g @ omega @ g.t() + (h @ sigma @ h.t()).diag().diag()
-    return mat_sqrt_inv(c) @ (y_true - y_pred + g @ eta)
+    if eta.size()[-1] > 0:
+        term1 = g @ omega @ g.t()
+        term2 =  g @ eta
+    else : term1, term2 = (0,0)
+
+    c = term1 + (h @ sigma @ h.t()).diag().diag()
+    return mat_sqrt_inv(c) @ (y_true - y_pred + term2)
 
 def covariance_to_correlation(m):
     d = m.diag().sqrt()
