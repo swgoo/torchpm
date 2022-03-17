@@ -50,7 +50,7 @@ class PredictionFunctionModule(tc.nn.Module):
 
         with tc.no_grad() :
             for id in self.ids :
-                eta_value = tc.zeros(self.eta_size)
+                eta_value = tc.ones(self.eta_size)*0.1 
                 self.etas.update({str(int(id)): tc.nn.Parameter(eta_value)})
 
                 eps_value = tc.zeros(self.record_lengths[str(int(id))], self.eps_size, requires_grad=True, device=self.dataset.device)

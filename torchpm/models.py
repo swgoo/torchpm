@@ -1,10 +1,10 @@
-from numbers import Number
 import numbers
 import time
 from dataclasses import dataclass, field
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 from sympy import false
 import torch as tc
+import torch.distributed as dist
 
 from torchdiffeq import odeint
 
@@ -64,7 +64,7 @@ class FOCEInter(tc.nn.Module) :
                 loss.backward()
                 
                 # with tc.no_grad() :
-                total_loss.add_(loss)
+                total_loss = total_loss + loss
             
             if checkpoint_file_path is not None :
                 tc.save(self.state_dict(), checkpoint_file_path)
@@ -239,13 +239,16 @@ class FOCEInter(tc.nn.Module) :
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
-                                   tolerance_change = tolerance_change)
+                                   tolerance_change = tolerance_change,
+                                   line_search_fn='strong_wolfe')
         
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
 
         optimizer.step(opt_fn)
 
         self.pred_function_module.epss = epss
+
+        return self
     
     def fit_individual(self, checkpoint_file_path : str = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 3e-2, max_iteration = 1000,):
 
