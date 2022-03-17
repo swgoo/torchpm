@@ -157,7 +157,7 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         cmts = dataset[:, self.column_names.index('CMT')]
         # cov = dataset.t().index_select(0, cov_indice).unbind()
 
-        y_pred = self.error_fn(f, eps.t(), theta, eta, cmts, parameter_value, *cov)
+        y_pred = self.error_fn(f, eps.t(), theta, cmts, parameter_value, *cov)
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
         parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]

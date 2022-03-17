@@ -29,7 +29,7 @@ class PredFunctionGenerator(tc.nn.Module) :
 
 class ErrorFunctionGenerator(metaclass=abc.ABCMeta) :
     @abc.abstractmethod
-    def __call__(self, y_pred, eps, theta, eta, cmt, pk, *cov) :
+    def __call__(self, y_pred, eps, theta, cmt, pk, *cov) :
         """
         error value calculation
         returns: 

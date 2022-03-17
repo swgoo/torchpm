@@ -107,7 +107,7 @@ class TotalTest(unittest.TestCase) :
 
 
         class ErrorFunction(funcgen.ErrorFunctionGenerator):
-            def __call__(self, y_pred, eps, theta, eta, cmt, pk, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
+            def __call__(self, y_pred, eps, theta, cmt, pk, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
                 return y_pred +  y_pred * eps[0]  + eps[1]
 
         error_fn = ErrorFunction()
@@ -233,7 +233,7 @@ class TotalTest(unittest.TestCase) :
 
 
         class ErrorFunction(funcgen.ErrorFunctionGenerator):
-            def __call__(self, y_pred, eps, theta, eta, cmt, pk, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
+            def __call__(self, y_pred, eps, theta, cmt, pk, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
                 return y_pred +  y_pred * eps[0]  + eps[1]
 
         error_fn = ErrorFunction()
@@ -387,7 +387,7 @@ class TotalTest(unittest.TestCase) :
 
 
         class ErrorFunction(funcgen.ErrorFunctionGenerator):
-            def __call__(self, y_pred, eps, theta, eta, cmt, pk, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
+            def __call__(self, y_pred, eps, theta, cmt, pk, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
                 return y_pred +  y_pred * eps[0]  + eps[1]
 
         error_fn = ErrorFunction()
@@ -481,7 +481,7 @@ class TotalTest(unittest.TestCase) :
 
 
         class ErrorFunction(funcgen.ErrorFunctionGenerator):
-            def __call__(self, y_pred, eps, theta, eta, cmt, pk, bwt, tmpcov) :
+            def __call__(self, y_pred, eps, theta, cmt, pk, bwt, tmpcov) :
                 return y_pred + eps[0] #+  y_pred * eps[0]  + eps[1]
 
         error_fn = ErrorFunction()
@@ -574,7 +574,7 @@ class TotalTest(unittest.TestCase) :
         pred_fn = PredFunction()
 
         class ErrorFunction(funcgen.ErrorFunctionGenerator):
-            def __call__(self, y_pred, eps, theta, eta, cmt, pk, COV) :
+            def __call__(self, y_pred, eps, theta, cmt, pk, COV) :
                 v = pk['v']
                 return y_pred/v + y_pred/v * eps[0] + eps[1]
 
