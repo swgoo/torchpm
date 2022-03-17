@@ -106,8 +106,9 @@ class TotalTest(unittest.TestCase) :
 
 
         class ErrorFunction(funcgen.ErrorFunctionGenerator):
-            def __call__(self, y_pred, eps, theta, cmt, pk, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
-                return y_pred +  y_pred * eps[0]  + eps[1]
+            def __call__(self, y_pred, eps, theta, cmt, parameter, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
+                parameter['ipred'] = y_pred
+                return y_pred +  y_pred * eps[0]  + eps[1], parameter
 
         error_fn = ErrorFunction()
 

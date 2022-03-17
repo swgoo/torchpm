@@ -157,7 +157,7 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         cmts = dataset[:, self.column_names.index('CMT')]
         # cov = dataset.t().index_select(0, cov_indice).unbind()
 
-        y_pred = self.error_fn(f, eps.t(), theta, cmts, parameter_value, *cov)
+        y_pred, parameter_value = self.error_fn(f, eps.t(), theta, cmts, parameter_value, *cov)
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
         parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
@@ -272,7 +272,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
             cmt_mask = tc.nn.functional.one_hot(cmts_cur.to(tc.int64)).to(dataset.device)
             y_integrated = y_integrated.masked_select(cmt_mask==1)
  
-            y_pred = self.error_fn(y_integrated, eps.t(), theta, cmts_cur, self.parameter_value, *cov)
+            y_pred, self.parameter_value = self.error_fn(y_integrated, eps.t(), theta, cmts_cur, self.parameter_value, *cov)
             
             y_pred_arr.append(y_pred)
 
