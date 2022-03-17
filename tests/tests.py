@@ -1,6 +1,5 @@
 
 import logging
-from re import X
 import unittest
 import torch as tc
 import torch.nn as nn

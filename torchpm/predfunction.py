@@ -272,7 +272,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
             cmt_mask = tc.nn.functional.one_hot(cmts_cur.to(tc.int64)).to(dataset.device)
             y_integrated = y_integrated.masked_select(cmt_mask==1)
  
-            y_pred = self.error_fn(y_integrated, eps.t(), theta, self.cur_eta, cmts_cur, self.parameter_value, *cov)
+            y_pred = self.error_fn(y_integrated, eps.t(), theta, cmts_cur, self.parameter_value, *cov)
             
             y_pred_arr.append(y_pred)
 

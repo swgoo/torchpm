@@ -1,5 +1,5 @@
 import abc
-from typing import ClassVar, List, Optional, Dict, Iterable, Union
+from typing import ClassVar, List, Optional, Dict, Iterable, Tuple, Union
 
 import torch as tc
 
@@ -19,7 +19,7 @@ class PredFunctionGenerator(tc.nn.Module) :
     def __init__(self) -> None:
             super().__init__()
 
-    def forward(self, t, y, theta, eta, cmt, amt, rate, pk) :
+    def forward(self, t, y, theta, eta, cmt, amt, rate, parameters) :
         """
         predicted value calculation
         returns: 
@@ -29,7 +29,7 @@ class PredFunctionGenerator(tc.nn.Module) :
 
 class ErrorFunctionGenerator(metaclass=abc.ABCMeta) :
     @abc.abstractmethod
-    def __call__(self, y_pred, eps, theta, cmt, pk, *cov) :
+    def __call__(self, y_pred, eps, theta, cmt, parameters, *cov) -> Tuple(tc.Tensor, Dict[str, tc.Tensor]):
         """
         error value calculation
         returns: 
