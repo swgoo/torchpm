@@ -194,10 +194,6 @@ class FOCEInter(tc.nn.Module) :
         self.pred_function_module.descale()
         self.differential_module.descale()
         return self
-    
-    #TODO
-    def get_descaled_parameters(self):
-        pass
 
     def parameters_for_population(self):
         parameters = []

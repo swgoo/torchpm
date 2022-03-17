@@ -1,10 +1,15 @@
-from typing import List
+from typing import List, Dict
 import torch as tc
+import diff
+import predfunction
 
 class simulation :
-    def __init__(self) -> None:
-        pass
-    #TODO: 다른 모듈로 분리
+    def __init__(self,
+                differential_module: diff.DifferentialModule,
+                pred_function_module: predfunction.PredictionFunctionModule) -> None:
+        self.differential_module = differential_module
+        self.pred_function_module = pred_function_module
+
     def simulate(self, dataset, repeat) :
         """
         simulationg
@@ -34,6 +39,7 @@ class simulation :
         epss_result : Dict[str, tc.Tensor] = {}
         preds : Dict[str, List[tc.Tensor]] = {}
         times : Dict[str, tc.Tensor] = {}
+        parameters : Dict[str, Dict[str, tc.Tensor]] = []
  
         for i, (data, y_true) in enumerate(dataloader):
             
@@ -48,6 +54,7 @@ class simulation :
             etas_result[id] = etas_cur
             epss_result[id] = epss_cur
             preds[id] = []
+            parameters[id] = []
 
             for repeat_iter in range(repeat) :
 
@@ -59,11 +66,13 @@ class simulation :
 
                     self.pred_function_module.epss.update({str(int(id)): tc.nn.Parameter(eps_value[:data.size()[0],:])})
 
-                    y_pred, _, _, _ = self.pred_function_module(data)
+                    y_pred, _, _, _, parameter_value = self.pred_function_module(data)
 
                     preds[id].append(y_pred)
+                    parameters[id].append(parameter_value)
 
         with tc.no_grad() :
             for id in self.pred_function_module.ids :
                 self.pred_function_module.etas.update({str(int(id)): tc.nn.Parameter(etas_original[str(int(id))])})
-        return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result}
+
+        return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'parameters': parameters}
