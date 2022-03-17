@@ -29,7 +29,7 @@ class PredFunctionGenerator(tc.nn.Module) :
 
 class ErrorFunctionGenerator(metaclass=abc.ABCMeta) :
     @abc.abstractmethod
-    def __call__(self, y_pred, eps, theta, cmt, parameters, *cov) -> Tuple(tc.Tensor, Dict[str, tc.Tensor]):
+    def __call__(self, y_pred, eps, theta, cmt, parameters, *cov) -> Tuple[tc.Tensor, Dict[str, tc.Tensor]]:
         """
         error value calculation
         returns: 
