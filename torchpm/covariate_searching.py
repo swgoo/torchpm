@@ -1,2 +1,0 @@
-class CovariateSearching :
-    pass
