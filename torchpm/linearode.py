@@ -1,16 +1,13 @@
+from turtle import forward
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 import torch as tc
 import numpy as np
 import sympy as sym
+import sympytorch as spt
+from torch import nn
 
 class LinearODE :
-    def _check_square_matrix(m, error_massage) :
-        length = len(m)
-        for row in m :
-            if len(row) != length :
-                raise RuntimeError(error_massage)
-
-    def get_eqs_and_ics(distribution_bool_matrix: Iterable[Iterable[bool]], is_infusion: bool) :
+    def __init__(self, distribution_bool_matrix, is_infusion) -> None:
         """
         compartment phamacokinetics model function generator
         compartment 0 is applied drug.
@@ -19,28 +16,55 @@ class LinearODE :
                                         diagonal part is elimination ratio from specific compartment.
                                         it must be square matrix.
             is_infusion : if it's True, compartment 0 is applied drug infusion.
+        """
+        self.distribution_bool_matrix = distribution_bool_matrix
+        self.is_infusion = is_infusion
+
+        self.dCdts = self._get_dCdts()
+        self.initial_states = self._get_initial_states()
+        self.cs = LinearODE._solve(self.dCdts, self.initial_states)
+
+    def _check_square_matrix(m, error_massage) :
+        length = len(m)
+        for row in m :
+            if len(row) != length :
+                raise RuntimeError(error_massage)
+
+    def _get_initial_states(self):
+        """
         Returns:
-            eqs: differential equations of compartments
             ics: initial states of compartments
         """
-        LinearODE._check_square_matrix(distribution_bool_matrix, 'distribution_bool_matrix must be square matrix')
+        comps_num = len(self.distribution_bool_matrix)
+        comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]
+        d = sym.symbols('d') #dose
 
-        comps_num = len(distribution_bool_matrix)
+        ics = {comp(0): 0 for comp in comps}
+        ics[comps[0](0)] = d if not self.is_infusion else 0
+        return ics
+
+    def _get_dCdts(self) :
+        """
+        Returns:
+            eqs: differential equations of compartments
+        """
+        LinearODE._check_square_matrix(self.distribution_bool_matrix, 'distribution_bool_matrix must be square matrix')
+
+        comps_num = len(self.distribution_bool_matrix)
 
         t = sym.symbols('t') #time
-        d = sym.symbols('d') #dose
         r = sym.symbols('r') #infusion rate
         
         comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]
 
         elimination_rate = sym.eye(comps_num)
         for i in range(comps_num) :
-            elimination_rate[i,i] = sym.symbols('k_' + str(i) + str(i)) if distribution_bool_matrix[i][i] else 0
+            elimination_rate[i,i] = sym.symbols('k_' + str(i) + str(i)) if self.distribution_bool_matrix[i][i] else 0
 
         distribution_rate = sym.zeros(comps_num, comps_num)
         for i in range(comps_num) :
             for j in range(comps_num) :
-                if i == j or not distribution_bool_matrix[i][j]:
+                if i == j or not self.distribution_bool_matrix[i][j]:
                     continue
                 distribution_rate[i,j] = sym.symbols('k_'+str(i)+str(j))
         
@@ -48,15 +72,12 @@ class LinearODE :
         dcdt_eqs = distribution_rate.T * comps_matrix \
                     - sym.diag(*(distribution_rate * sym.ones(comps_num, 1))) * comps_matrix \
                     - elimination_rate * comps_matrix
-        dcdt_eqs[0] = dcdt_eqs[0] + r if is_infusion else dcdt_eqs[0]
-
+        dcdt_eqs[0] = dcdt_eqs[0] + r if self.is_infusion else dcdt_eqs[0]
 
         eqs = [sym.Eq(comps[i](t).diff(t), dcdt_eqs[i]) for i in range(comps_num)]
-        ics = {comp(0): 0 for comp in comps}
-        ics[comps[0](0)] = 0 if is_infusion else d
-        return eqs, ics
+        return eqs
     
-    def solve(eqs, ics) :
+    def _solve(eqs, ics) :
         """
         solve differential equations
         Args:
@@ -68,41 +89,34 @@ class LinearODE :
         function = sym.solvers.ode.systems.dsolve_system(eqs, ics=ics, doit=True)
         return function[0]
     
-    def diff_functions(distribution_bool_matrix, function, eqs) :
+    def diff_functions(self) :
         """
         Args :
-            distribution_bool_matrix : Whether there is a distribution in the compartment to another.
-                                        diagonal part is elimination ratio from specific compartment.
-                                        it must be square matrix.
             function: compartment function by time.
         Return:
-            function: (numpy version) compartment functions by time
             diff_function_t : (numpy version) differential function with respect to t
             diff_function_distribution_rate : (numpy version) matrix. differential functions with respect to distribution_rate
         """
+        LinearODE._check_square_matrix(self.distribution_bool_matrix, 'distribution_bool_matrix must be square matrix')
 
-        LinearODE._check_square_matrix(distribution_bool_matrix, 'distribution_bool_matrix must be square matrix')
-
-        comps_num = len(function)
+        comps_num = len(self.distribution_bool_matrix)
         diff_argument_subs = {sym.symbols('c_'+str(i), cls=sym.Function)(sym.symbols('t')): sym.symbols('y_'+str(i)) for i in range(comps_num)}
 
-        diff_function_t = [fn.rhs.subs(diff_argument_subs) for fn in eqs]
+        diff_function_t = [fn.rhs.subs(diff_argument_subs) for fn in self.dCdts]
 
         diff_function_distribution_rate = [[[None for k in range(comps_num) ] for j in range(comps_num)] for i in range(comps_num)]
         for i in range(comps_num) :
             for j in range(comps_num) :
                 for k in range(comps_num) :
-                    if distribution_bool_matrix[i][j] :
-                        diff_function_distribution_rate[i][j][k] = function[k].rhs.diff('k_'+str(i)+str(j))
+                    if self.distribution_bool_matrix[i][j] :
+                        diff_function_distribution_rate[i][j][k] = self.cs[k].rhs.diff('k_'+str(i)+str(j))
         
         return {'diff_function_t': diff_function_t, 'diff_function_distribution_rate': diff_function_distribution_rate}
-
-    def lambdify(distribution_bool_matrix, function, diff_function_t, diff_function_distribution_rate):
+    
+    '''
+    def lambdify(self, dCdks):
         """
         Args :
-            distribution_bool_matrix : Whether there is a distribution in the compartment to another.
-                                        diagonal part is elimination ratio from specific compartment.
-                                        it must be square matrix.
             function: compartment function by time.
             diff_function_t : differential function with respect to t
             diff_function_distribution_rate : matrix. differential functions with respect to distribution_rate
@@ -110,42 +124,61 @@ class LinearODE :
             diff_function_t : differential function with respect to t
             diff_function_distribution_rate : matrix. differential functions with respect to distribution_rate
         """
-        comps_num = len(function)
+        comps_num = len(self.distribution_bool_matrix)
         distribution_rate_arguments = []
         for i in range(comps_num) :
             for j in range(comps_num) :
-                if distribution_bool_matrix[i][j] :
+                if self.distribution_bool_matrix[i][j] :
                     distribution_rate_arguments.append('k_'+str(i)+str(j))
         distribution_rate_arguments_str = ' '.join(distribution_rate_arguments)
         distribution_rate_arguments_symbol = sym.symbols(distribution_rate_arguments_str)
-        distribution_rate_arguments_symbol_type = type(distribution_rate_arguments_symbol)
-        if distribution_rate_arguments_symbol_type is not tuple :
+        if type(distribution_rate_arguments_symbol) is not tuple :
             distribution_rate_arguments_symbol = (distribution_rate_arguments_symbol,)
                                                          
         function_numpy = [sym.lambdify([sym.symbols('t'),
                                              *distribution_rate_arguments_symbol,
-                                             *sym.symbols('d r')], fn.rhs, modules='numpy') for fn in function]
+                                             *sym.symbols('d r')], fn.rhs, modules='numpy') for fn in self.cs]
         ys = [sym.symbols('y_'+str(i)) for i in range(comps_num)]
         diff_function_t_numpy = [sym.lambdify([sym.symbols('t'), 
                                                     *distribution_rate_arguments_symbol,
-                                                    *sym.symbols('d r'), *ys], fn, modules='numpy') for fn in diff_function_t]
+                                                    *sym.symbols('d r'), *ys], fn, modules='numpy') for fn in self.dCdts]
         
         diff_function_distribution_rate_numpy = [[[None for k in range(comps_num)] for j in range(comps_num)] for i in range(comps_num)]
         for i in range(comps_num) :
             for j in range(comps_num) :
                 for k in range(comps_num) :
-                    fn = diff_function_distribution_rate[i][j][k]
+                    fn = dCdks[i][j][k]
                     if fn is None :
                         continue
                     if fn != 0 :
                         diff_function_distribution_rate_numpy[i][j][k] = sym.lambdify([sym.symbols('t'),
                                                                                             *distribution_rate_arguments_symbol,
                                                                                             *sym.symbols('d r')], fn, modules='numpy')
-        return {'function': function_numpy,
-                'diff_function_t': diff_function_t_numpy,
-                'diff_function_distribution_rate': diff_function_distribution_rate_numpy}
-            
+        return {'cs': function_numpy,
+                'dCdts': diff_function_t_numpy,
+                'dCdks': diff_function_distribution_rate_numpy}        
+        '''
 
+class Comp1GutModelFunction(nn.Module):
+    distribution_bool_matrix = [[False, True],
+                                [False, True]]
+    function = LinearODE(distribution_bool_matrix, False)
+    
+    def __init__(self) -> None:
+        super().__init__()
+
+        comps = []
+
+        for comp in Comp1GutModelFunction.function.cs :
+            comps.append(comp.rhs)
+
+        self.model = spt.SymPyModule(expressions=comps)
+    
+    def forward(self, t, k01, k11, dose):
+        return self.model(t=t, k_01=k01, k_11= k11, d=dose)
+
+
+'''
 class Comp1GutModelFunction(tc.autograd.Function) :
     distribution_bool_matrix = [[False, True],
                                 [False, True]]
@@ -259,11 +292,8 @@ class Comp1InfusionModelFunction(tc.autograd.Function) :
 
 class Comp1BolusModelFunction(tc.autograd.Function) :
     distribution_bool_matrix = [[True]]
-    
-    
+        
     eqs, ics = LinearODE.get_eqs_and_ics(distribution_bool_matrix, False)
-
-
 
     function = LinearODE.solve(eqs, ics)
     diff_function = LinearODE.diff_functions(distribution_bool_matrix, function, eqs)
@@ -284,7 +314,6 @@ class Comp1BolusModelFunction(tc.autograd.Function) :
 
         return output
 
-    
     @staticmethod
     def backward(ctx, grad_output):
         t, k00, dose, r, output = ctx.saved_tensors
@@ -361,3 +390,4 @@ class Comp1InfusionModelFunction(tc.autograd.Function) :
             grad_k00 = tc.stack(grad_k00) * grad_output
 
         return grad_t, grad_k00, None, None
+        '''
