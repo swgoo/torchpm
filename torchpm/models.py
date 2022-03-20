@@ -17,21 +17,38 @@ class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
                  pred_function_module : predfunction.PredictionFunctionModule,
-                differential_module : diff.DifferentialModule,
+                 eta_names : Iterable[Iterable[str]],
+                 eps_names : Iterable[Iterable[str]],
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
         super(FOCEInter, self).__init__()
         self.pred_function_module = pred_function_module
-        self.differential_module = differential_module
+        self.eta_names = eta_names
+        self.eps_names = eps_names
         self.objective_function = objective_function
         #TODO 하뒤 모듈에서 Eta_name와 Eps_name 찾은 후 아이디 별로 생성해주기
         
     def forward(self, dataset, scaled=True):
         
-        y_pred, eta, eps, mdv_mask, parameters = self.pred_function_module(dataset)
+        pred_output = self.pred_function_module(dataset)
 
-        y_pred, g, h, omega, sigma = self.differential_module(y_pred, eta, eps)
+        etas = pred_output['etas']
+        eta = []
+        for eta_names in self.eta_names:
+            for eta_name in eta_names:
+                eta.append(etas["eta_" + eta_name])
+        eta = tc.concat(eta, 0)
 
-        return y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters
+        epss = pred_output['epss']
+        eps = []
+        for eps_names in self.eps_names:
+            for eps_name in eps_names:
+                eps.append(epss["eps_" + eps_name])
+        eps = tc.concat(eps, 0)
+
+        y_pred, g, h = self.diff_forward(pred_output['y_pred'], eta, eps)
+        #TODO OMEGA, SIGMA 생성 
+
+        return y_pred, eta, eps, g, h, omega, sigma, pred_output['mdv_mask'], pred_output['output_columns']
  
     def optimization_function(self, dataset, optimizer, checkpoint_file_path : str = None):
         """
@@ -191,9 +208,10 @@ class FOCEInter(tc.nn.Module) :
                 'mdv_masks': mdv_masks,
                 'parameters': parameters}
     
+    #TODO omega, sigma descale
     def descale(self) :
         self.pred_function_module.descale()
-        self.differential_module.descale()
+        # self.differential_module.descale()
         return self
 
     def parameters_for_population(self):
@@ -394,3 +412,47 @@ class FOCEInter(tc.nn.Module) :
                 self.pred_function_module.etas.update({str(int(id)): tc.nn.Parameter(etas_original[str(int(id))])})
 
         return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'parameters': parameters}
+    
+    #TODO
+    def diff_forward(self, y_pred, eta, eps):
+        eta_size = eta.size()[-1]
+        eps_size = eps.size()[-1]
+        
+        if eta_size > 0 :
+            omega = self.make_covariance_matrix(self.omega, self.omega_diagonals, self.omega_scales)
+        else :
+            omega = None
+
+        if eps_size > 0 :
+            sigma = self.make_covariance_matrix(self.sigma, self.sigma_diagonals, self.sigma_scales)
+        else : 
+            sigma = None
+        
+
+        g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
+        for i_g, y_pred_elem in enumerate(y_pred) :
+            if eta_size > 0 :
+                g_elem = tc.autograd.grad(y_pred_elem, eta, create_graph=True, retain_graph=True, allow_unused=True)
+                g[i_g] = g_elem[0]
+        
+        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
+        for i_h, y_pred_elem in enumerate(y_pred) :
+            if eps_size > 0 :
+                h_elem = tc.autograd.grad(y_pred_elem, eps, create_graph=True, retain_graph=True, allow_unused=True)
+                h[i_h] = h_elem[0][i_h]
+
+        return y_pred, g, h, omega, sigma
+    #TODO
+    def make_covariance_matrix(self, flat_tensors, diagonals, scales = None):
+        m = []
+        if scales is not None :
+            for tensor, scale, diagonal in zip(flat_tensors, scales, diagonals) :
+                if scale is not None :
+                    m.append(scale(lower_triangular_vector_to_covariance_matrix(tensor, diagonal)))
+                else :
+                    m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
+            return tc.block_diag(*m)
+        else :
+            for tensor, diagonal in zip(flat_tensors, diagonals) :
+                m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
+            return tc.block_diag(*m)
