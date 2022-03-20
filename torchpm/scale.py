@@ -1,8 +1,9 @@
 import abc
 from dataclasses import dataclass, field
+from turtle import forward
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 import torch as tc
-
+from torch import nn
 #TODO: relative import 오류수정
 from .misc import *
 # from misc import *
@@ -12,6 +13,8 @@ class Scale(metaclass=abc.ABCMeta):
     def __call__(vector : tc.Tensor) -> Union[tc.Tensor, Iterable[tc.Tensor]]:
         pass
 
+# TODO Theta 클래스 구현
+# Eta, Eps 클래스 구현
 class ScaledVector(Scale):
     """
     scaling for vector
@@ -45,7 +48,10 @@ class ScaledVector(Scale):
         self.ub = self.ub.to(vector.device)
         self.lb = self.lb.to(vector.device)
         return tc.exp(vector - self.alpha)/(tc.exp(vector - self.alpha) + 1)*(self.ub - self.lb) + self.lb
-        
+
+#TODO Omega, Sigma class만들기
+# omega의 경우 Eta_name과, initial value와 diagonal 을 초기화 값으로 갖는다.
+# sigma의 경우 EPS_name과, initial value와 diagonal 을 초기화 값으로 갖는다.
 class ScaledMatrix(Scale) :
     """
     scaling for matrix

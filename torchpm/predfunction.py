@@ -7,6 +7,7 @@ from torchdiffeq import odeint
 
 from . import funcgen
 from . import scale
+from . import estimated_parameter
 from .misc import *
 
 class PredictionFunctionModule(tc.nn.Module):
@@ -14,24 +15,13 @@ class PredictionFunctionModule(tc.nn.Module):
     def __init__(self,
                 dataset : tc.utils.data.Dataset,
                 column_names : Iterable[str],
-                theta_size : int,
-                eta_size : int,
-                eps_size : int,
-                parameter : funcgen.ParameterGenerator,
-                pred_fn  : funcgen.PredFunctionGenerator,
-                error_fn : funcgen.ErrorFunctionGenerator,
-                theta_scale : Optional[scale.Scale]):
-        super(PredictionFunctionModule, self).__init__()
+                #TODO 계산된 parameter 값 수집해서 리턴하기
+                output_column_names: Iterable[str],
+                *args, **kwargs):
+        super(self).__init__(*args, **kwargs)
         self.dataset : tc.utils.data.Dataset = dataset
         self.column_names : Iterable[str] = column_names
-        self.theta_size : int = theta_size
-        self.eta_size : int = eta_size
-        self.eps_size : int = eps_size
-        self.parameter : funcgen.ParameterGenerator = parameter
-        self.pred_fn  : funcgen.PredFunctionGenerator = pred_fn
-        self.error_fn : funcgen.ErrorFunctionGenerator = error_fn
-        self.theta_scale : Optional[scale.Scale] = theta_scale
-
+        self.output_column_names = output_column_names
 
         self.ids = set()
         self.record_lengths : Dict[str, int] = {}
@@ -42,22 +32,23 @@ class PredictionFunctionModule(tc.nn.Module):
             self.record_lengths[str(int(id))] = data[0].size()[0]
             self.max_record_length = max(data[0].size()[0], self.max_record_length)
 
-        self.theta = tc.nn.Parameter(tc.zeros(self.theta_size))
-        if self.theta_scale is not None :
-            self.theta.data = tc.tensor([ 0.1]*self.theta_size, device=self.dataset.device)
-        self.etas = tc.nn.ParameterDict({})      
-        self.epss : Dict[str, tc.TensorType] = {}
-
-        with tc.no_grad() :
-            for id in self.ids :
-                eta_value = tc.ones(self.eta_size)*0.1 
-                self.etas.update({str(int(id)): tc.nn.Parameter(eta_value)})
-
-                eps_value = tc.zeros(self.record_lengths[str(int(id))], self.eps_size, requires_grad=True, device=self.dataset.device)
-                self.epss[str(int(id))] = eps_value
-
-        self.cov_indice = self._get_cov_indice(self.column_names)
+        self.cov_indice = self._get_cov_indice(self.column_names, device=self.dataset.device)
     
+    def initialize(self):
+        attributes = dir(self)
+        for att_name in attributes:
+            att = getattr(self, att_name)
+            att_type = type(att)
+            with tc.no_grad() :
+                if att_type is estimated_parameter.Eta :
+                    for id in self.ids :
+                        eta_value = tc.tensor(0.1, device=self.dataset.device) 
+                        att.parameters.update({str(int(id)): tc.nn.Parameter(eta_value)})
+                elif att_type is estimated_parameter.Eps :
+                    for id in self.ids :
+                        eps_value = tc.zeros(self.record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
+                        att.parameters[str(int(id))] = eps_value
+
     def _get_cov_indice(self, column_name) :
         ESSENTIAL_COLUMNS : Iterable[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
         cov_indice = []
@@ -84,49 +75,78 @@ class PredictionFunctionModule(tc.nn.Module):
     
     def descale(self):
         with tc.no_grad() :
-            if self.theta_scale is not None :
-                self.theta.data = self.theta_scale(self.theta)
-            self.theta_scale = None
+            attribute_names = dir(self)
+            for att_name in attribute_names:
+                att = getattr(self, att_name)
+                if type(att) is estimated_parameter.Theta :
+                    att.descale()
         return self
-    
+    '''
     def get_descaled_theta(self):
         with tc.no_grad() :
             if self.theta_scale is not None :
                 return self.theta_scale(self.theta)
             else :
                 return self.theta
+    '''
+
+    def _pre_forward(self, dataset):
+        for index in self.cov_indice:
+            cov_name = self.column_names[index]
+            cov = self.dataset[index]
+            setattr(self, cov_name, cov)
+        id = str(int(dataset[:,self.column_names.index('ID')][0]))
+
+        attribute_names = dir(self)
+        for att_name in attribute_names :
+            att = getattr(self, att_name)
+            if type(att) is estimated_parameter.Eps or type(att) is estimated_parameter.Eta :
+                att.id = id
+
+    def _post_forward(self):
+        output_columns : Dict[str, tc.Tensor] = {}
+        etas : Dict[str, tc.Tensor] = {}
+        epss : Dict[str, tc.Tensor] = {}
+        
+        attribute_names = dir(self)
+        for att_name in attribute_names:
+            att = getattr(self, att_name)
+            att_type = type(att)
+            if att_name in self.output_column_names:
+                output_columns[att_name] = att
+
+            if att_type is estimated_parameter.Eta:
+                etas[att_name] = att()
+            elif att_type is estimated_parameter.Eps:
+                epss[att_name] = att()
+        
+        return {'etas': etas, 'epss': epss, 'output_columns': output_columns}
+    
+    def _calculate_parameters(self) -> Dict[str,tc.Tensor]:
+        pass
+
+    def _calculate_preds(self) -> tc.Tensor:
+        pass
+
+    def _calculate_error(self) -> tc.Tensor:
+        pass
     
     def forward(self, dataset):
         pass
 
+
 class PredictionFunctionByTime(PredictionFunctionModule):
+    def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
+        super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
  
     def forward(self, dataset) :
-        if self.theta_scale is not None :
-            theta = self.theta_scale(self.theta)
-        else :
-            theta = self.theta
-
-        cov_indice = self.cov_indice.to(dataset.device)
+        self._pre_forward()
 
         f = tc.zeros(dataset.size()[0], device = dataset.device)
         amt_indice = self._get_amt_indice(dataset)
+        amt_total = dataset[:, self.column_names.index('AMT')].t()
         
-        id = str(int(dataset[:,self.column_names.index('ID')][0]))
-        eta = self.etas[id]
-        eps = self.epss[id]
-
-        cov = dataset.t().index_select(0, cov_indice).unbind()
-
-        cmt = dataset[:, self.column_names.index('CMT')].t()
-        amt = dataset[:, self.column_names.index('AMT')].t()
-        
-        theta_repeated = theta.repeat([self.record_lengths[id], 1]).t()
-        eta_repeated = eta.repeat([self.record_lengths[id], 1]).t()
-        
-        parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
-        if "AMT" in parameter_value.keys():
-            amt = parameter_value["AMT"]
+        self._calculate_parameters()
  
         for i in range(len(amt_indice) - 1):
             start_time_index = amt_indice[i]
@@ -135,37 +155,32 @@ class PredictionFunctionByTime(PredictionFunctionModule):
             dataset_pre = dataset[:start_time_index, :]
             f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
 
-            amt_cur = amt[start_time_index]
+            self.amt = amt_total[start_time_index]
  
             dataset_cur = dataset[start_time_index:, :]
-            # amt_cur = dataset_cur[0, self.column_names.index('AMT')]
-            rate_cur = dataset_cur[0, self.column_names.index('RATE')]
+            self.rate = dataset_cur[0, self.column_names.index('RATE')]
             start_time = dataset_cur[0, self.column_names.index('TIME')]
             
             dataset_cur_tp = dataset_cur.transpose(0,1)
  
             times = dataset_cur_tp[self.column_names.index('TIME'), :]
-            times = times - start_time
+            self.t = times - start_time
  
-            cmts_cur = dataset_cur_tp[self.column_names.index('CMT'), :]
- 
-            # cov_cur = dataset_cur_tp.index_select(0, cov_indice).unbind()
+            self.cmt = dataset_cur_tp[self.column_names.index('CMT'), :]
             
-            f_cur = self.pred_fn(times, None, theta, eta, cmts_cur, amt_cur, rate_cur, parameter_value)
+            f_cur = self._calculate_preds()
             f = f + tc.cat([f_pre, f_cur], 0)
         
-        cmts = dataset[:, self.column_names.index('CMT')]
-        # cov = dataset.t().index_select(0, cov_indice).unbind()
-
-        y_pred, parameter_value = self.error_fn(f, eps.t(), theta, cmts, parameter_value)
+        y_pred = self._calculate_error()
         mdv_mask = dataset[:,self.column_names.index('MDV')] == 0
 
-        parameter_value['TIME'] = dataset.t()[self.column_names.index('TIME')]
-        parameter_value['ID'] = dataset.t()[self.column_names.index('ID')]
+        post_forward_output = self._post_forward()
+        
+        return {'y_pred': y_pred, 'mdv_mask': mdv_mask} | post_forward_output
 
-        return y_pred, self.etas[id], self.epss[id], mdv_mask, parameter_value
 
-# @dataclass(repr=False, eq=False)
+
+#TODO update
 class PredictionFunctionByODE(PredictionFunctionModule):
     """
     ordinary equation solver

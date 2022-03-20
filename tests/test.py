@@ -17,6 +17,26 @@ class TestTemplate(unittest.TestCase) :
     def tearDown(self):
         pass
 
+class AA :
+    def __init__(self) -> None:
+        self.theta_ka = None
+        self.eta_ka = None
+    def forward(self) :
+        print(dir(self))
+        return 'ee'
+
+class ReflectionTest(unittest.TestCase) :
+    def setUp(self):
+        pass
+    
+    def tearDown(self):
+        pass
+
+    def test_reflection(self):
+        aa = AA()
+        assert(0, 0)
+
+
 class LinearODETest(unittest.TestCase) :
     def setUp(self):
         pass

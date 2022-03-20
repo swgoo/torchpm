@@ -5,7 +5,7 @@ import torch as tc
 
 from . import scale
 from .misc import *
-
+#TODO model로 통합
 @dataclass(repr=False, eq=False)
 class DifferentialModule(tc.nn.Module) :
     omega_diagonals : Iterable[bool]
@@ -71,6 +71,7 @@ class DifferentialModule(tc.nn.Module) :
                 m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
             return tc.block_diag(*m)
     
+    #TODO
     def descale(self) :
         def fn(scaled_matrix_parameters, scales, diagonals) :
             matrixes = []

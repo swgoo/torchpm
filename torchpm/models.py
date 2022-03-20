@@ -23,6 +23,7 @@ class FOCEInter(tc.nn.Module) :
         self.pred_function_module = pred_function_module
         self.differential_module = differential_module
         self.objective_function = objective_function
+        #TODO 하뒤 모듈에서 Eta_name와 Eps_name 찾은 후 아이디 별로 생성해주기
         
     def forward(self, dataset, scaled=True):
         
