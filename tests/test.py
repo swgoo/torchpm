@@ -17,6 +17,34 @@ class TestTemplate(unittest.TestCase) :
     def tearDown(self):
         pass
 
+class LinearODETest(unittest.TestCase) :
+    def setUp(self):
+        pass
+    
+    def tearDown(self):
+        pass
+    
+    def test_infusion(self):
+        model = linearode.Comp1InfusionModelFunction()
+        dose = tc.tensor(320.)
+        t = tc.range(0,24,0.05)
+        ke = tc.tensor(1.)
+        rate = tc.tensor(160.)
+        result = model(t, ke, dose, rate)
+        print(t)
+        print(result)
+
+    def test_gut(self):
+        model = linearode.Comp1GutModelFunction()
+        dose = tc.tensor(320.)
+        t = tc.arange(0., 24., step=0.1)
+        ka = tc.tensor(0.1)
+        ke = tc.tensor(1.5)
+        result = model(t, ka, ke, dose)
+        print(t)
+        print(result)
+
+
 class TotalTest(unittest.TestCase) :
 
     def setUp(self):
@@ -340,7 +368,7 @@ class TotalTest(unittest.TestCase) :
                 
                 ############# Sympy Version Function #############
                 comps = self.gut_model(t, k_a, k_e, dose)
-                return comps[:,1].t() / v
+                return comps[1]/ v
         pred_fn = PredFunction()
 
 

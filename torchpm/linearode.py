@@ -22,7 +22,7 @@ class LinearODE :
 
         self.dCdts = self._get_dCdts()
         self.initial_states = self._get_initial_states()
-        self.cs = LinearODE._solve(self.dCdts, self.initial_states)
+        self.solve()
 
     def _check_square_matrix(m, error_massage) :
         length = len(m)
@@ -52,21 +52,21 @@ class LinearODE :
 
         comps_num = len(self.distribution_bool_matrix)
 
-        t = sym.symbols('t') #time
-        r = sym.symbols('r') #infusion rate
+        t = sym.symbols('t', positive = True, real=True) #time
+        r = sym.symbols('r', positive = True, real=True) #infusion rate
         
         comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]
 
         elimination_rate = sym.eye(comps_num)
         for i in range(comps_num) :
-            elimination_rate[i,i] = sym.symbols('k_' + str(i) + str(i)) if self.distribution_bool_matrix[i][i] else 0
+            elimination_rate[i,i] = sym.symbols('k_' + str(i) + str(i), positive = True, real=True) if self.distribution_bool_matrix[i][i] else 0
 
         distribution_rate = sym.zeros(comps_num, comps_num)
         for i in range(comps_num) :
             for j in range(comps_num) :
                 if i == j or not self.distribution_bool_matrix[i][j]:
                     continue
-                distribution_rate[i,j] = sym.symbols('k_'+str(i)+str(j))
+                distribution_rate[i,j] = sym.symbols('k_'+str(i)+str(j), positive = True, real=True)
         
         comps_matrix = sym.Matrix([comps[i](t) for i in range(comps_num)])
         dcdt_eqs = distribution_rate.T * comps_matrix \
@@ -77,7 +77,7 @@ class LinearODE :
         eqs = [sym.Eq(comps[i](t).diff(t), dcdt_eqs[i]) for i in range(comps_num)]
         return eqs
     
-    def _solve(eqs, ics) :
+    def solve(self) :
         """
         solve differential equations
         Args:
@@ -86,79 +86,10 @@ class LinearODE :
         Return :
             compartment functions by time
         """
-        function = sym.solvers.ode.systems.dsolve_system(eqs, ics=ics, doit=True)
-        return function[0]
-    
-    def diff_functions(self) :
-        """
-        Args :
-            function: compartment function by time.
-        Return:
-            diff_function_t : (numpy version) differential function with respect to t
-            diff_function_distribution_rate : (numpy version) matrix. differential functions with respect to distribution_rate
-        """
-        LinearODE._check_square_matrix(self.distribution_bool_matrix, 'distribution_bool_matrix must be square matrix')
+        function = sym.solvers.ode.systems.dsolve_system(self.dCdts, ics=self.initial_states, doit=True)
+        self.cs = function[0]
 
-        comps_num = len(self.distribution_bool_matrix)
-        diff_argument_subs = {sym.symbols('c_'+str(i), cls=sym.Function)(sym.symbols('t')): sym.symbols('y_'+str(i)) for i in range(comps_num)}
-
-        diff_function_t = [fn.rhs.subs(diff_argument_subs) for fn in self.dCdts]
-
-        diff_function_distribution_rate = [[[None for k in range(comps_num) ] for j in range(comps_num)] for i in range(comps_num)]
-        for i in range(comps_num) :
-            for j in range(comps_num) :
-                for k in range(comps_num) :
-                    if self.distribution_bool_matrix[i][j] :
-                        diff_function_distribution_rate[i][j][k] = self.cs[k].rhs.diff('k_'+str(i)+str(j))
-        
-        return {'diff_function_t': diff_function_t, 'diff_function_distribution_rate': diff_function_distribution_rate}
-    
-    '''
-    def lambdify(self, dCdks):
-        """
-        Args :
-            function: compartment function by time.
-            diff_function_t : differential function with respect to t
-            diff_function_distribution_rate : matrix. differential functions with respect to distribution_rate
-        Return:
-            diff_function_t : differential function with respect to t
-            diff_function_distribution_rate : matrix. differential functions with respect to distribution_rate
-        """
-        comps_num = len(self.distribution_bool_matrix)
-        distribution_rate_arguments = []
-        for i in range(comps_num) :
-            for j in range(comps_num) :
-                if self.distribution_bool_matrix[i][j] :
-                    distribution_rate_arguments.append('k_'+str(i)+str(j))
-        distribution_rate_arguments_str = ' '.join(distribution_rate_arguments)
-        distribution_rate_arguments_symbol = sym.symbols(distribution_rate_arguments_str)
-        if type(distribution_rate_arguments_symbol) is not tuple :
-            distribution_rate_arguments_symbol = (distribution_rate_arguments_symbol,)
-                                                         
-        function_numpy = [sym.lambdify([sym.symbols('t'),
-                                             *distribution_rate_arguments_symbol,
-                                             *sym.symbols('d r')], fn.rhs, modules='numpy') for fn in self.cs]
-        ys = [sym.symbols('y_'+str(i)) for i in range(comps_num)]
-        diff_function_t_numpy = [sym.lambdify([sym.symbols('t'), 
-                                                    *distribution_rate_arguments_symbol,
-                                                    *sym.symbols('d r'), *ys], fn, modules='numpy') for fn in self.dCdts]
-        
-        diff_function_distribution_rate_numpy = [[[None for k in range(comps_num)] for j in range(comps_num)] for i in range(comps_num)]
-        for i in range(comps_num) :
-            for j in range(comps_num) :
-                for k in range(comps_num) :
-                    fn = dCdks[i][j][k]
-                    if fn is None :
-                        continue
-                    if fn != 0 :
-                        diff_function_distribution_rate_numpy[i][j][k] = sym.lambdify([sym.symbols('t'),
-                                                                                            *distribution_rate_arguments_symbol,
-                                                                                            *sym.symbols('d r')], fn, modules='numpy')
-        return {'cs': function_numpy,
-                'dCdts': diff_function_t_numpy,
-                'dCdks': diff_function_distribution_rate_numpy}        
-        '''
-
+#TODO sympy 수식 저장해서 불러오기
 class Comp1GutModelFunction(nn.Module):
     distribution_bool_matrix = [[False, True],
                                 [False, True]]
@@ -175,76 +106,66 @@ class Comp1GutModelFunction(nn.Module):
         self.model = spt.SymPyModule(expressions=comps)
     
     def forward(self, t, k01, k11, dose):
-        return self.model(t=t, k_01=k01, k_11= k11, d=dose)
+        return self.model(t=t, k_01=k01, k_11= k11, d=dose).t()
+
+#TODO sympy 수식 저장해서 불러오기
+class Comp1InfusionModelFunction(nn.Module):
+    distribution_bool_matrix = [[True]]
+    t_sym, dose_sym, r_sym = sym.symbols('t d r', positive = True, real=True)
+
+    infusion_function = LinearODE(distribution_bool_matrix, True)
+    
+    infusion = infusion_function.cs
+
+    function = LinearODE(distribution_bool_matrix, False)
+    function.initial_states[sym.symbols('c_0', cls=sym.Function)(0)] = infusion[0].rhs.subs({t_sym: dose_sym/r_sym})
+
+    function.solve()
+    for i in range(len(function.cs)) :
+        function.cs[i] = sym.Eq(function.cs[i].lhs, function.cs[i].rhs.subs({t_sym: t_sym - dose_sym/r_sym}))
+
+    def __init__(self) -> None:
+        super().__init__()
 
 
+        infusion_comps = []
+        comps = []
+
+        for comp in Comp1InfusionModelFunction.infusion_function.cs :
+            infusion_comps.append(comp.rhs)
+
+
+        for comp in Comp1InfusionModelFunction.function.cs :
+            comps.append(comp.rhs)
+        self.infusion_model = spt.SymPyModule(expressions=infusion_comps)
+        self.model = spt.SymPyModule(expressions=comps)
+    
+    def forward(self, t, k00, dose, rate):
+
+        infusion_end_time = dose/rate
+
+        infusion_t = tc.masked_select(t, t <= infusion_end_time)
+        elimination_t = tc.masked_select(t, t > infusion_end_time)
+
+        infusion_amt = self.infusion_model(t=infusion_t, k_00=k00, d=dose, r=rate).t()
+
+        amt = self.model(t=elimination_t, k_00=k00, d=dose, r=rate).t()
+
+
+        return tc.concat([infusion_amt, amt], dim = -1)
 '''
-class Comp1GutModelFunction(tc.autograd.Function) :
-    distribution_bool_matrix = [[False, True],
-                                [False, True]]
-    eqs, ics = LinearODE.get_eqs_and_ics(distribution_bool_matrix, False)
-    function = LinearODE.solve(eqs, ics)
-    functions_numpy = LinearODE.lambdify(distribution_bool_matrix, function, **LinearODE.diff_functions(distribution_bool_matrix, function, eqs))
-    
-    @staticmethod
-    def forward(ctx, t, k01, k11, dose):
-
-        k01, k11 = k01.detach(), k11.detach()
-
-        t = t.detach()
-        dose = dose.detach()
-
-        output = tc.stack([tc.Tensor(fn(t.numpy(), k01.numpy(), k11.numpy(), dose.numpy(), None)) \
-                           for fn in Comp1GutModelFunction.functions_numpy['function']])
-                           
-        ctx.save_for_backward(t, k01, k11, dose, output)
-
-        return output
-
-    
-    @staticmethod
-    def backward(ctx, grad_output):
-        t, k01, k11, dose, output = ctx.saved_tensors
-
-        grad_t = grad_k01 = grad_k11 = grad_dose = None
-        if ctx.needs_input_grad[0]:
-            grad_t = tc.stack([fn(t.numpy(), k01, k11, dose.numpy(), None, output.numpy().sqeeze(axis=0)) \
-                               for fn in Comp1GutModelFunction.functions_numpy['diff_function_t']])*grad_output
-
-        if ctx.needs_input_grad[1]:
-
-            grad_k01 =[]
-            for fn in Comp1GutModelFunction.functions_numpy['diff_function_distribution_rate'][0][1] :
-                if fn is None :
-                    grad_k01.append(tc.zeros(output.size()[-1]))
-                else :
-                    grad_k01.append(tc.Tensor(fn(t.numpy(), k01.numpy(), k11.numpy(), dose.numpy(), None)))
-            
-            grad_k01 = tc.stack(grad_k01)
-            grad_k01 *= grad_output
-
-        if ctx.needs_input_grad[2]:
-            grad_k11 =[]
-            for fn in Comp1GutModelFunction.functions_numpy['diff_function_distribution_rate'][1][1] :
-                if fn is None :
-                    grad_k11.append(tc.zeros(output.size()[-1]))
-                else :
-                    grad_k11.append(tc.Tensor(fn(t.numpy(), k01.numpy(), k11.numpy(), dose.numpy(), None)))
-            
-            grad_k11 = tc.stack(grad_k11)
-            grad_k11 *= grad_output
-
-        return grad_t, grad_k01, grad_k11, None
-
-class Comp1InfusionModelFunction(tc.autograd.Function) :
+class Comp1InfusionModelFunctionOld(tc.autograd.Function) :
     distribution_bool_matrix = [[True]]
     t_sym, dose_sym, r_sym = sym.symbols('t d r')
-
     infusion = LinearODE.solve(*LinearODE.get_eqs_and_ics(distribution_bool_matrix, True))
+    
+    
     eqs, ics = LinearODE.get_eqs_and_ics(distribution_bool_matrix, False)
     ics[sym.symbols('c_0', cls=sym.Function)(0)] = infusion[0].rhs.subs({t_sym: dose_sym/r_sym})
     function = LinearODE.solve(eqs, ics)
     function = [sym.Eq(eq.lhs, eq.rhs.subs({'t': 't - d/r'})) for eq in function]
+    
+    
     diff_functions = LinearODE.diff_functions(distribution_bool_matrix=distribution_bool_matrix, function=function, eqs=eqs)
     function_numpy = LinearODE.lambdify(distribution_bool_matrix, function, **diff_functions)
     
@@ -289,7 +210,9 @@ class Comp1InfusionModelFunction(tc.autograd.Function) :
             grad_k00 = tc.stack(grad_k00) * grad_output
 
         return grad_t, grad_k00, None, None
+'''
 
+'''
 class Comp1BolusModelFunction(tc.autograd.Function) :
     distribution_bool_matrix = [[True]]
         
@@ -390,4 +313,4 @@ class Comp1InfusionModelFunction(tc.autograd.Function) :
             grad_k00 = tc.stack(grad_k00) * grad_output
 
         return grad_t, grad_k00, None, None
-        '''
+'''
