@@ -133,8 +133,8 @@ class CovarianceMatrix(nn.Module) :
             with tc.no_grad() :
                 for parameter, data in zip(self.vectors, self.scaled_parameter_for_save):
                     parameter.data = data  
-                self.scaled_parameter_for_save = None
-            self.scale = True
+            self.scaled_parameter_for_save = None
+            self.is_scale = True
 
     def forward(self):
         flat_tensors = self.vectors
@@ -145,11 +145,10 @@ class CovarianceMatrix(nn.Module) :
             for tensor, scale, diagonal in zip(flat_tensors, scales, diagonals) :
                 mat = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
                 m.append(self.calculate_scaled_matrix(mat, scale))
-            return tc.block_diag(*m)
         else :
             for tensor, diagonal in zip(flat_tensors, diagonals) :
                 m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
-            return tc.block_diag(*m)
+        return tc.block_diag(*m)
 
 class Omega(CovarianceMatrix):
     def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool], requires_grads: Union[Iterable[bool], bool] = True):

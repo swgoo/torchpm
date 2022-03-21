@@ -1,3 +1,4 @@
+from re import L
 from typing import Dict, Iterable
 import torch as tc
 import torch.nn as nn
@@ -77,14 +78,6 @@ class PredictionFunctionModule(tc.nn.Module):
                 if type(att) is estimated_parameter.Theta :
                     att.descale()
         return self
-    '''
-    def get_descaled_theta(self):
-        with tc.no_grad() :
-            if self.theta_scale is not None :
-                return self.theta_scale(self.theta)
-            else :
-                return self.theta
-    '''
 
     def _pre_forward(self, dataset):
         id = str(int(dataset[:,self._column_names.index('ID')][0]))
@@ -98,13 +91,16 @@ class PredictionFunctionModule(tc.nn.Module):
         dataset = dataset.t()
         for cov_name in self._output_column_names :
             cov = getattr(self, cov_name, tc.zeros_like(dataset[0], device=dataset.device))
-            setattr(self, "_total_"+cov_name, cov)
+            setattr(self, "_total_" + cov_name, cov)
         for index in self._cov_indice:
             cov_name = self._column_names[index]
             cov = dataset[index]
-            setattr(self, "_total_"+cov_name, cov)
+            setattr(self, "_total_" + cov_name, cov)
+        for cov_name in ['CMT', 'AMT', 'RATE'] :
+            cov = getattr(self, cov_name, dataset[self._column_names.index(cov_name)])
+            setattr(self, "_total_" + cov_name, cov)
         
-    def _set_covariate(self, start, end = None) :
+    def _set_covariates(self, start, end = None) :
         for cov_name in self._output_column_names :
             cov = getattr(self, "_total_"+cov_name)
             if cov.dim() == 1 and end is None :
@@ -112,7 +108,6 @@ class PredictionFunctionModule(tc.nn.Module):
             elif cov.dim() == 1 and end is not None :
                 cov = cov[start:end]
             setattr(self, cov_name, cov)
-
         for index in self._cov_indice:
             cov_name = self._column_names[index]
             cov = getattr(self, "_total_"+cov_name)
@@ -121,24 +116,28 @@ class PredictionFunctionModule(tc.nn.Module):
             else :
                 cov = cov[start:end]
             setattr(self, cov_name, cov)
-        
-    def _save_covariate_to_total(self, start, end = None):
-        for cov_name in self._output_column_names :
-            cov = getattr(self, cov_name)
-            cov_total = getattr(self, "_total_"+cov_name)
+        for cov_name in ['CMT', 'AMT', 'RATE'] :
+            cov = getattr(self, "_total_"+cov_name)
             if end is None :
-                cov_total[start:] = cov 
+                cov = cov[start:]
             else :
-                cov_total[start:end] = cov
+                cov = cov[start:end]
+            setattr(self, cov_name, cov)
 
-        for index in self._cov_indice:
-            cov_name = self._column_names[index]
+        
+    def _save_covariates_to_covariate_totals(self, start, end = None):
+        for cov_name in self._output_column_names :
+            if cov_name in self._column_names: continue
+
             cov = getattr(self, cov_name)
             cov_total = getattr(self, "_total_"+cov_name)
-            if end is None :
+            if cov.dim() == 1 and end is None :
                 cov_total[start:] = cov 
-            else :
+            elif cov.dim() == 1 and end is not None :
                 cov_total[start:end] = cov
+            else :
+                cov_total = cov
+
 
     def _post_forward(self):
         output_columns : Dict[str, tc.Tensor] = {}
@@ -149,8 +148,9 @@ class PredictionFunctionModule(tc.nn.Module):
         for att_name in attribute_names:
             att = getattr(self, att_name)
             att_type = type(att)
-            if att_name in self._output_column_names:
-                output_columns[att_name] = att
+            
+            if att_name.startswith('_total_') and att_name.replace('_total_', '') in self._output_column_names :
+                output_columns[att_name.replace('_total_', '')] = att
 
             if att_type is estimated_parameter.Eta:
                 etas[att_name] = att()
@@ -179,15 +179,16 @@ class PredictionFunctionByTime(PredictionFunctionModule):
     def forward(self, dataset) :
         self._pre_forward(dataset)
 
-        f = tc.zeros(dataset.size()[0], device = dataset.device)
-        amt_indice = self._get_amt_indice(dataset)
-        amt_total = dataset[:, self._column_names.index('AMT')].t()
-        
+        # self._total_amt = dataset[:, self._column_names.index('AMT')].t()
+        # self._total_cmt = dataset[:, self._column_names.index('CMT')].t()
+        # self._total_rate = dataset[:, self._column_names.index('RATE')].t()
         self._set_covariate_totals(dataset)
-        self._set_covariate(0)
+        self._set_covariates(0)
         self._calculate_parameters()
         self._set_covariate_totals(dataset)
- 
+
+        f = tc.zeros(dataset.size()[0], device = dataset.device)
+        amt_indice = self._get_amt_indice(dataset)
         for i in range(len(amt_indice) - 1):
             start_time_index = amt_indice[i]
  
@@ -195,25 +196,28 @@ class PredictionFunctionByTime(PredictionFunctionModule):
             dataset_pre = dataset[:start_time_index, :]
             f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
 
-            self._set_covariate(start_time_index)
-            self.amt = amt_total[start_time_index]
-            dataset_cur = dataset[start_time_index:, :]
-            self.rate = dataset_cur[0, self._column_names.index('RATE')]
-            start_time = dataset_cur[0, self._column_names.index('TIME')]
             
+            self.amt = self._total_AMT[start_time_index]
+            self.cmt = self._total_CMT[start_time_index:]
+            self.rate = self._total_RATE[start_time_index]
+
+            dataset_cur = dataset[start_time_index:, :]
+            start_time = dataset_cur[0, self._column_names.index('TIME')]
+            self._set_covariates(start_time_index)
 
             dataset_cur_tp = dataset_cur.transpose(0,1)
             times = dataset_cur_tp[self._column_names.index('TIME'), :]
             self.t = times - start_time
-            self.cmt = dataset_cur_tp[self._column_names.index('CMT'), :]
+            
             
             f_cur = self._calculate_preds()
             f = f + tc.cat([f_pre, f_cur], 0)
-            # self._save_covariate_to_total(start_time_index)
+            self._save_covariates_to_covariate_totals(start_time_index)
         
         y_pred = self._calculate_error(f)
         mdv_mask = dataset[:,self._column_names.index('MDV')] == 0
-
+        
+        self._save_covariates_to_covariate_totals(0)
         post_forward_output = self._post_forward()
         
         return {'y_pred': y_pred, 'mdv_mask': mdv_mask} | post_forward_output
@@ -255,24 +259,15 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         self.max_cmt = int(dataset[:,self._column_names.index('CMT')].max())
 
         self.cur_dataset = dataset
-        # self.cur_cov = self.cur_dataset.t().index_select(0, cov_indice).unbind()
         self.cur_times = self.cur_dataset[:,self._column_names.index('TIME')]
-        id = str(int(dataset[:, self._column_names.index('ID')][0]))
-        
-        self.cur_eta = self.etas[id]
-        eps = self.epss[id]
 
-        cov = dataset.t().index_select(0, cov_indice).unbind()
+        self._set_covariate_totals(dataset)
+        self._set_covariates(0)
+        self._calculate_parameters()
+        self._set_covariate_totals(dataset)
 
-        theta_repeated = theta.repeat([self._record_lengths[id], 1]).t()
-        eta_repeated = self.cur_eta.repeat([self._record_lengths[id], 1]).t()
-
-        cmt = dataset[:, self._column_names.index('CMT')].t()
-        amt = dataset[:, self._column_names.index('AMT')].t()
-
-        self.parameter_value = self.parameter(theta_repeated, eta_repeated, cmt, amt, *cov)
-        if "AMT" in self.parameter_value.keys():
-            amt = self.parameter_value["AMT"]
+        self.cmt = dataset[:, self._column_names.index('CMT')].t()
+        self.amt = dataset[:, self._column_names.index('AMT')].t()
 
         y_pred_arr = []
  
