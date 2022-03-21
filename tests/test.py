@@ -1,10 +1,11 @@
 
 import logging
+from typing import Iterable
 import unittest
 import torch as tc
 import torch.nn as nn
 import torch.nn.functional as F
-from torchpm import funcgen, scale, predfunction, diff, models, linearode
+from torchpm import estimated_parameter, scale, predfunction, diff, models, linearode
 from torchpm.data import CSVDataset
 
 from transformers import DistilBertModel, DistilBertConfig
@@ -82,94 +83,64 @@ class TotalTest(unittest.TestCase) :
         dataset = self.dataset
         column_names = self.column_names
 
-        class PKParameter(funcgen.ParameterGenerator) :
-            def __init__(self) -> None:
-                super().__init__()
+        class Pred(predfunction.PredictionFunctionByTime) :
+            def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
+                super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
 
-            def forward(self, theta, eta, cmt, amt, bwt, bwtz, tmpcov, tmpcov2, tmpcov3, tmpcov4, tmpcov5) :
+                self.theta_0 = estimated_parameter.Theta(1.5, 0, 10)
+                self.theta_1 = estimated_parameter.Theta(32, 0, 100)
+                self.theta_2 = estimated_parameter.Theta(0.08, 0, 1)
 
-                k_a = theta[0]*tc.exp(eta[0])
-                v = theta[1]*tc.exp(eta[1])
-                k_e = theta[2]*tc.exp(eta[2])
+                self.eta_0 = estimated_parameter.Eta()
+                self.eta_1 = estimated_parameter.Eta()
+                self.eta_2 = estimated_parameter.Eta()
 
-                # k_a = theta[0]*tc.exp(eta[0])
-                # v = theta[1]*tc.exp(eta[1])
-                # k_e = theta[2]*tc.exp(eta[2])
+                self.eps_0 = estimated_parameter.Eps()
+                self.eps_1 = estimated_parameter.Eps()
 
-                return {'k_a': k_a, 'v' : v, 'k_e': k_e, 'eta': eta, 'bwt': bwt}
-
-        pk_parameter = PKParameter()
-
-        class PredFunction(tc.nn.Module) :
-
-            def __init__(self):
-                super(PredFunction, self).__init__()
-                
-            def forward(self, t, y, theta, eta, cmt, amt, rate, pk) :
-                
+                self.initialize()
+            
+            def _calculate_parameters(self):
+                self.k_a = self.theta_0()*tc.exp(self.eta_0())
+                self.v = self.theta_1()*tc.exp(self.eta_1())
+                self.k_e = self.theta_2()*tc.exp(self.eta_2())
+            
+            def _calculate_preds(self) -> tc.Tensor:
                 dose = 320
-                k_a = pk['k_a'] 
-                v = pk['v'] 
-                k = pk['k_e']
+                t = self.t
+                k_a = self.k_a 
+                v = self.v
+                k = self.k_e
                 
                 return (dose / v * k_a) / (k_a - k) * (tc.exp(-k*t) - tc.exp(-k_a*t))
-        pred_fn = PredFunction()
+            
+            def _calculate_error(self, y_pred) -> tc.Tensor:
+                return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
 
-        class ErrorFunction(funcgen.ErrorFunctionGenerator):
-            def __call__(self, y_pred, eps, theta, cmt, parameter) :
-                parameter['ipred'] = y_pred
-                return y_pred +  y_pred * eps[0]  + eps[1], parameter
+        pred_function_module = Pred(dataset = dataset,
+                                    column_names = column_names,
+                                    output_column_names=column_names,)
 
-        error_fn = ErrorFunction()
-
-        theta_size = 3
-        theta_init = tc.tensor([ 1.5, 32,  0.08], device=device)
-        theta_lower_boundary  = tc.tensor([0.,0.,0.], device = device)
-        theta_upper_boundary  = tc.tensor([10,100,10], device = device)
-        theta_scale = scale.ScaledVector(theta_init, lower_boundary = theta_lower_boundary, upper_boundary = theta_upper_boundary)
-        
-        eta_size = 3
-        omega_inits = [tc.tensor([0.4397,
+        omega = estimated_parameter.Omega([tc.tensor([0.4397,
                                 0.0575,  0.0198, 
-                                -0.0069,  0.0116,  0.0205], device = device)]
-        omega_diagonals = [False]
-        omega_scales = [scale.ScaledMatrix(omega_block, omega_diagonal) for omega_block, omega_diagonal in zip(omega_inits, omega_diagonals)]
+                                -0.0069,  0.0116,  0.0205], device = device)], [False])
+        sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 0.0762], device = device)], [True])
 
-        eps_size = 2
-        sigma_inits = [tc.tensor([0.0177, 0.0762], device = device)]
-        sigma_diagonals = [True]
-        sigma_scales = [scale.ScaledMatrix(sigma_block, sigma_diagonal) for sigma_block, sigma_diagonal in zip(sigma_inits, sigma_diagonals)]
-
-        pred_function_module = predfunction.PredictionFunctionByTime(dataset = dataset,
-                                                        column_names = column_names,
-                                                        theta_size = theta_size,
-                                                        eta_size = eta_size,
-                                                        eps_size = eps_size,
-                                                        parameter = pk_parameter,
-                                                        pred_fn  = pred_fn,
-                                                        error_fn = error_fn,
-                                                        theta_scale = theta_scale)
-
-        differential_module = diff.DifferentialModule(omega_diagonals = omega_diagonals,
-                                                sigma_diagonals = sigma_diagonals,
-                                                omega_scales = omega_scales,
-                                                sigma_scales = sigma_scales)
-
-        model = models.FOCEInter(pred_function_module, differential_module)
+        model = models.FOCEInter(pred_function_module, eta_names=[['0','1','2']], eps_names= [['0','1']], omega=omega, sigma=sigma)
         
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
 
-        for p in model.descale().named_parameters():
-            print(p)
+        # for p in model.descale().named_parameters():
+        #     print(p)
 
-        print(model.descale().covariance_step())
+        # print(model.descale().covariance_step())
 
-        eval_values = model.descale().evaluate()
-        for k, v in eval_values["parameters"].items() :
-            print(k)
-            print(v)
+        # eval_values = model.descale().evaluate()
+        # for k, v in eval_values["parameters"].items() :
+        #     print(k)
+        #     print(v)
 
     def test_pred_amt(self):
         dataset_file_path = './examples/THEO_AMT.csv'

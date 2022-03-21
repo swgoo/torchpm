@@ -27,7 +27,7 @@ class Theta(nn.Module):
         ub = self.ub
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
-        self.parameter = nn.parameter(tc.tensor(0.1), requires_grad = requires_grad)
+        self.parameter = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)
     
     def descale(self) :
         if self.is_scale:
@@ -68,7 +68,7 @@ class Eps(nn.Module):
 
 class CovarianceMatrix(nn.Module) :
     def __init__(self,
-                lower_triangular_vectors_init : Iterable[Iterable[tc.Tensor]] , 
+                lower_triangular_vectors_init : Iterable[tc.Tensor] , 
                 diagonals : Iterable[bool]) :
         super().__init__()
         self.is_scale = True
@@ -80,7 +80,7 @@ class CovarianceMatrix(nn.Module) :
 
         self.vectors = nn.ParameterList()
         for length in self.lower_triangular_vector_lengthes:    
-            self.vectors.append(nn.parameter(tc.tensor([0.1]*length)))
+            self.vectors.append(nn.Parameter(tc.tensor([0.1]*length)))
 
         self.scales = []
         for init_vector, diagonal in zip(lower_triangular_vectors_init, self.diagonals):
@@ -143,9 +143,9 @@ class CovarianceMatrix(nn.Module) :
             return tc.block_diag(*m)
 
 class Omega(CovarianceMatrix):
-    def __init__(self, lower_triangular_vectors_init: Iterable[Iterable[tc.Tensor]], diagonals: Iterable[bool]):
+    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool]):
         super().__init__(lower_triangular_vectors_init, diagonals)
 
 class Sigma(CovarianceMatrix) :
-    def __init__(self, lower_triangular_vectors_init: Iterable[Iterable[tc.Tensor]], diagonals: Iterable[bool]):
+    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool]):
         super().__init__(lower_triangular_vectors_init, diagonals)

@@ -8,6 +8,8 @@ import torch.distributed as dist
 
 from torchdiffeq import odeint
 
+from torchpm import estimated_parameter
+
 from . import predfunction
 from . import diff
 from . import loss
@@ -19,15 +21,18 @@ class FOCEInter(tc.nn.Module) :
                  pred_function_module : predfunction.PredictionFunctionModule,
                  eta_names : Iterable[Iterable[str]],
                  eps_names : Iterable[Iterable[str]],
+                 omega : estimated_parameter.Omega,
+                 sigma : estimated_parameter.Sigma,
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
         super(FOCEInter, self).__init__()
         self.pred_function_module = pred_function_module
         self.eta_names = eta_names
         self.eps_names = eps_names
+        self.omega = omega
+        self.sigma = sigma
         self.objective_function = objective_function
-        #TODO 하뒤 모듈에서 Eta_name와 Eps_name 찾은 후 아이디 별로 생성해주기
         
-    def forward(self, dataset, scaled=True):
+    def forward(self, dataset):
         
         pred_output = self.pred_function_module(dataset)
 
@@ -36,19 +41,19 @@ class FOCEInter(tc.nn.Module) :
         for eta_names in self.eta_names:
             for eta_name in eta_names:
                 eta.append(etas["eta_" + eta_name])
-        eta = tc.concat(eta, 0)
 
         epss = pred_output['epss']
         eps = []
         for eps_names in self.eps_names:
             for eps_name in eps_names:
                 eps.append(epss["eps_" + eps_name])
-        eps = tc.concat(eps, 0)
 
         y_pred, g, h = self.diff_forward(pred_output['y_pred'], eta, eps)
-        #TODO OMEGA, SIGMA 생성 
 
-        return y_pred, eta, eps, g, h, omega, sigma, pred_output['mdv_mask'], pred_output['output_columns']
+        eta = tc.stack(eta)
+        eps = tc.stack(eps)
+
+        return y_pred, eta, eps, g, h, self.omega(), self.sigma(), pred_output['mdv_mask'], pred_output['output_columns']
  
     def optimization_function(self, dataset, optimizer, checkpoint_file_path : str = None):
         """
@@ -216,10 +221,12 @@ class FOCEInter(tc.nn.Module) :
 
     def parameters_for_population(self):
         parameters = []
-        for m in self.differential_module.parameters() :
-            parameters.append(m)
+        # for m in self.differential_module.parameters() :
+        #     parameters.append(m)
         
         for m in self.pred_function_module.parameters() :
+            parameters.append(m)
+        for m in self.parameters():
             parameters.append(m)
 
         return parameters
@@ -241,11 +248,11 @@ class FOCEInter(tc.nn.Module) :
 
         parameters = self.parameters_for_population()
 
-        epss = self.pred_function_module.epss
+        # epss = self.pred_function_module.epss
         
-        with tc.no_grad() :
-            for k, p in self.pred_function_module.epss.items() :
-                p.data = tc.zeros(p.size(), device=p.device)
+        # with tc.no_grad() :
+        #     for k, p in self.pred_function_module.epss.items() :
+        #         p.data = tc.zeros(p.size(), device=p.device)
             
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
@@ -257,8 +264,6 @@ class FOCEInter(tc.nn.Module) :
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
 
         optimizer.step(opt_fn)
-
-        self.pred_function_module.epss = epss
 
         return self
     
@@ -415,33 +420,35 @@ class FOCEInter(tc.nn.Module) :
     
     #TODO
     def diff_forward(self, y_pred, eta, eps):
-        eta_size = eta.size()[-1]
-        eps_size = eps.size()[-1]
-        
-        if eta_size > 0 :
-            omega = self.make_covariance_matrix(self.omega, self.omega_diagonals, self.omega_scales)
-        else :
-            omega = None
+        eta_size = len(eta)
+        eps_size = len(eps)
 
-        if eps_size > 0 :
-            sigma = self.make_covariance_matrix(self.sigma, self.sigma_diagonals, self.sigma_scales)
-        else : 
-            sigma = None
-        
+        #TODO ETA 없을때 예외처리
+        # if eta_size > 0 :
+        #     omega = self.make_covariance_matrix(self.omega, self.omega_diagonals, self.omega_scales)
+        # else :
+        #     omega = None
+
+        # if eps_size > 0 :
+        #     sigma = self.make_covariance_matrix(self.sigma, self.sigma_diagonals, self.sigma_scales)
+        # else : 
+        #     sigma = None
 
         g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
         for i_g, y_pred_elem in enumerate(y_pred) :
             if eta_size > 0 :
-                g_elem = tc.autograd.grad(y_pred_elem, eta, create_graph=True, retain_graph=True, allow_unused=True)
-                g[i_g] = g_elem[0]
+                for i_eta, cur_eta in enumerate(eta) :
+                    g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, retain_graph=True, allow_unused=True)
+                    g[i_g, i_eta] = g_elem[0]
         
         h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
         for i_h, y_pred_elem in enumerate(y_pred) :
             if eps_size > 0 :
-                h_elem = tc.autograd.grad(y_pred_elem, eps, create_graph=True, retain_graph=True, allow_unused=True)
-                h[i_h] = h_elem[0][i_h]
+                for i_eps, cur_eps in enumerate(eps):
+                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, retain_graph=True, allow_unused=True)
+                    h[i_h,i_eps] = h_elem[0][i_h]
 
-        return y_pred, g, h, omega, sigma
+        return y_pred, g, h
     #TODO
     def make_covariance_matrix(self, flat_tensors, diagonals, scales = None):
         m = []
