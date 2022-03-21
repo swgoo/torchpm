@@ -5,7 +5,7 @@ import unittest
 import torch as tc
 import torch.nn as nn
 import torch.nn.functional as F
-from torchpm import estimated_parameter, scale, predfunction, models, linearode
+from torchpm import estimated_parameter, predfunction, models, linearode
 from torchpm.data import CSVDataset
 
 from transformers import DistilBertModel, DistilBertConfig
