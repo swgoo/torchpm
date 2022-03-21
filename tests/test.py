@@ -274,7 +274,7 @@ class TotalTest(unittest.TestCase) :
         model = models.FOCEInter(pred_function_module, eta_names=[['0', '1','2']], eps_names= [['0','1']], omega=omega, sigma=sigma)
         
         model = model.to(device)
-        model.fit_population(learning_rate = 1, tolerance_grad = 1e-2, tolerance_change= 1e-3)
+        model.fit_population(learning_rate = 1, tolerance_grad = 1e-1, tolerance_change= 1e-2)
 
         # for p in model.descale().named_parameters():
         #     print(p)

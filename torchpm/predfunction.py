@@ -232,22 +232,15 @@ class PredictionFunctionByODE(PredictionFunctionModule):
     """
     rtol : float = 1e-2
     atol : float = 1e-2
+    
                 
     def _get_element(self, data, name, index) :
         return data[index, self._column_names.index(name)]
  
     def ode_function(self, t, y):
         index = (self.t < t).sum() -1
-        '''
-        # for k, v in self.parameter_value.items():
-        #     pk_cur[k] = v[index]
-        # if self.theta_scale is not None :
-        #     theta = self.theta_scale(self.theta)
-        # else :
-        #     theta = self.theta
-        # return self.pred_fn(t, y, theta, self.cur_eta, cmt, None, None, pk_cur) + self.infusion_rate * (self.infusion_end_time > t)
-        '''
-        self._set_covariates(index, index+1)
+        if self._pre_index <= index :
+            self._set_covariates(index, index+1)
         return self._calculate_preds(t, y)
     def forward(self, dataset) :
         self._pre_forward(dataset)
@@ -291,6 +284,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
                 self.infusion_end_time = self.infusion_end_time * mask + infusion_during_time_vector
                 
             self.t = dataset_cur.t()[self._column_names.index('TIME')]
+            self._pre_index = 0
             result = odeint(self.ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
             self._set_covariates(amt_indice[i], amt_indice[i+1]+1)
             y_integrated = result
