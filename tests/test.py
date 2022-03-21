@@ -5,7 +5,7 @@ import unittest
 import torch as tc
 import torch.nn as nn
 import torch.nn.functional as F
-from torchpm import estimated_parameter, scale, predfunction, diff, models, linearode
+from torchpm import estimated_parameter, scale, predfunction, models, linearode
 from torchpm.data import CSVDataset
 
 from transformers import DistilBertModel, DistilBertConfig
@@ -123,11 +123,14 @@ class TotalTest(unittest.TestCase) :
                                     output_column_names=column_names,)
 
         omega = estimated_parameter.Omega([tc.tensor([0.4397,
-                                0.0575,  0.0198, 
-                                -0.0069,  0.0116,  0.0205], device = device)], [False])
+                                                        0.0575,  0.0198, 
+                                                        -0.0069,  0.0116,  0.0205], device = device)], [False], requires_grads=True)
+        # omega = estimated_parameter.Omega([tc.tensor([0.4397], device = device),
+        #                                     tc.tensor([0.0198, 
+        #                                                 0.0116,  0.0205], device = device)], [False, False], requires_grads=[True,True])
         sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 0.0762], device = device)], [True])
 
-        model = models.FOCEInter(pred_function_module, eta_names=[['0','1','2']], eps_names= [['0','1']], omega=omega, sigma=sigma)
+        model = models.FOCEInter(pred_function_module, eta_names=[['0', '1','2']], eps_names= [['0','1']], omega=omega, sigma=sigma)
         
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
@@ -236,7 +239,6 @@ class TotalTest(unittest.TestCase) :
         # print(model.descale().covariance_step())
         assert(0, 0)
     
-    #TODO Test
     def test_ODE(self):
 
         dataset_file_path = './examples/THEO_ODE.csv'

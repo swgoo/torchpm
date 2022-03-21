@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass, field
-from turtle import forward
+from re import L
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 import torch as tc
 from torch import nn
@@ -8,7 +8,6 @@ from .misc import *
 
 class Theta(nn.Module):
     """
-    scaling for 
     Args:
         init_value: initial value of scala
         lower_boundary: lower boundary of scala
@@ -69,8 +68,16 @@ class Eps(nn.Module):
 class CovarianceMatrix(nn.Module) :
     def __init__(self,
                 lower_triangular_vectors_init : Iterable[tc.Tensor] , 
-                diagonals : Iterable[bool]) :
+                diagonals : Iterable[bool],
+                requires_grads : Union[Iterable[bool], bool] = True) :
         super().__init__()
+
+        if len(lower_triangular_vectors_init) != len(diagonals) :
+            raise RuntimeError('The lengths of lower_triangular_vectors_init and diagonals must match.')
+        if isinstance(requires_grads, Iterable) and len(lower_triangular_vectors_init) != len(requires_grads) :
+            raise RuntimeError('The lengths of lower_triangular_vectors_init and requires_grads must match.')
+
+
         self.is_scale = True
         self.diagonals = diagonals
         self.lower_triangular_vector_lengthes = []
@@ -79,9 +86,14 @@ class CovarianceMatrix(nn.Module) :
             self.lower_triangular_vector_lengthes.append(l)
 
         self.vectors = nn.ParameterList()
-        for length in self.lower_triangular_vector_lengthes:    
-            self.vectors.append(nn.Parameter(tc.tensor([0.1]*length)))
-
+        
+        if type(requires_grads) is bool :
+            for length in self.lower_triangular_vector_lengthes:    
+                self.vectors.append(nn.Parameter(tc.tensor([0.1]*length, requires_grad=requires_grads, device=lower_triangular_vectors_init[0].device)))
+        elif isinstance(requires_grads, Iterable)  :
+            for length, requires_grad in zip(self.lower_triangular_vector_lengthes, requires_grads) :
+                self.vectors.append(nn.Parameter(tc.tensor([0.1]*length, requires_grad=requires_grad, device=lower_triangular_vectors_init[0].device)))
+        
         self.scales = []
         for init_vector, diagonal in zip(lower_triangular_vectors_init, self.diagonals):
             s = self._set_scale(init_vector, diagonal)
@@ -143,9 +155,9 @@ class CovarianceMatrix(nn.Module) :
             return tc.block_diag(*m)
 
 class Omega(CovarianceMatrix):
-    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool]):
-        super().__init__(lower_triangular_vectors_init, diagonals)
+    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool], requires_grads: Union[Iterable[bool], bool] = True):
+        super().__init__(lower_triangular_vectors_init, diagonals, requires_grads)
 
 class Sigma(CovarianceMatrix) :
-    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool]):
-        super().__init__(lower_triangular_vectors_init, diagonals)
+    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool], requires_grads: Union[Iterable[bool], bool] = True):
+        super().__init__(lower_triangular_vectors_init, diagonals, requires_grads)

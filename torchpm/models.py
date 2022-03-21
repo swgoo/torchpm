@@ -11,7 +11,6 @@ from torchdiffeq import odeint
 from torchpm import estimated_parameter
 
 from . import predfunction
-from . import diff
 from . import loss
 from .misc import *
 
@@ -86,7 +85,6 @@ class FOCEInter(tc.nn.Module) :
                 loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
                 loss.backward()
                 
-                # with tc.no_grad() :
                 total_loss = total_loss + loss
             
             if checkpoint_file_path is not None :
@@ -147,6 +145,7 @@ class FOCEInter(tc.nn.Module) :
             return total_loss
         return fit
 
+    #TODO update
     def evaluate(self):
 
         dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
@@ -158,7 +157,6 @@ class FOCEInter(tc.nn.Module) :
                 p.data = tc.zeros(p.size(), device=p.device)
             total_loss = tc.zeros([], device = self.pred_function_module.dataset.device)
 
-        # datasets = []
         losses : Dict[str, tc.Tensor] = {}
         times : Dict[str, tc.Tensor] = {}
         preds : Dict[str, tc.Tensor] = {} 
@@ -213,19 +211,14 @@ class FOCEInter(tc.nn.Module) :
                 'mdv_masks': mdv_masks,
                 'parameters': parameters}
     
-    #TODO omega, sigma descale
     def descale(self) :
         self.pred_function_module.descale()
-        # self.differential_module.descale()
+        self.omega.descale()
+        self.sigma.descale()
         return self
 
     def parameters_for_population(self):
         parameters = []
-        # for m in self.differential_module.parameters() :
-        #     parameters.append(m)
-        
-        for m in self.pred_function_module.parameters() :
-            parameters.append(m)
         for m in self.parameters():
             parameters.append(m)
 

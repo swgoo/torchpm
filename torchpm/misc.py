@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import ClassVar, List, Optional, Dict, Iterable, Union
 
 def mat_sqrt_inv(mat) :
-    # ei_values, ei_vectors = mat.symeig(eigenvectors=True)
     ei_values, ei_vectors = tc.linalg.eigh(mat, UPLO='U')
     d = ei_values.abs()
     d2 = d.rsqrt()
