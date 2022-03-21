@@ -423,6 +423,12 @@ class FOCEInter(tc.nn.Module) :
         #     sigma = self.make_covariance_matrix(self.sigma, self.sigma_diagonals, self.sigma_scales)
         # else : 
         #     sigma = None
+        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
+        for i_h, y_pred_elem in enumerate(y_pred) :
+            if eps_size > 0 :
+                for i_eps, cur_eps in enumerate(eps):
+                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True)
+                    h[i_h,i_eps] = h_elem[0][i_h]
 
         g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
         for i_g, y_pred_elem in enumerate(y_pred) :
@@ -431,13 +437,7 @@ class FOCEInter(tc.nn.Module) :
                     g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True)
                     g[i_g, i_eta] = g_elem[0]
         
-        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
-        for i_h, y_pred_elem in enumerate(y_pred) :
-            if eps_size > 0 :
-                for i_eps, cur_eps in enumerate(eps):
-                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True)
-                    h[i_h,i_eps] = h_elem[0][i_h]
-
+        
         return y_pred, g, h
     #TODO
     def make_covariance_matrix(self, flat_tensors, diagonals, scales = None):

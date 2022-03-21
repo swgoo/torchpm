@@ -81,6 +81,7 @@ class PredictionFunctionModule(tc.nn.Module):
 
     def _pre_forward(self, dataset):
         id = str(int(dataset[:,self._column_names.index('ID')][0]))
+        self.id = id
         attribute_names = dir(self)
         for att_name in attribute_names :
             att = getattr(self, att_name)
@@ -179,9 +180,6 @@ class PredictionFunctionByTime(PredictionFunctionModule):
     def forward(self, dataset) :
         self._pre_forward(dataset)
 
-        # self._total_amt = dataset[:, self._column_names.index('AMT')].t()
-        # self._total_cmt = dataset[:, self._column_names.index('CMT')].t()
-        # self._total_rate = dataset[:, self._column_names.index('RATE')].t()
         self._set_covariate_totals(dataset)
         self._set_covariates(0)
         self._calculate_parameters()
@@ -239,84 +237,67 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         return data[index, self._column_names.index(name)]
  
     def ode_function(self, t, y):
-        index = (self.cur_times < t).sum() -1
-
-        for k, v in self.parameter_value.items():
-            pk_cur[k] = v[index]
-        
-
-        
-        if self.theta_scale is not None :
-            theta = self.theta_scale(self.theta)
-        else :
-            theta = self.theta
-
-        return self.pred_fn(t, y, theta, self.cur_eta, cmt, None, None, pk_cur) + self.infusion_rate * (self.infusion_end_time > t)
- 
+        index = (self.t < t).sum() -1
+        '''
+        # for k, v in self.parameter_value.items():
+        #     pk_cur[k] = v[index]
+        # if self.theta_scale is not None :
+        #     theta = self.theta_scale(self.theta)
+        # else :
+        #     theta = self.theta
+        # return self.pred_fn(t, y, theta, self.cur_eta, cmt, None, None, pk_cur) + self.infusion_rate * (self.infusion_end_time > t)
+        '''
+        self._set_covariates(index, index+1)
+        return self._calculate_preds(t, y)
     def forward(self, dataset) :
         self._pre_forward(dataset)
-
-        self.max_cmt = int(dataset[:,self._column_names.index('CMT')].max())
-
-        self.cur_dataset = dataset
-        self.cur_times = self.cur_dataset[:,self._column_names.index('TIME')]
 
         self._set_covariate_totals(dataset)
         self._set_covariates(0)
         self._calculate_parameters()
         self._set_covariate_totals(dataset)
 
-        self.cmt = dataset[:, self._column_names.index('CMT')].t()
-        self.amt = dataset[:, self._column_names.index('AMT')].t()
-
+        self.max_cmt = int(dataset[:,self._column_names.index('CMT')].max())
+        
         y_pred_arr = []
- 
         y_init = tc.zeros(self.max_cmt+1, device = dataset.device)
         self.infusion_rate = tc.zeros(self.max_cmt+1, device = dataset.device)
         self.infusion_end_time = tc.zeros(self.max_cmt+1, device = dataset.device)
- 
         amt_indice = self._get_amt_indice(dataset)
-
-        self._calculate_parameters()
- 
         for i in range(len(amt_indice) - 1):
             amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
             dataset_cur = dataset[amt_slice, :]
-            self.amt = dataset_cur()
- 
-            times  = dataset_cur[:, self._column_names.index('TIME')]
- 
-            rate = self._get_element(dataset_cur, 'RATE', 0)
-            cmt = self._get_element(dataset_cur, 'CMT', 0)
-            # amt = self._get_element(dataset_cur, 'AMT', 0)
-            amt_cur = amt[amt_slice][0]
-            rate = self._get_element(dataset_cur, 'RATE', 0)
-            if  rate == 0 :                    
-                injection = tc.zeros(self.max_cmt + 1, device = dataset.device)
+
+            self._set_covariates(amt_indice[i], amt_indice[i+1]+1)
+
+            if  self.RATE[0] == 0 :                    
+                bolus = tc.zeros(self.max_cmt + 1, device = dataset.device)
                 
-                injection[cmt.to(tc.int64)] = amt_cur
-                y_init = y_init + injection
+                bolus[self.CMT[0].to(tc.int64)] = self.AMT[0]
+                y_init = y_init + bolus
             else :
                 time = self._get_element(dataset_cur, 'TIME', 0)
  
                 mask = tc.ones(self.max_cmt +1, device = dataset.device)
-                mask[cmt] = 0
+                mask[self.CMT[0]] = 0
  
                 rate_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
-                rate_vector[cmt] = rate
+                rate_vector[self.CMT[0]] = self.RATE[0]
  
                 infusion_during_time_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
-                infusion_during_time_vector[cmt] = time + amt_cur / rate
+                infusion_during_time_vector[self.CMT[0]] = time + self.AMT[0] / self.RATE[0]
  
                 self.infusion_rate = self.infusion_rate * mask + rate_vector
                 self.infusion_end_time = self.infusion_end_time * mask + infusion_during_time_vector
                 
-            result = odeint(self.ode_function, y_init, times, rtol=self.rtol, atol=self.atol)
-            
+            self.t = dataset_cur.t()[self._column_names.index('TIME')]
+            result = odeint(self.ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
+            self._set_covariates(amt_indice[i], amt_indice[i+1]+1)
             y_integrated = result
             y_init = result[-1]
             
-            cmts_cur = dataset_cur[:, self._column_names.index('CMT')]
+            cmts_cur = dataset_cur.t()[self._column_names.index('CMT')]
+            # cmts_cur = self.CMT.t()
             cmt_mask = tc.nn.functional.one_hot(cmts_cur.to(tc.int64)).to(dataset.device)
             y_integrated = y_integrated.masked_select(cmt_mask==1)
  
@@ -328,4 +309,4 @@ class PredictionFunctionByODE(PredictionFunctionModule):
 
         post_forward_output = self._post_forward()
         
-        return {'y_pred': y_pred, 'mdv_mask': mdv_mask} | post_forward_output
+        return {'y_pred': tc.cat(y_pred_arr), 'mdv_mask': mdv_mask} | post_forward_output
