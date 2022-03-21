@@ -8,35 +8,12 @@ import torch.nn.functional as F
 from torchpm import estimated_parameter, predfunction, models, linearode
 from torchpm.data import CSVDataset
 
-from transformers import DistilBertModel, DistilBertConfig
-
-
 class TestTemplate(unittest.TestCase) :
     def setUp(self):
         pass
     
     def tearDown(self):
         pass
-
-class AA :
-    def __init__(self) -> None:
-        self.theta_ka = None
-        self.eta_ka = None
-    def forward(self) :
-        print(dir(self))
-        return 'ee'
-
-class ReflectionTest(unittest.TestCase) :
-    def setUp(self):
-        pass
-    
-    def tearDown(self):
-        pass
-
-    def test_reflection(self):
-        aa = AA()
-        assert(0, 0)
-
 
 class LinearODETest(unittest.TestCase) :
     def setUp(self):
@@ -102,7 +79,7 @@ class TotalTest(unittest.TestCase) :
             
             def _calculate_parameters(self):
                 self.k_a = self.theta_0()*tc.exp(self.eta_0())
-                self.v = self.theta_1()*tc.exp(self.eta_1())
+                self.v = self.theta_1()*tc.exp(self.eta_1())*self.BWT/70
                 self.k_e = self.theta_2()*tc.exp(self.eta_2())
             
             def _calculate_preds(self) -> tc.Tensor:
@@ -120,7 +97,7 @@ class TotalTest(unittest.TestCase) :
 
         pred_function_module = Pred(dataset = dataset,
                                     column_names = column_names,
-                                    output_column_names=column_names,)
+                                    output_column_names=column_names+['k_a', 'v', 'k_e'],)
 
         omega = estimated_parameter.Omega([tc.tensor([0.4397,
                                                         0.0575,  0.0198, 
