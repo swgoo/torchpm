@@ -15,6 +15,7 @@ class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
                  pred_function_module : predfunction.PredictionFunctionModule,
+                 theta_names : Iterable[Iterable[str]],
                  eta_names : Iterable[Iterable[str]],
                  eps_names : Iterable[Iterable[str]],
                  omega : estimated_parameter.Omega,
@@ -22,6 +23,7 @@ class FOCEInter(tc.nn.Module) :
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
         super(FOCEInter, self).__init__()
         self.pred_function_module = pred_function_module
+        self.theta_names = theta_names
         self.eta_names = eta_names
         self.eps_names = eps_names
         self.omega = omega
@@ -36,15 +38,15 @@ class FOCEInter(tc.nn.Module) :
         eta = []
         for eta_names in self.eta_names:
             for eta_name in eta_names:
-                eta.append(etas["eta_" + eta_name])
+                eta.append(etas[eta_name])
 
         epss = pred_output['epss']
         eps = []
         for eps_names in self.eps_names:
             for eps_name in eps_names:
-                eps.append(epss["eps_" + eps_name])
+                eps.append(epss[eps_name])
 
-        y_pred, g, h = self.diff_forward(pred_output['y_pred'], eta, eps)
+        y_pred, g, h = self._partial_different(pred_output['y_pred'], eta, eps)
 
         eta = tc.stack(eta)
         eps = tc.stack(eps)
@@ -105,7 +107,6 @@ class FOCEInter(tc.nn.Module) :
         dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
         def fit() :
             optimizer.zero_grad()
-            # with tc.no_grad() :
             total_loss = tc.zeros([], device = self.pred_function_module._dataset.device)
         
             for data, y_true in dataloader:
@@ -121,7 +122,6 @@ class FOCEInter(tc.nn.Module) :
                 loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
                 loss.backward()
                 
-                # with tc.no_grad() :
                 total_loss.add_(loss)
             
             with tc.no_grad() :
@@ -142,25 +142,23 @@ class FOCEInter(tc.nn.Module) :
             return total_loss
         return fit
 
-    #TODO update
     def evaluate(self):
 
         dataloader = tc.utils.data.DataLoader(self.pred_function_module._dataset, batch_size=None, shuffle=False, num_workers=0)
 
         state = self.state_dict()
         
-        with tc.no_grad() :
-            for k, p in self.pred_function_module.epss.items() :
-                p.data = tc.zeros(p.size(), device=p.device)
-            total_loss = tc.zeros([], device = self.pred_function_module._dataset.device)
+        total_loss = tc.tensor(0., device = self.pred_function_module._dataset.device)
+        # self.pred_function_module.reset_epss()
 
         losses : Dict[str, tc.Tensor] = {}
         times : Dict[str, tc.Tensor] = {}
         preds : Dict[str, tc.Tensor] = {} 
         cwress : Dict[str, tc.Tensor] = {}
         mdv_masks : Dict[str, tc.Tensor] = {}
-        parameters : Dict[str, tc.Tensor] = {}
+        ouput_columns : Dict[str, tc.Tensor] = {}
         for data, y_true in dataloader:
+
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameter = self(data)
             id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
 
@@ -182,19 +180,17 @@ class FOCEInter(tc.nn.Module) :
             times[id] = data[:,self.pred_function_module._column_names.index('TIME')]
             mdv_masks[id] = mdv_mask
 
-            record_length = parameter["ID"].size()[0]
+            # record_length = parameter["ID"].size()[0]
 
-            for k, para in parameter.items() :
-                if isinstance(para, tc.Tensor) and para.size()[0] == 1:
-                    parameter[k] = para.repeat([record_length])
-                elif isinstance(para, numbers.Number) :
-                    para = tc.tensor(para)
-                    parameter[k] = para.repeat([record_length])
+            # for k, para in parameter.items() :
+            #     if isinstance(para, tc.Tensor) and (para.dim() == 0 or para.size()[0] == 1):
+            #         parameter[k] = para.repeat([record_length])
+            #     elif isinstance(para, numbers.Number) :
+            #         para = tc.tensor(para)
+            #         parameter[k] = para.repeat([record_length])
             
-
-            parameters[id] = parameter
-
-            
+            ouput_columns[id] = parameter
+                        
             with tc.no_grad() :
                 total_loss.add_(loss)
             
@@ -206,28 +202,21 @@ class FOCEInter(tc.nn.Module) :
                 'preds': preds, 
                 'cwress': cwress,
                 'mdv_masks': mdv_masks,
-                'parameters': parameters}
+                'parameters': ouput_columns}
     
     def descale(self) :
         self.pred_function_module.descale()
         self.omega.descale()
         self.sigma.descale()
         return self
-
-    def parameters_for_population(self):
-        parameters = []
-        for m in self.parameters():
-            parameters.append(m)
-
-        return parameters
     
     def parameters_for_individual(self) :
         parameters = []
 
-        for k, p in self.pred_function_module.etas.items() :
+        for k, p in self.pred_function_module.get_etas().items() :
             parameters.append(p)
         
-        for k, p in self.pred_function_module.epss.items() :
+        for k, p in self.pred_function_module.get_epss().items() :
             parameters.append(p)
         
         return parameters
@@ -236,13 +225,9 @@ class FOCEInter(tc.nn.Module) :
         
         max_iter = max_iteration
 
-        parameters = self.parameters_for_population()
-
-        # epss = self.pred_function_module.epss
+        parameters = self.parameters()
         
-        # with tc.no_grad() :
-        #     for k, p in self.pred_function_module.epss.items() :
-        #         p.data = tc.zeros(p.size(), device=p.device)
+        self.pred_function_module.reset_epss()
             
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
@@ -271,16 +256,17 @@ class FOCEInter(tc.nn.Module) :
 
         optimizer.step(opt_fn)
     
+    #TODO
     def covariance_step(self) :
 
         dataset = self.pred_function_module._dataset
  
         cov_mat_dim =  self.pred_function_module.theta.size()[0]
 
-        for tensor in self.differential_module.omega :
+        for tensor in self.omega.parameter_values :
             cov_mat_dim += tensor.size()[0]
 
-        for tensor in self.differential_module.sigma :
+        for tensor in self.sigma.parameter_values :
             cov_mat_dim += tensor.size()[0]
  
         r_mat = tc.zeros(cov_mat_dim, cov_mat_dim, device=dataset.device)
@@ -408,34 +394,25 @@ class FOCEInter(tc.nn.Module) :
 
         return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'parameters': parameters}
     
-    #TODO
-    def diff_forward(self, y_pred, eta, eps):
+    def _partial_different(self, y_pred, eta, eps):
         eta_size = len(eta)
         eps_size = len(eps)
 
-        #TODO ETA 없을때 예외처리
-        # if eta_size > 0 :
-        #     omega = self.make_covariance_matrix(self.omega, self.omega_diagonals, self.omega_scales)
-        # else :
-        #     omega = None
-
-        # if eps_size > 0 :
-        #     sigma = self.make_covariance_matrix(self.sigma, self.sigma_diagonals, self.sigma_scales)
-        # else : 
-        #     sigma = None
-        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
-        for i_h, y_pred_elem in enumerate(y_pred) :
-            if eps_size > 0 :
-                for i_eps, cur_eps in enumerate(eps):
-                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True)
-                    h[i_h,i_eps] = h_elem[0][i_h]
-
+        #TODO 디버그 후 제거
+        # with tc.autograd.set_detect_anomaly(True):
         g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
         for i_g, y_pred_elem in enumerate(y_pred) :
             if eta_size > 0 :
                 for i_eta, cur_eta in enumerate(eta) :
-                    g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True)
+                    g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
                     g[i_g, i_eta] = g_elem[0]
+        
+        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
+        for i_h, y_pred_elem in enumerate(y_pred) :
+            if eps_size > 0 :
+                for i_eps, cur_eps in enumerate(eps):
+                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
+                    h[i_h,i_eps] = h_elem[0][i_h]
         
         
         return y_pred, g, h

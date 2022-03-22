@@ -23,43 +23,43 @@ class Theta(nn.Module):
         ub = self.ub
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
-        self.parameter = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)
+        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)
     
     def descale(self) :
         if self.is_scale:
             with tc.no_grad() :
-                self.scaled_parameter_for_save = self.parameter.data.clone()
-                self.parameter.data = self.forward()
+                self.scaled_parameter_for_save = self.parameter_value.data.clone()
+                self.parameter_value.data = self.forward()
                 self.scale = False
     
     def scale(self) :
         if not self.is_scale :
             with tc.no_grad() :
-                self.parameter.data = self.scaled_parameter_for_save
+                self.parameter_value.data = self.scaled_parameter_for_save
                 self.scaled_parameter_for_save = None
                 self.scale = True
              
     def forward(self) :
         if self.is_scale :
-            return tc.exp(self.parameter - self.alpha)/(tc.exp(self.parameter - self.alpha) + 1)*(self.ub - self.lb) + self.lb
+            return tc.exp(self.parameter_value - self.alpha)/(tc.exp(self.parameter_value - self.alpha) + 1)*(self.ub - self.lb) + self.lb
         else :
-            return self.parameter
+            return self.parameter_value
 
 class Eta(nn.Module) :
     def __init__(self) -> None:
         super().__init__()
-        self.etas = nn.ParameterDict()
+        self.parameter_values = nn.ParameterDict()
     
     def forward(self):
-        return self.etas[str(self.id)]
+        return self.parameter_values[str(self.id)]
 
 class Eps(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.epss : Dict[str, tc.TensorType] = {}
+        self.parameter_values : Dict[str, tc.TensorType] = {}
     
     def forward(self):
-        return self.epss[str(self.id)]
+        return self.parameter_values[str(self.id)]
 
 
 class CovarianceMatrix(nn.Module) :
@@ -82,14 +82,14 @@ class CovarianceMatrix(nn.Module) :
             l = init_vector.size()[0]
             self.lower_triangular_vector_lengthes.append(l)
 
-        self.vectors = nn.ParameterList()
+        self.parameter_values = nn.ParameterList()
         
         if type(requires_grads) is bool :
             for length in self.lower_triangular_vector_lengthes:    
-                self.vectors.append(nn.Parameter(tc.tensor([0.1]*length, requires_grad=requires_grads, device=lower_triangular_vectors_init[0].device)))
+                self.parameter_values.append(nn.Parameter(tc.tensor([0.1]*length, requires_grad=requires_grads, device=lower_triangular_vectors_init[0].device)))
         elif isinstance(requires_grads, Iterable)  :
             for length, requires_grad in zip(self.lower_triangular_vector_lengthes, requires_grads) :
-                self.vectors.append(nn.Parameter(tc.tensor([0.1]*length, requires_grad=requires_grad, device=lower_triangular_vectors_init[0].device)))
+                self.parameter_values.append(nn.Parameter(tc.tensor([0.1]*length, requires_grad=requires_grad, device=lower_triangular_vectors_init[0].device)))
         
         self.scales = []
         for init_vector, diagonal in zip(lower_triangular_vectors_init, self.diagonals):
@@ -113,15 +113,15 @@ class CovarianceMatrix(nn.Module) :
         if self.is_scale is True:
             with tc.no_grad() :
                 self.scaled_parameters_for_save = []
-                for parameter in self.vectors:
+                for parameter in self.parameter_values:
                     self.scaled_parameters_for_save.append(parameter.data.clone())
                 
                 matrixes = []
-                for vector, scale, diagonal in zip(self.vectors, self.scales, self.diagonals) :
+                for vector, scale, diagonal in zip(self.parameter_values, self.scales, self.diagonals) :
                     mat = lower_triangular_vector_to_covariance_matrix(vector, diagonal)
                     matrixes.append(self.calculate_scaled_matrix(mat, scale))
                 
-                for matrix, para, diagonal in zip(matrixes, self.vectors, self.diagonals) :
+                for matrix, para, diagonal in zip(matrixes, self.parameter_values, self.diagonals) :
                     if diagonal :
                         para.data = tc.diag(matrix, 0)
                     else :
@@ -131,13 +131,13 @@ class CovarianceMatrix(nn.Module) :
     def scale(self) :
         if self.scale is False :
             with tc.no_grad() :
-                for parameter, data in zip(self.vectors, self.scaled_parameter_for_save):
+                for parameter, data in zip(self.parameter_values, self.scaled_parameter_for_save):
                     parameter.data = data  
             self.scaled_parameter_for_save = None
             self.is_scale = True
 
     def forward(self):
-        flat_tensors = self.vectors
+        flat_tensors = self.parameter_values
         diagonals = self.diagonals
         scales = self.scales
         m = []
