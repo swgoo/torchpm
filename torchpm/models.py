@@ -179,15 +179,6 @@ class FOCEInter(tc.nn.Module) :
             losses[id] = float(loss)
             times[id] = data[:,self.pred_function_module._column_names.index('TIME')]
             mdv_masks[id] = mdv_mask
-
-            # record_length = parameter["ID"].size()[0]
-
-            # for k, para in parameter.items() :
-            #     if isinstance(para, tc.Tensor) and (para.dim() == 0 or para.size()[0] == 1):
-            #         parameter[k] = para.repeat([record_length])
-            #     elif isinstance(para, numbers.Number) :
-            #         para = tc.tensor(para)
-            #         parameter[k] = para.repeat([record_length])
             
             ouput_columns[id] = parameter
                         
@@ -222,38 +213,28 @@ class FOCEInter(tc.nn.Module) :
         return parameters
 
     def fit_population(self, checkpoint_file_path : str = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 1e-2, max_iteration = 1000,):
-        
         max_iter = max_iteration
-
         parameters = self.parameters()
-        
         self.pred_function_module.reset_epss()
-            
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
                                    tolerance_change = tolerance_change,
                                    line_search_fn='strong_wolfe')
-        
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
-
         optimizer.step(opt_fn)
-
         return self
     
     def fit_individual(self, checkpoint_file_path : str = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 3e-2, max_iteration = 1000,):
-
         max_iter = max_iteration
         parameters = self.parameters_for_individual()
-
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
                                    tolerance_change = tolerance_change)
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
-
         optimizer.step(opt_fn)
     
     #TODO
@@ -327,6 +308,7 @@ class FOCEInter(tc.nn.Module) :
         return {'cov': cov, 'se': se, 'cor': correl, 'ei_values': ei_values_sorted , 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
         # return {'cov': cov, 'se': se, 'cor': correl, 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
 
+    #TODO
     def simulate(self, dataset, repeat) :
         """
         simulationg
@@ -398,8 +380,6 @@ class FOCEInter(tc.nn.Module) :
         eta_size = len(eta)
         eps_size = len(eps)
 
-        #TODO 디버그 후 제거
-        # with tc.autograd.set_detect_anomaly(True):
         g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
         for i_g, y_pred_elem in enumerate(y_pred) :
             if eta_size > 0 :
@@ -413,20 +393,4 @@ class FOCEInter(tc.nn.Module) :
                 for i_eps, cur_eps in enumerate(eps):
                     h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
                     h[i_h,i_eps] = h_elem[0][i_h]
-        
-        
         return y_pred, g, h
-    #TODO
-    def make_covariance_matrix(self, flat_tensors, diagonals, scales = None):
-        m = []
-        if scales is not None :
-            for tensor, scale, diagonal in zip(flat_tensors, scales, diagonals) :
-                if scale is not None :
-                    m.append(scale(lower_triangular_vector_to_covariance_matrix(tensor, diagonal)))
-                else :
-                    m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
-            return tc.block_diag(*m)
-        else :
-            for tensor, diagonal in zip(flat_tensors, diagonals) :
-                m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
-            return tc.block_diag(*m)
