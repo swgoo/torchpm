@@ -107,7 +107,7 @@ class FOCEInter(tc.nn.Module) :
         dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
         def fit() :
             optimizer.zero_grad()
-            total_loss = tc.zeros([], device = self.pred_function_module._dataset.device)
+            total_loss = tc.zeros([], device = self.pred_function_module.dataset.device)
         
             for data, y_true in dataloader:
                 y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
@@ -144,11 +144,11 @@ class FOCEInter(tc.nn.Module) :
 
     def evaluate(self):
 
-        dataloader = tc.utils.data.DataLoader(self.pred_function_module._dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
 
         state = self.state_dict()
         
-        total_loss = tc.tensor(0., device = self.pred_function_module._dataset.device)
+        total_loss = tc.tensor(0., device = self.pred_function_module.dataset.device)
         # self.pred_function_module.reset_epss()
 
         losses : Dict[str, tc.Tensor] = {}
@@ -236,7 +236,7 @@ class FOCEInter(tc.nn.Module) :
                                    tolerance_change = tolerance_change,
                                    line_search_fn='strong_wolfe')
         
-        opt_fn = self.optimization_function(self.pred_function_module._dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
 
         optimizer.step(opt_fn)
 
@@ -252,14 +252,14 @@ class FOCEInter(tc.nn.Module) :
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
                                    tolerance_change = tolerance_change)
-        opt_fn = self.optimization_function(self.pred_function_module._dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
 
         optimizer.step(opt_fn)
     
     #TODO
     def covariance_step(self) :
 
-        dataset = self.pred_function_module._dataset
+        dataset = self.pred_function_module.dataset
  
         cov_mat_dim =  self.pred_function_module.theta.size()[0]
 

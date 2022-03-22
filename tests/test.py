@@ -80,7 +80,7 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
         k_a = self.theta_0()*tc.exp(self.eta_0())
         v = self.theta_1()*tc.exp(self.eta_1())*para['BWT']/70
         k_e = self.theta_2()*tc.exp(self.eta_2())
-        para['AMT'] = tc.tensor(320., device=self._dataset.device)
+        para['AMT'] = tc.tensor(320., device=self.dataset.device)
         return para | {"k_a": k_a, "v": v, "k_e": k_e}
 
     def _calculate_preds(self, t, amt, rate, **para) -> tc.Tensor:

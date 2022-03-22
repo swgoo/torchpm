@@ -1,4 +1,3 @@
-from re import L
 from typing import Dict, Iterable, Set
 import torch as tc
 import torch.nn as nn
@@ -6,10 +5,11 @@ from torchdiffeq import odeint
 
 from torchpm import data
 
-from . import estimated_parameter
+from .estimated_parameter import *
 from .misc import *
 
 class PredictionFunctionModule(tc.nn.Module):
+    ESSENTIAL_COLUMNS : Iterable[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
 
     def __init__(self,
                 dataset : tc.utils.data.Dataset,
@@ -17,48 +17,40 @@ class PredictionFunctionModule(tc.nn.Module):
                 output_column_names: Iterable[str],
                 *args, **kwargs):
         super(PredictionFunctionModule, self).__init__(*args, **kwargs)
-        self._dataset : tc.utils.data.Dataset = dataset
+        self.dataset : tc.utils.data.Dataset = dataset
         self._column_names : Iterable[str] = column_names
         self._output_column_names = output_column_names
 
         self._ids = set()
         self._record_lengths : Dict[str, int] = {}
         self._max_record_length = 0
-        for data in self._dataset :
+        for data in self.dataset :
             id = data[0][:, self._column_names.index('ID')][0]
             self._ids.add(int(id))
             self._record_lengths[str(int(id))] = data[0].size()[0]
             self._max_record_length = max(data[0].size()[0], self._max_record_length)
-
-        ESSENTIAL_COLUMNS : Iterable[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
-        self._cov_indice = []
-        self._cov_names = []
-        for i, col_name in enumerate(self._column_names):
-            if col_name not in ESSENTIAL_COLUMNS :
-                self._cov_indice.append(i)
-                self._cov_names.append(col_name)
     
     def initialize(self):
-        self.theta_names : Set[str] = set()
-        self.eta_names : Set[str] = set()
-        self.eps_names : Set[str] = set()
+        self._theta_names : Set[str] = set()
+        self._eta_names : Set[str] = set()
+        self._eps_names : Set[str] = set()
         
         attributes = dir(self)
         for att_name in attributes:
             att = getattr(self, att_name)
             att_type = type(att)
             with tc.no_grad() :
-                if att_type is estimated_parameter.Theta :
-                    self.theta_names.add(att_name.replace('theta_', ''))
-                elif att_type is estimated_parameter.Eta :
-                    self.eta_names.add(att_name.replace('eta_', ''))
+                if att_type is Theta :
+                    self._theta_names.add(att_name.replace('theta_', ''))
+                elif att_type is Eta :
+                    self._eta_names.add(att_name.replace('eta_', ''))
                     for id in self._ids :
-                        eta_value = tc.tensor(0.1, device=self._dataset.device) 
+                        eta_value = tc.tensor(0.1, device=self.dataset.device) 
                         att.parameter_values.update({str(int(id)): tc.nn.Parameter(eta_value)})
-                elif att_type is estimated_parameter.Eps :
-                    self.eps_names.add(att_name.replace('eps_', ''))
+                elif att_type is Eps :
+                    self._eps_names.add(att_name.replace('eps_', ''))
                     for id in self._ids :
-                        eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self._dataset.device)
+                        eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
                         att.parameter_values[str(int(id))] = eps_value
 
     def _get_estimated_parameters(self, prefix, names) :
@@ -69,13 +61,13 @@ class PredictionFunctionModule(tc.nn.Module):
         return dictionary
 
     def get_thetas(self) :
-        return self._get_estimated_parameters('theta_', self.theta_names)
+        return self._get_estimated_parameters('theta_', self._theta_names)
     
     def get_etas(self) :
-        return self._get_estimated_parameters('eta_', self.eta_names)
+        return self._get_estimated_parameters('eta_', self._eta_names)
     
     def get_epss(self) :
-        return self._get_estimated_parameters('eps_', self.eps_names)
+        return self._get_estimated_parameters('eps_', self._eps_names)
 
     def reset_epss(self) :
         attributes = dir(self)
@@ -83,10 +75,10 @@ class PredictionFunctionModule(tc.nn.Module):
             att = getattr(self, att_name)
             att_type = type(att)
             with tc.no_grad() :
-                if att_type is estimated_parameter.Eps :
-                    self.eps_names.add(att_name.replace('eps_', ''))
+                if att_type is Eps :
+                    self._eps_names.add(att_name.replace('eps_', ''))
                     for id in self._ids :
-                        eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self._dataset.device)
+                        eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
                         att.parameter_values[str(int(id))] = eps_value
         
     def _get_amt_indice(self, dataset) :
@@ -110,7 +102,7 @@ class PredictionFunctionModule(tc.nn.Module):
             attribute_names = dir(self)
             for att_name in attribute_names:
                 att = getattr(self, att_name)
-                if type(att) is estimated_parameter.Theta :
+                if type(att) is Theta :
                     att.descale()
         return self
 
@@ -118,11 +110,11 @@ class PredictionFunctionModule(tc.nn.Module):
         id = str(int(dataset[:,self._column_names.index('ID')][0]))
         self._id = id
         
-        for name in self.eta_names:
+        for name in self._eta_names:
             att = getattr(self, 'eta_' + name)
             att.id = id
 
-        for name in self.eps_names:
+        for name in self._eps_names:
             att = getattr(self, 'eps_' + name)
             att.id = id
         
@@ -210,7 +202,6 @@ class PredictionFunctionByODE(PredictionFunctionModule):
  
     def ode_function(self, t, y):
         index = (self.t < t).sum() -1
-        # if self._pre_index <= index :
         parameters_sliced = {k: v[index] for k, v in self.parameters.items()}
     
         return self._calculate_preds(t, y, **parameters_sliced)
