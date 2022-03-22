@@ -204,7 +204,8 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         index = (self.t < t).sum() -1
         parameters_sliced = {k: v[index] for k, v in self.parameters.items()}
     
-        return self._calculate_preds(t, y, **parameters_sliced)
+        return self._calculate_preds(t, y, **parameters_sliced) \
+            + self.infusion_rate * (self.infusion_end_time > t)
     def forward(self, dataset) :
         parameters =self._pre_forward(dataset)
         self.parameters = parameters
@@ -219,7 +220,6 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         amt_indice = self._get_amt_indice(dataset)
         for i in range(len(amt_indice) - 1):
             amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
-            # dataset_cur = dataset[amt_slice, :]
 
             amt = parameters['AMT'][amt_indice[i]]
             rate = parameters['RATE'][amt_indice[i]]
@@ -239,15 +239,13 @@ class PredictionFunctionByODE(PredictionFunctionModule):
  
                 rate_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
                 rate_vector[cmt[0]] = rate
- 
-                infusion_during_time_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
-                infusion_during_time_vector[cmt[0]] = time + amt / rate
- 
                 self.infusion_rate = self.infusion_rate * mask + rate_vector
-                self.infusion_end_time = self.infusion_end_time * mask + infusion_during_time_vector
+ 
+                infusion_end_time_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
+                infusion_end_time_vector[cmt[0]] = time + amt / rate
+                self.infusion_end_time = self.infusion_end_time * mask + infusion_end_time_vector
                 
             self.t = times
-            self._pre_index = 0
             result = odeint(self.ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
             y_integrated = result
             y_init = result[-1]
