@@ -52,7 +52,26 @@ class FOCEInter(tc.nn.Module) :
         eps = tc.stack(eps)
 
         return y_pred, eta, eps, g, h, self.omega(), self.sigma(), pred_output['mdv_mask'], pred_output['output_columns']
- 
+    
+    def _partial_different(self, y_pred, eta, eps):
+        eta_size = len(eta)
+        eps_size = len(eps)
+
+        g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
+        for i_g, y_pred_elem in enumerate(y_pred) :
+            if eta_size > 0 :
+                for i_eta, cur_eta in enumerate(eta) :
+                    g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
+                    g[i_g, i_eta] = g_elem[0]
+        
+        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
+        for i_h, y_pred_elem in enumerate(y_pred) :
+            if eps_size > 0 :
+                for i_eps, cur_eps in enumerate(eps):
+                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
+                    h[i_h,i_eps] = h_elem[0][i_h]
+        return y_pred, g, h
+
     def optimization_function(self, dataset, optimizer, checkpoint_file_path : str = None):
         """
         optimization function for L-BFGS 
@@ -375,22 +394,3 @@ class FOCEInter(tc.nn.Module) :
                 self.pred_function_module.etas.update({str(int(id)): tc.nn.Parameter(etas_original[str(int(id))])})
 
         return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'parameters': parameters}
-    
-    def _partial_different(self, y_pred, eta, eps):
-        eta_size = len(eta)
-        eps_size = len(eps)
-
-        g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
-        for i_g, y_pred_elem in enumerate(y_pred) :
-            if eta_size > 0 :
-                for i_eta, cur_eta in enumerate(eta) :
-                    g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
-                    g[i_g, i_eta] = g_elem[0]
-        
-        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
-        for i_h, y_pred_elem in enumerate(y_pred) :
-            if eps_size > 0 :
-                for i_eps, cur_eps in enumerate(eps):
-                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
-                    h[i_h,i_eps] = h_elem[0][i_h]
-        return y_pred, g, h
