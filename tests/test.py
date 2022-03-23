@@ -144,7 +144,7 @@ class TotalTest(unittest.TestCase) :
         omega = Omega([[0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
-        sigma = Sigma([[0.0177, 0.0762]], [True])
+        sigma = Sigma([0.0177, 0.0762], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['0', '1', '2'],

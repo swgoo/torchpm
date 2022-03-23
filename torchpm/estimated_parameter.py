@@ -83,10 +83,16 @@ class CovarianceMatrix(nn.Module) :
                 requires_grads : Union[Iterable[bool], bool] = True) :
         super().__init__()
 
-        r = []
-        for vector in lower_triangular_vectors_init:
-            r.append(tc.tensor(vector))
-        lower_triangular_vectors_init = r
+        
+        lower_triangular_vectors_init = tc.tensor(lower_triangular_vectors_init)
+        assert(lower_triangular_vectors_init.dim() < 3)
+        if lower_triangular_vectors_init.dim() == 1 :
+            lower_triangular_vectors_init = lower_triangular_vectors_init.unsqueeze(0)
+
+        # r = []
+        # for vector in lower_triangular_vectors_init:
+        #     r.append(tc.tensor(vector))
+        # lower_triangular_vectors_init = r
 
         if len(lower_triangular_vectors_init) != len(diagonals) :
             raise RuntimeError('The lengths of lower_triangular_vectors_init and diagonals must match.')
