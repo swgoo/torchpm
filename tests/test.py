@@ -65,7 +65,8 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
     
     def _calculate_parameters(self, **para):
         k_a = self.theta_0()*tc.exp(self.eta_0())
-        v = self.theta_1()*tc.exp(self.eta_1())*para['BWT']/70
+        #TODO
+        v = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
         k_e = self.theta_2()*tc.exp(self.eta_2())
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
         return para | {"k_a": k_a, "v": v, "k_e": k_e}
@@ -150,9 +151,8 @@ class TotalTest(unittest.TestCase) :
                                 sigma=sigma)
         
         model = model.to(device)
-        model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
+        model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
 
-        # Warning Evaluate 하기 전에 Descale하면 오류남.
         eval_values = model.evaluate()
         for k, v in eval_values.items():
             if k == 'parameters': continue
@@ -163,9 +163,9 @@ class TotalTest(unittest.TestCase) :
         for p in model.descale().named_parameters():
             print(p)
 
-        assert(eval_values['total_loss'] < 90)
-
         print(model.descale().covariance_step())
+
+        assert(eval_values['total_loss'] < 93)
 
     def test_evaluate(self):
         device = self.device
@@ -232,8 +232,6 @@ class TotalTest(unittest.TestCase) :
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
 
-
-        # Warning Evaluate 하기 전에 Descale하면 오류남.
         eval_values = model.evaluate()
         for k, v in eval_values.items():
             if k == 'parameters': continue

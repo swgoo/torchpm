@@ -30,14 +30,14 @@ class Theta(nn.Module):
             with tc.no_grad() :
                 self.scaled_parameter_for_save = self.parameter_value.data.clone()
                 self.parameter_value.data = self.forward()
-                self.scale = False
+                self.is_scale = False
     
     def scale(self) :
         if not self.is_scale :
             with tc.no_grad() :
                 self.parameter_value.data = self.scaled_parameter_for_save
                 self.scaled_parameter_for_save = None
-                self.scale = True
+                self.is_scale = True
              
     def forward(self) :
         if self.is_scale :

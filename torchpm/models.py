@@ -241,8 +241,7 @@ class FOCEInter(tc.nn.Module) :
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
-                                   tolerance_change = tolerance_change,
-                                   line_search_fn='strong_wolfe')
+                                   tolerance_change = tolerance_change)
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
         return self
