@@ -124,6 +124,7 @@ class TotalTest(unittest.TestCase) :
         self.column_names =  ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
 
         self.device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        self.device = tc.device('cpu')
         self.dataset = CSVDataset(dataset_file_path, self.column_names, self.device)
 
     def tearDown(self):
