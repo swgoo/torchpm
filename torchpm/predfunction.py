@@ -63,6 +63,13 @@ class PredictionFunctionModule(tc.nn.Module):
     def get_thetas(self) :
         return self._get_estimated_parameters('theta_', self._theta_names)
     
+    def get_theta_parameter_value_dict(self) :
+        dictionary : Dict[str, tc.Tensor] = {}
+        for name in self._theta_names :
+            att = getattr(self, 'theta_' + name)
+            dictionary[name] = att.parameter_value
+        return dictionary
+    
     def get_etas(self) :
         return self._get_estimated_parameters('eta_', self._eta_names)
     
