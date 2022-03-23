@@ -53,7 +53,7 @@ class FOCEInter(tc.nn.Module) :
         eta = tc.stack(eta)
         eps = tc.stack(eps)
 
-        return y_pred, eta, eps, g, h, self.omega(), self.sigma(), pred_output['mdv_mask'], pred_output['output_columns']
+        return y_pred, eta, eps, g, h, self.omega().to(dataset.device), self.sigma().to(dataset.device), pred_output['mdv_mask'], pred_output['output_columns']
     
     def _partial_different(self, y_pred, eta, eps):
         eta_size = len(eta)

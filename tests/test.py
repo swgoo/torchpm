@@ -9,6 +9,7 @@ from torchpm import estimated_parameter, predfunction, models, linearode
 from torchpm.data import CSVDataset
 import matplotlib.pyplot as plt
 import numpy as np
+from torchpm.estimated_parameter import *
 
 '''
 class TestTemplate(unittest.TestCase) :
@@ -50,31 +51,30 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
     def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
         super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
 
-        self.theta_0 = estimated_parameter.Theta(1.5, 0, 10)
-        self.theta_1 = estimated_parameter.Theta(32, 0, 100)
-        self.theta_2 = estimated_parameter.Theta(0.08, 0, 1)
+        self.theta_0 = Theta(0, 1.5, 10)
+        self.theta_1 = Theta(0, 32, 100)
+        self.theta_2 = Theta(0, 0.08, 1)
 
-        self.eta_0 = estimated_parameter.Eta()
-        self.eta_1 = estimated_parameter.Eta()
-        self.eta_2 = estimated_parameter.Eta()
+        self.eta_0 = Eta()
+        self.eta_1 = Eta()
+        self.eta_2 = Eta()
 
-        self.eps_0 = estimated_parameter.Eps()
-        self.eps_1 = estimated_parameter.Eps()
+        self.eps_0 = Eps()
+        self.eps_1 = Eps()
 
         self.gut_model = linearode.Comp1GutModelFunction()
 
         self.initialize()
     
     def _calculate_parameters(self, **para):
-        k_a = self.theta_0()*tc.exp(self.eta_0())
-        #TODO
-        v = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
-        k_e = self.theta_2()*tc.exp(self.eta_2())
+        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
+        para['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
+        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
-        return para | {"k_a": k_a, "v": v, "k_e": k_e}
+        return para
 
-    def _calculate_preds(self, t, amt, rate, **para) -> tc.Tensor:
-        dose = amt
+    def _calculate_preds(self, t, **para) -> tc.Tensor:
+        dose = para['AMT'][0]
         k_a = para['k_a']
         v = para['v']
         k_e = para['k_e']
@@ -90,14 +90,14 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
     def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
         super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
 
-        self.theta_0 = estimated_parameter.Theta(100, 0, 500)
+        self.theta_0 = Theta(0, 100, 500)
 
-        self.eta_0 = estimated_parameter.Eta()
-        self.eta_1 = estimated_parameter.Eta()
-        self.eta_2 = estimated_parameter.Eta()
+        self.eta_0 = Eta()
+        self.eta_1 = Eta()
+        self.eta_2 = Eta()
 
-        self.eps_0 = estimated_parameter.Eps()
-        self.eps_1 = estimated_parameter.Eps()
+        self.eps_0 = Eps()
+        self.eps_1 = Eps()
 
         self.initialize()
     
@@ -108,8 +108,8 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
         para['AMT'] = para['AMT']*self.theta_0()
         return para | {'k_a': k_a, 'v':v, 'k_e':k_e}
     
-    def _calculate_preds(self, t, amt, rate, **para) -> tc.Tensor:
-        dose = amt
+    def _calculate_preds(self, t, **para) -> tc.Tensor:
+        dose = para['AMT'][0]
         k_a = para['k_a'] 
         v = para['v']
         k = para['k_e']
@@ -141,10 +141,10 @@ class TotalTest(unittest.TestCase) :
                                     column_names = column_names,
                                     output_column_names=column_names+['k_a', 'v', 'k_e'],)
 
-        omega = estimated_parameter.Omega([tc.tensor([0.4397,
-                                                        0.0575,  0.0198, 
-                                                        -0.0069,  0.0116,  0.0205], device = device)], [False], requires_grads=True)
-        sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 0.0762], device = device)], [True])
+        omega = Omega([[0.4397,
+                        0.0575,  0.0198, 
+                        -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
+        sigma = Sigma([[0.0177, 0.0762]], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['0', '1', '2'],
@@ -201,11 +201,10 @@ class TotalTest(unittest.TestCase) :
                                     column_names = column_names,
                                     output_column_names=column_names+['k_a', 'v', 'k_e'],)
 
-        omega = estimated_parameter.Omega([tc.tensor([0.4397,
-                                                        0.0575,  0.0198, 
-                                                        -0.0069,  0.0116,  0.0205], device = device)], [False], requires_grads=True)
-        sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 
-                                                        0.0762], device = device)], [True])
+        omega = Omega([[0.4397,
+                        0.0575,  0.0198, 
+                        -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
+        sigma = Sigma([[0.0177, 0.0762]], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['0', '1', '2'],
@@ -242,10 +241,10 @@ class TotalTest(unittest.TestCase) :
                                     column_names = column_names,
                                     output_column_names=column_names+['k_a', 'v', 'k_e'],)
 
-        omega = estimated_parameter.Omega([tc.tensor([0.4397,
-                                                        0.0575,  0.0198, 
-                                                        -0.0069,  0.0116,  0.0205], device = device)], [False], requires_grads=True)
-        sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 0.0762], device = device)], [True])
+        omega = Omega([[0.4397,
+                        0.0575,  0.0198, 
+                        -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
+        sigma = Sigma( [[0.0177, 0.0762]], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['0'],
@@ -281,19 +280,19 @@ class TotalTest(unittest.TestCase) :
         dataset = CSVDataset(dataset_file_path, column_names, device)
         
         class Pred(predfunction.PredictionFunctionByODE) :
-            def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
-                super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
+            def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str]):
+                super().__init__(dataset, column_names, output_column_names)
 
-                self.theta_0 = estimated_parameter.Theta(1.5, 0, 10)
-                self.theta_1 = estimated_parameter.Theta(32, 0, 100)
-                self.theta_2 = estimated_parameter.Theta(0.08, 0, 1)
+                self.theta_0 = Theta(0, 1.5, 10)
+                self.theta_1 = Theta(0, 32, 100)
+                self.theta_2 = Theta(0, 0.08, 1)
 
-                self.eta_0 = estimated_parameter.Eta()
-                self.eta_1 = estimated_parameter.Eta()
-                self.eta_2 = estimated_parameter.Eta()
+                self.eta_0 = Eta()
+                self.eta_1 = Eta()
+                self.eta_2 = Eta()
 
-                self.eps_0 = estimated_parameter.Eps()
-                self.eps_1 = estimated_parameter.Eps()
+                self.eps_0 = Eps()
+                self.eps_1 = Eps()
 
                 self.initialize()
             
@@ -319,13 +318,10 @@ class TotalTest(unittest.TestCase) :
                                     column_names = column_names,
                                     output_column_names=column_names+['k_a', 'v', 'k_e'],)
 
-        omega = estimated_parameter.Omega([tc.tensor([0.4397,
-                                                        0.0575,  0.0198, 
-                                                        -0.0069,  0.0116,  0.0205], device = device)], [False], requires_grads=True)
-        # omega = estimated_parameter.Omega([tc.tensor([0.4397], device = device),
-        #                                     tc.tensor([0.0198, 
-        #                                                 0.0116,  0.0205], device = device)], [False, False], requires_grads=[True,True])
-        sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 0.0762], device = device)], [True])
+        omega = Omega([[0.4397,
+                        0.0575,  0.0198, 
+                        -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
+        sigma = Sigma([[0.0177, 0.0762]], [True])
 
         model = models.FOCEInter(pred_function_module, theta_names = ['0', '1'],eta_names=[['0', '1','2']], eps_names= [['0','1']], omega=omega, sigma=sigma)
         

@@ -192,14 +192,12 @@ class PredictionFunctionByTime(PredictionFunctionModule):
             dataset_pre = dataset[:start_time_index, :]
             f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
             
-            amt = parameters['AMT'][start_time_index]
-            rate = parameters['RATE'][start_time_index]
             times = parameters['TIME'][start_time_index:]
             start_time = times[0]
             parameters_sliced = {k: v[start_time_index:] for k, v in parameters.items()}
             
             t = times - start_time
-            f_cur = self._calculate_preds(t, amt, rate, **parameters_sliced)
+            f_cur = self._calculate_preds(t, **parameters_sliced)
             f = f + tc.cat([f_pre, f_cur], 0)
         
         y_pred, parameters = self._calculate_error(f, **parameters)
@@ -209,9 +207,6 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         
         return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
 
-
-
-#TODO update
 class PredictionFunctionByODE(PredictionFunctionModule):
     """
     ordinary equation solver

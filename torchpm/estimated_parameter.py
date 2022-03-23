@@ -1,3 +1,4 @@
+from numbers import Number
 from typing import Optional, Dict, Iterable, Union
 import torch as tc
 from torch import nn
@@ -11,15 +12,28 @@ class Theta(nn.Module):
         upper_boundary: upper boundary of scala
     Attributes: .
     """
-    def __init__(self, init_value, lower_boundary = 0.0, upper_boundary = 1.0e6, requires_grad = True):
+    def __init__(self, *init_value, requires_grad = True):
         super().__init__()
         self.is_scale = True
+        self.lb = tc.tensor(0.)
+        self.ub = tc.tensor(1.0e6)
 
-        self.lb = tc.tensor(lower_boundary)
-        self.ub = tc.tensor(upper_boundary)
-        
+        assert(len(init_value) == 1 or len(init_value) == 3, 'length of init_value must be 1 or 3')
+
+        if len(init_value) == 1 :
+            iv = init_value
+            if self.lb > init_value :
+                self.lb = tc.tensor(init_value)
+            if self.ub < init_value :
+                self.ub = tc.tensor(init_value)
+        elif len(init_value) == 3 :
+            assert(init_value[0] < init_value[1], 'lower value must be lower than initial value.') 
+            assert(init_value[1] < init_value[2], 'upper value must be upper than initial value.')
+            self.lb = tc.tensor(init_value[0])
+            iv = tc.tensor(init_value[1])
+            self.ub = tc.tensor(init_value[2])
+                
         lb = self.lb
-        iv = init_value
         ub = self.ub
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
@@ -64,10 +78,15 @@ class Eps(nn.Module):
 
 class CovarianceMatrix(nn.Module) :
     def __init__(self,
-                lower_triangular_vectors_init : Iterable[tc.Tensor] , 
+                lower_triangular_vectors_init : Iterable[Iterable[Number]] , 
                 diagonals : Iterable[bool],
                 requires_grads : Union[Iterable[bool], bool] = True) :
         super().__init__()
+
+        r = []
+        for vector in lower_triangular_vectors_init:
+            r.append(tc.tensor(vector))
+        lower_triangular_vectors_init = r
 
         if len(lower_triangular_vectors_init) != len(diagonals) :
             raise RuntimeError('The lengths of lower_triangular_vectors_init and diagonals must match.')
@@ -119,7 +138,7 @@ class CovarianceMatrix(nn.Module) :
                 matrixes = []
                 for vector, scale, diagonal in zip(self.parameter_values, self.scales, self.diagonals) :
                     mat = lower_triangular_vector_to_covariance_matrix(vector, diagonal)
-                    matrixes.append(self.calculate_scaled_matrix(mat, scale))
+                    matrixes.append(self.calculate_scaled_matrix(mat, scale.to(mat.device)))
                 
                 for matrix, para, diagonal in zip(matrixes, self.parameter_values, self.diagonals) :
                     if diagonal :
@@ -144,7 +163,7 @@ class CovarianceMatrix(nn.Module) :
         if self.is_scale :
             for tensor, scale, diagonal in zip(flat_tensors, scales, diagonals) :
                 mat = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
-                m.append(self.calculate_scaled_matrix(mat, scale))
+                m.append(self.calculate_scaled_matrix(mat, scale.to(mat.device)))
         else :
             for tensor, diagonal in zip(flat_tensors, diagonals) :
                 m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
