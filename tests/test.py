@@ -7,6 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchpm import estimated_parameter, predfunction, models, linearode
 from torchpm.data import CSVDataset
+import matplotlib.pyplot as plt
+import numpy as np
 
 '''
 class TestTemplate(unittest.TestCase) :
@@ -124,6 +126,7 @@ class TotalTest(unittest.TestCase) :
         self.column_names =  ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
 
         self.device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        # self.device = tc.device('cpu')
         self.dataset = CSVDataset(dataset_file_path, self.column_names, self.device)
 
     def tearDown(self):
@@ -166,6 +169,28 @@ class TotalTest(unittest.TestCase) :
         print(model.descale().covariance_step())
 
         assert(eval_values['total_loss'] < 93)
+
+        tc.manual_seed(42)
+        simulation_result = model.simulate(dataset, 300)
+
+        for id, time_data in simulation_result['times'].items() :
+            fig = plt.figure()
+            ax = fig.add_subplot(1, 1, 1)
+            print('id', id)
+            
+            p95 = np.percentile(tc.stack(simulation_result['preds'][id]).to('cpu'), 95, 0)
+            p50 = np.percentile(tc.stack(simulation_result['preds'][id]).to('cpu'), 50, 0)
+            average = np.average(tc.stack(simulation_result['preds'][id]).to('cpu'), 0)
+            p5 = np.percentile(tc.stack(simulation_result['preds'][id]).to('cpu'), 5, 0)
+            
+            ax.plot(time_data.to('cpu'), p95, color="black")
+            ax.plot(time_data.to('cpu'), p50, color="green")
+            ax.plot(time_data.to('cpu'), average, color="red")
+            ax.plot(time_data.to('cpu'), p5, color="black")
+            
+            for y_pred in simulation_result['preds'][id] :
+                ax.plot(time_data.to('cpu'), y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
+            plt.show()
 
     def test_evaluate(self):
         device = self.device
