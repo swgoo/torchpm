@@ -16,19 +16,6 @@ class TestTemplate(unittest.TestCase) :
     def tearDown(self):
         pass
 '''
-class AA :
-    def __init__(self) -> None:
-        pass
-    def func(self, **dict) :
-        print(dict['argugu'])
-        for k, v in dict.items():
-            print(k,v)
-
-class TempTest(unittest.TestCase) :
-    def test_dict_args(self) :
-        ee = {'argugu': '멍멍멍'}
-        aa = AA()
-        aa.func(**ee)
 
 class LinearODETest(unittest.TestCase) :
     def setUp(self):
@@ -178,7 +165,7 @@ class TotalTest(unittest.TestCase) :
 
         assert(eval_values['total_loss'] < 90)
 
-        # print(model.descale().covariance_step())
+        print(model.descale().covariance_step())
 
     def test_evaluate(self):
         device = self.device
@@ -209,6 +196,9 @@ class TotalTest(unittest.TestCase) :
             print(k, v)
         for k, v in eval_values["parameters"].items() :
             print(k, '\n', v)
+        
+        # print(model.descale().covariance_step())
+        print(model.covariance_step())
         
 
     # TODO AmtModel의 _calculate_parameters에서 AMT 연산할 수 있도록 제공

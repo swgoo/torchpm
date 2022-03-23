@@ -260,14 +260,20 @@ class FOCEInter(tc.nn.Module) :
     def covariance_step(self) :
 
         dataset = self.pred_function_module.dataset
- 
-        cov_mat_dim =  self.pred_function_module.theta.size()[0]
 
+        theta_dict = self.pred_function_module.get_thetas()
+
+        cov_mat_dim =  len(theta_dict)
         for tensor in self.omega.parameter_values :
             cov_mat_dim += tensor.size()[0]
-
         for tensor in self.sigma.parameter_values :
             cov_mat_dim += tensor.size()[0]
+        
+        thetas = [theta_dict[key] for key in self.theta_names]
+
+        estimated_parameters = [*thetas,
+                        *self.omega.parameter_values,
+                        *self.sigma.parameter_values]
  
         r_mat = tc.zeros(cov_mat_dim, cov_mat_dim, device=dataset.device)
  
@@ -277,7 +283,7 @@ class FOCEInter(tc.nn.Module) :
  
         for data, y_true in dataloader:
             
-            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, paramaters = self(data)
+            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, _ = self(data)
 
             id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
             print('id', id)
@@ -285,24 +291,22 @@ class FOCEInter(tc.nn.Module) :
             y_pred = y_pred.masked_select(mdv_mask)
 
             if eta.size()[-1] > 0 :
-                g = g.t().masked_select(mdv_mask).reshape((self.pred_function_module.eta_size,-1)).t()
+                g = g.t().masked_select(mdv_mask).reshape((eta.size()[-1],-1)).t()
             
-            if eps.size()[-1] > 0 :
-                h = h.t().masked_select(mdv_mask).reshape((self.pred_function_module.eps_size,-1)).t()
+            if eps.size()[0] > 0 :
+                h = h.t().masked_select(mdv_mask).reshape((eps.size()[0],-1)).t()
  
             y_true_masked = y_true.masked_select(mdv_mask)
-            loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
-            
-            parameters = [self.pred_function_module.theta, *self.differential_module.omega, *self.differential_module.sigma]
+            loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)            
 
-            gr = tc.autograd.grad(loss, parameters, create_graph=True, retain_graph=True, allow_unused=True)
+            gr = tc.autograd.grad(loss, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
             gr_cat = tc.cat(gr)
             
             with tc.no_grad() :
                 s_mat.add_((gr_cat.detach().unsqueeze(1) @ gr_cat.detach().unsqueeze(0))/4)
             
             for i, gr_cur in enumerate(gr_cat) :
-                hs = tc.autograd.grad(gr_cur, parameters, create_graph=True, retain_graph=True, allow_unused=True)
+                hs = tc.autograd.grad(gr_cur, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
 
                 hs_cat = tc.cat(hs)
                 for j, hs_elem in enumerate(hs_cat) :
@@ -313,7 +317,6 @@ class FOCEInter(tc.nn.Module) :
         cov = invR @ s_mat @ invR
         
         se = cov.diag().sqrt()
-        
         
         correl = covariance_to_correlation(cov)
         
