@@ -121,7 +121,7 @@ class TotalTest(unittest.TestCase) :
 
     def setUp(self):
         dataset_file_path = './examples/THEO.csv'
-        self.column_names =  ['ID', 'AMT', 'TIME', 'DV', 'BWT', 'BWTZ', 'CMT', "MDV", "RATE", "tmpcov", "tmpcov2", "tmpcov3", "tmpcov4", "tmpcov5"]
+        self.column_names =  ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
 
         self.device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         self.dataset = CSVDataset(dataset_file_path, self.column_names, self.device)
