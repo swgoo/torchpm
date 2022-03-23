@@ -63,18 +63,31 @@ class PredictionFunctionModule(tc.nn.Module):
     def get_thetas(self) :
         return self._get_estimated_parameters('theta_', self._theta_names)
     
-    def get_theta_parameter_value_dict(self) :
-        dictionary : Dict[str, tc.Tensor] = {}
-        for name in self._theta_names :
-            att = getattr(self, 'theta_' + name)
-            dictionary[name] = att.parameter_value
-        return dictionary
-    
     def get_etas(self) :
         return self._get_estimated_parameters('eta_', self._eta_names)
     
     def get_epss(self) :
         return self._get_estimated_parameters('eps_', self._eps_names)
+    
+    def _get_estimated_parameter_values(self, prefix, names) :
+        dictionary : Dict[str, tc.Tensor] = {}
+        for name in names :
+            att = getattr(self, prefix + name)
+            parameter_att_list = dir(att)
+            if 'parameter_value' in parameter_att_list:
+                dictionary[name] = att.parameter_value
+            elif 'parameter_values' in parameter_att_list:
+                dictionary[name] = att.parameter_values
+        return dictionary
+    
+    def get_theta_parameter_values(self) :
+        return self._get_estimated_parameter_values('theta_', self._theta_names)
+    
+    def get_eta_parameter_values(self) :
+        return self._get_estimated_parameter_values('eta_', self._eta_names)
+    
+    def get_eps_parameter_values(self) :
+        return self._get_estimated_parameter_values('eps_', self._eps_names)
 
     def reset_epss(self) :
         attributes = dir(self)

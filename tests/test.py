@@ -179,7 +179,8 @@ class TotalTest(unittest.TestCase) :
         omega = estimated_parameter.Omega([tc.tensor([0.4397,
                                                         0.0575,  0.0198, 
                                                         -0.0069,  0.0116,  0.0205], device = device)], [False], requires_grads=True)
-        sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 0.0762], device = device)], [True])
+        sigma = estimated_parameter.Sigma( [tc.tensor([0.0177, 
+                                                        0.0762], device = device)], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['0', '1', '2'],
@@ -198,7 +199,7 @@ class TotalTest(unittest.TestCase) :
             print(k, '\n', v)
         
         # print(model.descale().covariance_step())
-        print(model.covariance_step())
+        print(model.descale().simulate(dataset, 10))
         
 
     # TODO AmtModel의 _calculate_parameters에서 AMT 연산할 수 있도록 제공

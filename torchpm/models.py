@@ -11,6 +11,8 @@ from . import predfunction
 from . import loss
 from .misc import *
 
+import itertools
+
 class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
@@ -260,7 +262,7 @@ class FOCEInter(tc.nn.Module) :
 
         dataset = self.pred_function_module.dataset
 
-        theta_dict = self.pred_function_module.get_theta_parameter_value_dict()
+        theta_dict = self.pred_function_module.get_theta_parameter_values()
 
         cov_mat_dim =  len(theta_dict)
         for tensor in self.omega.parameter_values :
@@ -331,7 +333,7 @@ class FOCEInter(tc.nn.Module) :
         return {'cov': cov, 'se': se, 'cor': correl, 'ei_values': ei_values_sorted , 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
         # return {'cov': cov, 'se': se, 'cor': correl, 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
 
-    #TODO
+    #TODO 경고, simulation 사용하면 안에 들어있던 eta데이터 덮어 씌움
     def simulate(self, dataset, repeat) :
         """
         simulationg
@@ -339,21 +341,21 @@ class FOCEInter(tc.nn.Module) :
             dataset: model dataset for simulation
             repeat : simulation times
         """
+        omega = self.omega()
+        sigma = self.sigma()
 
-        omega = self.differential_module.make_covariance_matrix(self.differential_module.omega, self.differential_module.omega_diagonals, self.differential_module.omega_scales)
 
-        sigma = self.differential_module.make_covariance_matrix(self.differential_module.sigma, self.differential_module.sigma_diagonals, self.differential_module.sigma_scales)
- 
-        mvn_eta = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(self.pred_function_module.eta_size, device=dataset.device), omega)
-        etas = mvn_eta.rsample(tc.tensor([dataset.len, repeat], device=dataset.device))
- 
-        mvn_eps = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(self.pred_function_module.eps_size, device=dataset.device), sigma)
-        epss = mvn_eps.rsample(tc.tensor([dataset.len, repeat, self.pred_function_module._max_record_length], device=dataset.device))
+        eta_names = list(itertools.chain(*self.eta_names))
+        eta_parameter_values = self.pred_function_module.get_eta_parameter_values()
+        eta_size = len(eta_parameter_values)
+        mvn_eta = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eta_size, device=dataset.device), omega)
+        etas = mvn_eta.rsample(tc.tensor([len(dataset), repeat], device=dataset.device))
 
-        etas_original : Dict[str, tc.Tensor] = {}
-        with tc.no_grad() :
-            for id in self.pred_function_module._ids :
-                etas_original[str(int(id))] = self.pred_function_module.etas[str(int(id))].clone()
+        eps_names = list(itertools.chain(*self.eps_names))
+        eps_parameter_values = self.pred_function_module.get_eps_parameter_values()
+        eps_size = len(eps_parameter_values)
+        mvn_eps = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eps_size, device=dataset.device), sigma)
+        epss = mvn_eps.rsample(tc.tensor([len(dataset), repeat, self.pred_function_module._max_record_length], device=dataset.device))
 
         dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
 
@@ -361,9 +363,9 @@ class FOCEInter(tc.nn.Module) :
         epss_result : Dict[str, tc.Tensor] = {}
         preds : Dict[str, List[tc.Tensor]] = {}
         times : Dict[str, tc.Tensor] = {}
-        parameters : Dict[str, Dict[str, tc.Tensor]] = []
+        parameters : Dict[str, Dict[str, tc.Tensor]] = {}
  
-        for i, (data, y_true) in enumerate(dataloader):
+        for i, (data, _) in enumerate(dataloader):
             
             id = str(int(data[:, self.pred_function_module._column_names.index('ID')][0]))
             
@@ -384,17 +386,18 @@ class FOCEInter(tc.nn.Module) :
                     eta_value = etas_cur[repeat_iter]
                     eps_value = epss_cur[repeat_iter]
 
-                    self.pred_function_module.etas.update({str(int(id)): tc.nn.Parameter(eta_value)})
+                    
 
-                    self.pred_function_module.epss.update({str(int(id)): tc.nn.Parameter(eps_value[:data.size()[0],:])})
+                    for eta_i, name in enumerate(eta_names) :
+                        eta_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eta_value[eta_i])})
 
-                    y_pred, _, _, _, parameter_value = self.pred_function_module(data)
+                    for eps_i, name in enumerate(eps_names) :
+                        eps_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eps_value[:data.size()[0],eps_i])})
+
+                    r  = self.pred_function_module(data)
+                    y_pred = r['y_pred']
 
                     preds[id].append(y_pred)
-                    parameters[id].append(parameter_value)
-
-        with tc.no_grad() :
-            for id in self.pred_function_module._ids :
-                self.pred_function_module.etas.update({str(int(id)): tc.nn.Parameter(etas_original[str(int(id))])})
+                    parameters[id].append(r['output_columns'])
 
         return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'parameters': parameters}
