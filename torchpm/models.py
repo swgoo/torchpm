@@ -255,13 +255,12 @@ class FOCEInter(tc.nn.Module) :
                                    tolerance_change = tolerance_change)
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
-    
-    #TODO
+   
     def covariance_step(self) :
 
         dataset = self.pred_function_module.dataset
 
-        theta_dict = self.pred_function_module.get_thetas()
+        theta_dict = self.pred_function_module.get_theta_parameter_value_dict()
 
         cov_mat_dim =  len(theta_dict)
         for tensor in self.omega.parameter_values :
@@ -300,7 +299,8 @@ class FOCEInter(tc.nn.Module) :
             loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)            
 
             gr = tc.autograd.grad(loss, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
-            gr_cat = tc.cat(gr)
+            gr = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr]
+            gr_cat = tc.concat(gr, dim=0)
             
             with tc.no_grad() :
                 s_mat.add_((gr_cat.detach().unsqueeze(1) @ gr_cat.detach().unsqueeze(0))/4)
@@ -308,6 +308,7 @@ class FOCEInter(tc.nn.Module) :
             for i, gr_cur in enumerate(gr_cat) :
                 hs = tc.autograd.grad(gr_cur, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
 
+                hs = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in hs]
                 hs_cat = tc.cat(hs)
                 for j, hs_elem in enumerate(hs_cat) :
                     r_mat[i,j] = r_mat[i,j] + hs_elem.detach()/2
