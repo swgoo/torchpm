@@ -3,6 +3,8 @@ import torch as tc
 import torch.nn as nn
 from torchdiffeq import odeint
 
+from collections import ChainMap
+
 from torchpm import data
 
 from .estimated_parameter import *
@@ -205,7 +207,7 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         
         post_forward_output = self._post_forward(parameters)
         
-        return {'y_pred': y_pred, 'mdv_mask': mdv_mask} | post_forward_output
+        return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
 
 
 
@@ -287,4 +289,4 @@ class PredictionFunctionByODE(PredictionFunctionModule):
 
         post_forward_output = self._post_forward(parameters_result)
         
-        return {'y_pred': tc.cat(y_pred_arr), 'mdv_mask': mdv_mask} | post_forward_output
+        return ChainMap({'y_pred': tc.cat(y_pred_arr), 'mdv_mask': mdv_mask}, post_forward_output)
