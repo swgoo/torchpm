@@ -1,5 +1,5 @@
 from numbers import Number
-from typing import Optional, Dict, Iterable, Union
+from typing import List, Optional, Dict, Iterable, Union
 import torch as tc
 from torch import nn
 from .misc import *
@@ -12,23 +12,23 @@ class Theta(nn.Module):
         upper_boundary: upper boundary of scala
     Attributes: .
     """
-    def __init__(self, *init_value, requires_grad = True):
+    def __init__(self, *init_value: float, requires_grad = True):
         super().__init__()
         self.is_scale = True
         self.lb = tc.tensor(0.)
         self.ub = tc.tensor(1.0e6)
 
-        assert(len(init_value) == 1 or len(init_value) == 3, 'length of init_value must be 1 or 3')
-
         if len(init_value) == 1 :
-            iv = init_value
+            iv = tc.tensor(init_value[1])
             if self.lb > init_value :
                 self.lb = tc.tensor(init_value)
             if self.ub < init_value :
                 self.ub = tc.tensor(init_value)
         elif len(init_value) == 3 :
-            assert(init_value[0] < init_value[1], 'lower value must be lower than initial value.') 
-            assert(init_value[1] < init_value[2], 'upper value must be upper than initial value.')
+            if init_value[1] > init_value[0]:
+                raise Exception('lower value must be lower than initial value.') 
+            if init_value[1] < init_value[2] :
+                raise Exception('upper value must be upper than initial value.')
             self.lb = tc.tensor(init_value[0])
             iv = tc.tensor(init_value[1])
             self.ub = tc.tensor(init_value[2])
@@ -79,8 +79,8 @@ class Eps(nn.Module):
 class CovarianceMatrix(nn.Module) :
     def __init__(self,
                 lower_triangular_vectors_init : Iterable[Iterable[Number]] , 
-                diagonals : Iterable[bool],
-                requires_grads : Union[Iterable[bool], bool] = True) :
+                diagonals : List[bool],
+                requires_grads : Union[List[bool], bool] = True) :
         super().__init__()
 
         
@@ -176,9 +176,9 @@ class CovarianceMatrix(nn.Module) :
         return tc.block_diag(*m)
 
 class Omega(CovarianceMatrix):
-    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool], requires_grads: Union[Iterable[bool], bool] = True):
+    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: List[bool], requires_grads: Union[List[bool], bool] = True):
         super().__init__(lower_triangular_vectors_init, diagonals, requires_grads)
 
 class Sigma(CovarianceMatrix) :
-    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: Iterable[bool], requires_grads: Union[Iterable[bool], bool] = True):
+    def __init__(self, lower_triangular_vectors_init: Iterable[tc.Tensor], diagonals: List[bool], requires_grads: Union[List[bool], bool] = True):
         super().__init__(lower_triangular_vectors_init, diagonals, requires_grads)

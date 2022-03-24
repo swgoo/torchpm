@@ -11,22 +11,23 @@ from .estimated_parameter import *
 from .misc import *
 
 class PredictionFunctionModule(tc.nn.Module):
-    ESSENTIAL_COLUMNS : Iterable[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
+    ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
 
     def __init__(self,
-                dataset : tc.utils.data.Dataset,
-                column_names : Iterable[str],
-                output_column_names: Iterable[str],
+                dataset : data.CSVDataset,
+                column_names : List[str],
+                output_column_names: List[str],
                 *args, **kwargs):
         super(PredictionFunctionModule, self).__init__(*args, **kwargs)
-        self.dataset : tc.utils.data.Dataset = dataset
-        self._column_names : Iterable[str] = column_names
+        self.dataset = dataset
+        self._column_names = column_names
         self._output_column_names = output_column_names
 
         self._ids = set()
         self._record_lengths : Dict[str, int] = {}
         self._max_record_length = 0
-        for data in self.dataset :
+
+        for data in dataset :
             id = data[0][:, self._column_names.index('ID')][0]
             self._ids.add(int(id))
             self._record_lengths[str(int(id))] = data[0].size()[0]
@@ -154,10 +155,10 @@ class PredictionFunctionModule(tc.nn.Module):
             output_columns[cov_name] = parameters[cov_name]
         return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
     
-    def _calculate_parameters(self, **covariates) -> Dict[str, tc.Tensor]:
+    def _calculate_parameters(self, **covariates : Dict[str, tc.Tensor]) -> Dict[str, tc.Tensor]:
         pass
 
-    def _calculate_error(self, y_pred, **parameters) -> tc.Tensor:
+    def _calculate_error(self, y_pred: tc.Tensor, **parameters: tc.Tensor) -> tuple[tc.Tensor, Dict[str, tc.Tensor]]:
         pass
     
     def forward(self, dataset):
@@ -174,7 +175,7 @@ class PredictionFunctionModule(tc.nn.Module):
 
 
 class PredictionFunctionByTime(PredictionFunctionModule):
-    def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
+    def __init__(self, dataset: data.CSVDataset, column_names: List[str], output_column_names: List[str], *args, **kwargs):
         super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
     
     def _calculate_preds(self, t, **parameters) -> tc.Tensor:

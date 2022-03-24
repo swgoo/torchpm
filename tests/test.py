@@ -1,6 +1,6 @@
 
 import logging
-from typing import Iterable
+from typing import Any, Iterable
 import unittest
 import torch as tc
 import torch.nn as nn
@@ -48,11 +48,11 @@ class LinearODETest(unittest.TestCase) :
         print(result)
 
 class BasementModel(predfunction.PredictionFunctionByTime) :
-    def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
+    def __init__(self, dataset: CSVDataset, column_names: List[str], output_column_names: List[str], *args, **kwargs):
         super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
 
-        self.theta_0 = Theta(0, 1.5, 10)
-        self.theta_1 = Theta(0, 32, 100)
+        self.theta_0 = Theta(0., 1.5, 10.)
+        self.theta_1 = Theta(0., 32., 100.)
         self.theta_2 = Theta(0, 0.08, 1)
 
         self.eta_0 = Eta()
@@ -73,7 +73,7 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
         p['AMT'] = tc.tensor(320., device=self.dataset.device)
         return p
 
-    def _calculate_preds(self, t, **p) -> tc.Tensor:
+    def _calculate_preds(self, t, **p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
@@ -81,11 +81,11 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
         comps = self.gut_model(t, k_a, k_e, dose)
         return comps[1]/v
         
-    def _calculate_error(self, y_pred : tc.Tensor, **para) -> tc.Tensor:
+    def _calculate_error(self, y_pred, **para):
         return y_pred +  y_pred * self.eps_0() + self.eps_1(), para
 
 class AmtModel(predfunction.PredictionFunctionByTime) :
-    def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str], *args, **kwargs):
+    def __init__(self, dataset, column_names, output_column_names, *args, **kwargs):
         super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
 
         self.theta_0 = Theta(0, 100, 500)
@@ -106,7 +106,7 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
         para['AMT'] = para['AMT']*self.theta_0()
         return para
 
-    def _calculate_preds(self, t, **para) -> tc.Tensor:
+    def _calculate_preds(self, t, **para):
         dose = para['AMT'][0]
         k_a = para['k_a'] 
         v = para['v']
@@ -114,14 +114,14 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
         
         return (dose / v * k_a) / (k_a - k) * (tc.exp(-k*t) - tc.exp(-k_a*t))
     
-    def _calculate_error(self, y_pred, **para) -> tc.Tensor:
+    def _calculate_error(self, y_pred, **para) :
         return y_pred +  y_pred * self.eps_0() + self.eps_1(), para
 
 class ODEModel(predfunction.PredictionFunctionByODE) :
-    def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str]):
-        super().__init__(dataset, column_names, output_column_names)
+    def __init__(self, dataset: CSVDataset, column_names: List[str], output_column_names: List[str], *args, **kwargs):
+        super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
 
-        self.theta_0 = Theta(0, 1.5, 10)
+        self.theta_0 = Theta(0., 1.5, 10.)
         self.theta_1 = Theta(0, 32, 100)
         self.theta_2 = Theta(0, 0.08, 1)
 
@@ -147,10 +147,10 @@ class ODEModel(predfunction.PredictionFunctionByODE) :
         mat[1,1] = -p['k_e']
         return mat @ y
     
-    def _calculate_error(self, y_pred, **para) -> tc.Tensor:
-        y_pred= y_pred/para['v']
-        return y_pred +  y_pred * self.eps_0() + self.eps_1(), para
-
+    def _calculate_error(self, y_pred : tc.Tensor, **parameters: tc.Tensor) -> tuple[Any, Dict[str, tc.Tensor]]:
+        y = y_pred/parameters['v']
+        return y +  y * self.eps_0() + self.eps_1(), parameters
+        
 class TotalTest(unittest.TestCase) :
 
     def setUp(self):
