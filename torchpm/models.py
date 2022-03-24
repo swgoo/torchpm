@@ -351,7 +351,7 @@ class FOCEInter(tc.nn.Module) :
         eta_parameter_values = self.pred_function_module.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)
         mvn_eta = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eta_size, device=dataset.device), omega)
-        etas = mvn_eta.rsample(tc.tensor((len(dataset), repeat), dtype=dataset.device))
+        etas = mvn_eta.rsample(tc.tensor((len(dataset), repeat), device=dataset.device))
 
         eps_names = list(itertools.chain(*self.eps_names))
         eps_parameter_values = self.pred_function_module.get_eps_parameter_values()

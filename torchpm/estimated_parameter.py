@@ -41,16 +41,17 @@ class Theta(nn.Module):
     def __init__(self, *init_value: float, requires_grad = True):
         super().__init__()
 
+        if len(init_value) > 3 :
+            raise Exception('it must be len(init_value) < 3')
+
 
         self.is_scale = True
 
 
         self.lb : tc.Tensor = tc.tensor(0.)
-
-
-        self.ub : tc.Tensor = tc.tensor(1.0e6)
-
         iv = tc.tensor(0)
+        self.ub : tc.Tensor = tc.tensor(1.0e6)
+        
 
         if len(init_value) == 1 :
 
