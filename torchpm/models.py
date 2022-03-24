@@ -1,9 +1,10 @@
 import numbers
 import time
-from typing import List, Dict, Iterable
+from typing import List, Dict, Iterable, Union
 from sympy import false
 import torch as tc
 import torch.distributed as dist
+import numpy as np
 
 from torchpm import estimated_parameter
 
@@ -25,6 +26,8 @@ class FOCEInter(tc.nn.Module) :
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
         super(FOCEInter, self).__init__()
         self.pred_function_module = pred_function_module
+
+
         self.theta_names = theta_names
         self.eta_names = eta_names
         self.eps_names = eps_names

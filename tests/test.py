@@ -81,7 +81,7 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
         comps = self.gut_model(t, k_a, k_e, dose)
         return comps[1]/v
         
-    def _calculate_error(self, y_pred, **para) -> tc.Tensor:
+    def _calculate_error(self, y_pred : tc.Tensor, **para) -> tc.Tensor:
         return y_pred +  y_pred * self.eps_0() + self.eps_1(), para
 
 class AmtModel(predfunction.PredictionFunctionByTime) :
@@ -134,17 +134,17 @@ class ODEModel(predfunction.PredictionFunctionByODE) :
 
         self.initialize()
     
-    def _calculate_parameters(self, **covs):
-        k_a = self.theta_0()*tc.exp(self.eta_0())
-        v = self.theta_1()*tc.exp(self.eta_1())*covs['COV']
-        k_e = self.theta_2()*tc.exp(self.eta_2())
-        return covs | {'k_a':k_a, 'v':v, 'k_e':k_e}
+    def _calculate_parameters(self, **p):
+        p['k_a'] = self.theta_0()*tc.exp(self.eta_0())
+        p['v'] = self.theta_1()*tc.exp(self.eta_1())*p['COV']
+        p['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+        return p
     
-    def _calculate_preds(self, t, y, **para) -> tc.Tensor:
+    def _calculate_preds(self, t, y, **p) -> tc.Tensor:
         mat = tc.zeros(2,2, device=y.device)
-        mat[0,0] = -para['k_a']
-        mat[1,0] = para['k_a']
-        mat[1,1] = -para['k_e']
+        mat[0,0] = -p['k_a']
+        mat[1,0] = p['k_a']
+        mat[1,1] = -p['k_e']
         return mat @ y
     
     def _calculate_error(self, y_pred, **para) -> tc.Tensor:
@@ -154,24 +154,19 @@ class ODEModel(predfunction.PredictionFunctionByODE) :
 class TotalTest(unittest.TestCase) :
 
     def setUp(self):
-        dataset_file_path = './examples/THEO.csv'
-        self.column_names =  ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-
-        self.device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
-        # self.device = tc.device('cpu')
-        self.dataset = CSVDataset(dataset_file_path, self.column_names, self.device)
-
+        pass
     def tearDown(self):
         pass
     
     def test_basement_model(self):
-        device = self.device
-        dataset = self.dataset
-        column_names = self.column_names
-
+        dataset_file_path = './examples/THEO.csv'
+        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        dataset = CSVDataset(dataset_file_path, column_names, device)
+        
         pred_function_module = BasementModel(dataset = dataset,
                                     column_names = column_names,
-                                    output_column_names=column_names+['k_a', 'v', 'k_e'],)
+                                    output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e'],)
 
         omega = Omega([[0.4397,
                         0.0575,  0.0198, 
@@ -276,8 +271,8 @@ class TotalTest(unittest.TestCase) :
         sigma = Sigma( [[0.0177, 0.0762]], [True])
 
         model = models.FOCEInter(pred_function_module, 
-                                theta_names=['0'],
-                                eta_names=[['0', '1','2']], 
+                                theta_names='0',
+                                eta_names=['0', '1','2'], 
                                 eps_names= [['0','1']], 
                                 omega=omega, 
                                 sigma=sigma)
