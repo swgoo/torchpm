@@ -66,20 +66,18 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
 
         self.initialize()
     
-    def _calculate_parameters(self, **para):
-        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        para['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
-        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
-        para['AMT'] = tc.tensor(320., device=self.dataset.device)
-        return para
+    def _calculate_parameters(self, **p):
+        p['k_a'] = self.theta_0()*tc.exp(self.eta_0())
+        p['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
+        p['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+        p['AMT'] = tc.tensor(320., device=self.dataset.device)
+        return p
 
-    def _calculate_preds(self, t, **para) -> tc.Tensor:
-        dose = para['AMT'][0]
-        k_a = para['k_a']
-        v = para['v']
-        k_e = para['k_e']
-        # return (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
-        ############ Sympy Version Function #############
+    def _calculate_preds(self, t, **p) -> tc.Tensor:
+        dose = p['AMT'][0]
+        k_a = p['k_a']
+        v = p['v']
+        k_e = p['k_e']
         comps = self.gut_model(t, k_a, k_e, dose)
         return comps[1]/v
         
@@ -102,12 +100,12 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
         self.initialize()
     
     def _calculate_parameters(self, **para):
-        k_a = 1.4901*tc.exp(self.eta_0())
-        v = 32.4667*tc.exp(self.eta_1())
-        k_e = 0.0873*tc.exp(self.eta_2())
+        para['k_a'] = 1.4901*tc.exp(self.eta_0())
+        para['v'] = 32.4667*tc.exp(self.eta_1())
+        para['k_e'] = 0.0873*tc.exp(self.eta_2())
         para['AMT'] = para['AMT']*self.theta_0()
-        return para | {'k_a': k_a, 'v':v, 'k_e':k_e}
-    
+        return para
+
     def _calculate_preds(self, t, **para) -> tc.Tensor:
         dose = para['AMT'][0]
         k_a = para['k_a'] 
@@ -117,6 +115,40 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
         return (dose / v * k_a) / (k_a - k) * (tc.exp(-k*t) - tc.exp(-k_a*t))
     
     def _calculate_error(self, y_pred, **para) -> tc.Tensor:
+        return y_pred +  y_pred * self.eps_0() + self.eps_1(), para
+
+class ODEModel(predfunction.PredictionFunctionByODE) :
+    def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str]):
+        super().__init__(dataset, column_names, output_column_names)
+
+        self.theta_0 = Theta(0, 1.5, 10)
+        self.theta_1 = Theta(0, 32, 100)
+        self.theta_2 = Theta(0, 0.08, 1)
+
+        self.eta_0 = Eta()
+        self.eta_1 = Eta()
+        self.eta_2 = Eta()
+
+        self.eps_0 = Eps()
+        self.eps_1 = Eps()
+
+        self.initialize()
+    
+    def _calculate_parameters(self, **covs):
+        k_a = self.theta_0()*tc.exp(self.eta_0())
+        v = self.theta_1()*tc.exp(self.eta_1())*covs['COV']
+        k_e = self.theta_2()*tc.exp(self.eta_2())
+        return covs | {'k_a':k_a, 'v':v, 'k_e':k_e}
+    
+    def _calculate_preds(self, t, y, **para) -> tc.Tensor:
+        mat = tc.zeros(2,2, device=y.device)
+        mat[0,0] = -para['k_a']
+        mat[1,0] = para['k_a']
+        mat[1,1] = -para['k_e']
+        return mat @ y
+    
+    def _calculate_error(self, y_pred, **para) -> tc.Tensor:
+        y_pred= y_pred/para['v']
         return y_pred +  y_pred * self.eps_0() + self.eps_1(), para
 
 class TotalTest(unittest.TestCase) :
@@ -234,9 +266,6 @@ class TotalTest(unittest.TestCase) :
         device = self.device
         dataset = CSVDataset(dataset_file_path, column_names, device)
 
-
-
-
         pred_function_module = AmtModel(dataset = dataset,
                                     column_names = column_names,
                                     output_column_names=column_names+['k_a', 'v', 'k_e'],)
@@ -269,7 +298,7 @@ class TotalTest(unittest.TestCase) :
         assert(eval_values['total_loss'] < 93)
 
         # print(model.descale().covariance_step())
-    
+
     def test_ODE(self):
 
         dataset_file_path = './examples/THEO_ODE.csv'
@@ -279,42 +308,7 @@ class TotalTest(unittest.TestCase) :
         device = tc.device("cpu")
         dataset = CSVDataset(dataset_file_path, column_names, device)
         
-        class Pred(predfunction.PredictionFunctionByODE) :
-            def __init__(self, dataset: tc.utils.data.Dataset, column_names: Iterable[str], output_column_names: Iterable[str]):
-                super().__init__(dataset, column_names, output_column_names)
-
-                self.theta_0 = Theta(0, 1.5, 10)
-                self.theta_1 = Theta(0, 32, 100)
-                self.theta_2 = Theta(0, 0.08, 1)
-
-                self.eta_0 = Eta()
-                self.eta_1 = Eta()
-                self.eta_2 = Eta()
-
-                self.eps_0 = Eps()
-                self.eps_1 = Eps()
-
-                self.initialize()
-            
-            def _calculate_parameters(self, **covs):
-                k_a = self.theta_0()*tc.exp(self.eta_0())
-                v = self.theta_1()*tc.exp(self.eta_1())*covs['COV']
-                k_e = self.theta_2()*tc.exp(self.eta_2())
-                return covs | {'k_a':k_a, 'v':v, 'k_e':k_e}
-            
-            def _calculate_preds(self, t, y, **para) -> tc.Tensor:
-                mat = tc.zeros(2,2, device=y.device)
-                mat[0,0] = -para['k_a']
-                mat[1,0] = para['k_a']
-                mat[1,1] = -para['k_e']
-                return mat @ y
-            
-            def _calculate_error(self, y_pred, **para) -> tc.Tensor:
-                y_pred= y_pred/para['v']
-                return y_pred +  y_pred * self.eps_0() + self.eps_1(), para
-
-
-        pred_function_module = Pred(dataset = dataset,
+        pred_function_module = ODEModel(dataset = dataset,
                                     column_names = column_names,
                                     output_column_names=column_names+['k_a', 'v', 'k_e'],)
 
@@ -328,10 +322,10 @@ class TotalTest(unittest.TestCase) :
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-1, tolerance_change= 1e-2)
 
-        # for p in model.descale().named_parameters():
-        #     print(p)
+        for p in model.descale().named_parameters():
+            print(p)
 
-        # print(model.descale().covariance_step())
+        print(model.descale().covariance_step())
 
         eval_values = model.descale().evaluate()
         for k, v in eval_values["parameters"].items() :
