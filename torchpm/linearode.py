@@ -24,7 +24,7 @@ class LinearODE :
         self.initial_states = self._get_initial_states()
         self.solve()
 
-    def _check_square_matrix(m, error_massage) :
+    def _check_square_matrix(self, m : List[List[float]], error_massage) :
         length = len(m)
         for row in m :
             if len(row) != length :
@@ -48,7 +48,7 @@ class LinearODE :
         Returns:
             eqs: differential equations of compartments
         """
-        LinearODE._check_square_matrix(self.distribution_bool_matrix, 'distribution_bool_matrix must be square matrix')
+        self._check_square_matrix(self.distribution_bool_matrix, 'distribution_bool_matrix must be square matrix')
 
         comps_num = len(self.distribution_bool_matrix)
 

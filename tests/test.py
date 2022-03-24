@@ -3,8 +3,6 @@ import logging
 from typing import Any, Iterable
 import unittest
 import torch as tc
-import torch.nn as nn
-import torch.nn.functional as F
 from torchpm import estimated_parameter, predfunction, models, linearode
 from torchpm.data import CSVDataset
 import matplotlib.pyplot as plt
@@ -20,6 +18,10 @@ class TestTemplate(unittest.TestCase) :
         pass
 '''
 
+"""
+    Args:.
+    Attributes: .
+"""
 class LinearODETest(unittest.TestCase) :
     def setUp(self):
         pass
@@ -46,10 +48,11 @@ class LinearODETest(unittest.TestCase) :
         result = model(t, ka, ke, dose)
         print(t)
         print(result)
-
+'''
+'''
 class BasementModel(predfunction.PredictionFunctionByTime) :
-    def __init__(self, dataset: CSVDataset, column_names: List[str], output_column_names: List[str], *args, **kwargs):
-        super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
+    def __init__(self, dataset: CSVDataset, column_names: List[str], output_column_names: List[str]):
+        super().__init__(dataset, column_names, output_column_names)
 
         self.theta_0 = Theta(0., 1.5, 10.)
         self.theta_1 = Theta(0., 32., 100.)
@@ -121,7 +124,7 @@ class ODEModel(predfunction.PredictionFunctionByODE) :
     def __init__(self, dataset: CSVDataset, column_names: List[str], output_column_names: List[str], *args, **kwargs):
         super().__init__(dataset, column_names, output_column_names, *args, **kwargs)
 
-        self.theta_0 = Theta(0., 1.5, 10.)
+        self.theta_0 = Theta(0., 1.5, 10)
         self.theta_1 = Theta(0, 32, 100)
         self.theta_2 = Theta(0, 0.08, 1)
 
@@ -168,18 +171,18 @@ class TotalTest(unittest.TestCase) :
                                     column_names = column_names,
                                     output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e'],)
 
-        omega = Omega([[0.4397,
+        omega = Omega([0.4397,
                         0.0575,  0.0198, 
-                        -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
+                        -0.0069,  0.0116,  0.0205], [False], requires_grads=True)
         sigma = Sigma([0.0177, 0.0762], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['0', '1', '2'],
-                                eta_names=[['0', '1','2']], 
+                                eta_names= [['0', '1','2']], 
                                 eps_names= [['0','1']], 
                                 omega=omega, 
                                 sigma=sigma)
-        
+                                
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
 
@@ -200,9 +203,11 @@ class TotalTest(unittest.TestCase) :
         tc.manual_seed(42)
         simulation_result = model.simulate(dataset, 300)
 
+        i = 0
+        fig = plt.figure()
         for id, time_data in simulation_result['times'].items() :
-            fig = plt.figure()
-            ax = fig.add_subplot(1, 1, 1)
+            i += 1
+            ax = fig.add_subplot(12, 1, i)
             print('id', id)
             
             p95 = np.percentile(tc.stack(simulation_result['preds'][id]).to('cpu'), 95, 0)
@@ -217,12 +222,14 @@ class TotalTest(unittest.TestCase) :
             
             for y_pred in simulation_result['preds'][id] :
                 ax.plot(time_data.to('cpu'), y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
-            plt.show()
+        plt.show()
 
     def test_evaluate(self):
-        device = self.device
-        dataset = self.dataset
-        column_names = self.column_names
+        dataset_file_path = './examples/THEO.csv'
+        
+        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        dataset = CSVDataset(dataset_file_path, column_names, device)
 
         pred_function_module = BasementModel(dataset = dataset,
                                     column_names = column_names,
@@ -231,7 +238,7 @@ class TotalTest(unittest.TestCase) :
         omega = Omega([[0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
-        sigma = Sigma([[0.0177, 0.0762]], [True])
+        sigma = Sigma([0.0177, 0.0762], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['0', '1', '2'],
@@ -257,8 +264,8 @@ class TotalTest(unittest.TestCase) :
     def test_pred_amt(self):
         dataset_file_path = './examples/THEO_AMT.csv'
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
-
-        device = self.device
+        
+        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         dataset = CSVDataset(dataset_file_path, column_names, device)
 
         pred_function_module = AmtModel(dataset = dataset,
@@ -271,8 +278,8 @@ class TotalTest(unittest.TestCase) :
         sigma = Sigma( [[0.0177, 0.0762]], [True])
 
         model = models.FOCEInter(pred_function_module, 
-                                theta_names='0',
-                                eta_names=['0', '1','2'], 
+                                theta_names=['0'],
+                                eta_names=[['0', '1','2']], 
                                 eps_names= [['0','1']], 
                                 omega=omega, 
                                 sigma=sigma)
