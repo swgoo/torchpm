@@ -9,15 +9,13 @@ from . import predfunction
 from . import loss
 from .misc import *
 
-import itertools
-
 class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
                  pred_function_module : predfunction.PredictionFunctionModule,
                  theta_names : List[str],
-                 eta_names : List[List[str]],
-                 eps_names : List[List[str]],
+                 eta_names : List[str],
+                 eps_names : List[str],
                  omega : Omega,
                  sigma : Sigma,
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
@@ -38,15 +36,13 @@ class FOCEInter(tc.nn.Module) :
 
         etas = pred_output['etas']
         eta = []
-        for eta_names in self.eta_names:
-            for eta_name in eta_names:
-                eta.append(etas[eta_name])
+        for eta_name in self.eta_names:
+            eta.append(etas[eta_name])
 
         epss = pred_output['epss']
         eps = []
-        for eps_names in self.eps_names:
-            for eps_name in eps_names:
-                eps.append(epss[eps_name])
+        for eps_name in self.eps_names:\
+            eps.append(epss[eps_name])
 
         y_pred, g, h = self._partial_different(pred_output['y_pred'], eta, eps)
 
@@ -271,9 +267,14 @@ class FOCEInter(tc.nn.Module) :
         
         thetas = [theta_dict[key] for key in self.theta_names]
 
+        requires_grad_memory = []
         estimated_parameters = [*thetas,
                         *self.omega.parameter_values,
                         *self.sigma.parameter_values]
+
+        for para in estimated_parameters :
+            requires_grad_memory.append(para.requires_grad)
+            para.requires_grad = True
  
         r_mat = tc.zeros(cov_mat_dim, cov_mat_dim, device=dataset.device)
  
@@ -328,6 +329,9 @@ class FOCEInter(tc.nn.Module) :
 
         ei_values_sorted, _ = ei_values.sort()
         inv_cov = r_mat @ s_mat.inverse() @ r_mat
+
+        for para, grad in zip(estimated_parameters, requires_grad_memory) :
+            para.requires_grad = grad
         
         return {'cov': cov, 'se': se, 'cor': correl, 'ei_values': ei_values_sorted , 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
         # return {'cov': cov, 'se': se, 'cor': correl, 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
@@ -344,13 +348,11 @@ class FOCEInter(tc.nn.Module) :
         sigma = self.sigma()
 
 
-        eta_names = list(itertools.chain(*self.eta_names))
         eta_parameter_values = self.pred_function_module.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)
         mvn_eta = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eta_size, device=dataset.device), omega)
         etas = mvn_eta.rsample(tc.tensor((len(dataset), repeat), device=dataset.device))
 
-        eps_names = list(itertools.chain(*self.eps_names))
         eps_parameter_values = self.pred_function_module.get_eps_parameter_values()
         eps_size = len(eps_parameter_values)
         mvn_eps = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eps_size, device=dataset.device), sigma)
@@ -358,12 +360,13 @@ class FOCEInter(tc.nn.Module) :
 
         dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
 
-        etas_result : Dict[str, tc.Tensor] = {}
-        epss_result : Dict[str, tc.Tensor] = {}
-        preds : Dict[str, List[tc.Tensor]] = {}
-        times : Dict[str, tc.Tensor] = {}
-        output_columns : Dict[str, List[Dict[str, tc.Tensor]]] = {}
- 
+        # etas_result : Dict[str, tc.Tensor] = {}
+        # epss_result : Dict[str, tc.Tensor] = {}
+        # preds : Dict[str, List[tc.Tensor]] = {}
+        # times : Dict[str, tc.Tensor] = {}
+        # output_columns : Dict[str, List[Dict[str, tc.Tensor]]] = {}
+
+        result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]] = {}
         for i, (data, _) in enumerate(dataloader):
             
             id = str(int(data[:, self.pred_function_module._column_names.index('ID')][0]))
@@ -373,28 +376,38 @@ class FOCEInter(tc.nn.Module) :
 
             time_data = data[:,self.pred_function_module._column_names.index('TIME')].t()
 
-            times[id] = time_data
-            etas_result[id] = etas_cur
-            epss_result[id] = epss_cur
-            preds[id] = []
-            output_columns[id] = []
-
+            # times[id] = time_data
+            # etas_result[id] = etas_cur
+            # epss_result[id] = epss_cur
+            # preds[id] = []
+            # output_columns[id] = []
+            result[id] = {}
+            result_cur_id : Dict[str, Union[tc.Tensor, List[tc.Tensor]]] = result[id]
+            result_cur_id['time'] = time_data
+            result_cur_id['etas'] = etas_cur
+            result_cur_id['epss'] = epss_cur
+            result_cur_id['preds'] = []
             for repeat_iter in range(repeat) :
 
                 with tc.no_grad() :
                     eta_value = etas_cur[repeat_iter]
                     eps_value = epss_cur[repeat_iter]
 
-                    for eta_i, name in enumerate(eta_names) :
+                    for eta_i, name in enumerate(self.eta_names) :
                         eta_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eta_value[eta_i])})
 
-                    for eps_i, name in enumerate(eps_names) :
+                    for eps_i, name in enumerate(self.eps_names) :
                         eps_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eps_value[:data.size()[0],eps_i])})
 
                     r  = self.pred_function_module(data)
                     y_pred = r['y_pred']
 
-                    preds[id].append(y_pred)
-                    output_columns[id].append(r['output_columns'])
+                    result_cur_id['preds'].append(y_pred)
+                    for name, value in r['output_columns'].items() :
+                        if name not in result_cur_id.keys() :
+                            result_cur_id[name] = []
+                        result_cur_id[name].append(value)
+                    # output_columns[id].append(r['output_columns'])
 
-        return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'output_columns': output_columns}
+        # return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'output_columns': output_columns}
+        return result

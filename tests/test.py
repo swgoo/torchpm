@@ -32,6 +32,11 @@ class LinearODETest(unittest.TestCase) :
         result = model(t, ke, dose, rate)
         print(t)
         print(result)
+        print('time-pred')
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
+        plt.show()
 
     def test_gut(self):
         model = linearode.Comp1GutModelFunction()
@@ -42,12 +47,18 @@ class LinearODETest(unittest.TestCase) :
         result = model(t, ka, ke, dose)
         print(t)
         print(result)
-'''
-'''
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
+        plt.show()
+
 class BasementModel(predfunction.PredictionFunctionByTime) :
+    '''
+        pass
+    '''
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0., 1.5, 10.)
-        self.theta_1 = Theta(0., 32., 100.)
+        self.theta_1 = Theta(0., 30., 100.)
         self.theta_2 = Theta(0, 0.08, 1)
 
         self.eta_0 = Eta()
@@ -59,11 +70,11 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
 
         self.gut_model = linearode.Comp1GutModelFunction()
     
-    def _calculate_parameters(self, p):
-        p['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        p['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
-        p['k_e'] = self.theta_2()*tc.exp(self.eta_2())
-        p['AMT'] = tc.tensor(320., device=self.dataset.device)
+    def _calculate_parameters(self, covariates):
+        covariates['k_a'] = self.theta_0()*tc.exp(self.eta_0())
+        covariates['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
+        covariates['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+        covariates['AMT'] = tc.tensor(320., device=self.dataset.device)
 
     def _calculate_preds(self, t, p):
         dose = p['AMT'][0]
@@ -110,7 +121,7 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
 class ODEModel(predfunction.PredictionFunctionByODE) :
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0., 1.5, 10)
-        self.theta_1 = Theta(0, 32, 100)
+        self.theta_1 = Theta(0, 30, 100)
         self.theta_2 = Theta(0, 0.08, 1)
 
         self.eta_0 = Eta()
@@ -158,13 +169,13 @@ class TotalTest(unittest.TestCase) :
 
         omega = Omega([0.4397,
                         0.0575,  0.0198, 
-                        -0.0069,  0.0116,  0.0205], [False], requires_grads=True)
-        sigma = Sigma([0.0177, 0.0762], [True])
+                        -0.0069,  0.0116,  0.0205], False, requires_grads=False)
+        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
-                                eta_names= [['eta_0', 'eta_1','eta_2']], 
-                                eps_names= [['eps_0','eps_1']], 
+                                eta_names= ['eta_0', 'eta_1','eta_2'], 
+                                eps_names= ['eps_0','eps_1'], 
                                 omega=omega, 
                                 sigma=sigma)
                                 
@@ -183,34 +194,35 @@ class TotalTest(unittest.TestCase) :
 
         print(model.descale().covariance_step())
 
-        assert(eval_values['total_loss'] < 93)
-
         tc.manual_seed(42)
         simulation_result = model.simulate(dataset, 300)
 
         i = 0
         fig = plt.figure()
-        for id, time_data in simulation_result['times'].items() :
+
+        for id, values in simulation_result.items() :
             i += 1
             ax = fig.add_subplot(12, 1, i)
             print('id', id)
+            time_data : tc.Tensor = values['time'].to('cpu')
             
-            p95 = np.percentile(tc.stack(simulation_result['preds'][id]).to('cpu'), 95, 0)
-            p50 = np.percentile(tc.stack(simulation_result['preds'][id]).to('cpu'), 50, 0)
-            average = np.average(tc.stack(simulation_result['preds'][id]).to('cpu'), 0)
-            p5 = np.percentile(tc.stack(simulation_result['preds'][id]).to('cpu'), 5, 0)
+            preds : List[tc.Tensor] = values['preds']
+            preds_tensor = tc.stack(preds).to('cpu')
+            p95 = np.percentile(preds_tensor, 95, 0)
+            p50 = np.percentile(preds_tensor, 50, 0)
+            average = np.average(preds_tensor, 0)
+            p5 = np.percentile(preds_tensor, 5, 0)
             
-            ax.plot(time_data.to('cpu'), p95, color="black")
-            ax.plot(time_data.to('cpu'), p50, color="green")
-            ax.plot(time_data.to('cpu'), average, color="red")
-            ax.plot(time_data.to('cpu'), p5, color="black")
-            
-            for y_pred in simulation_result['preds'][id] :
-                ax.plot(time_data.to('cpu'), y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
-        plt.show()
-        
+            ax.plot(time_data, p95, color="black")
+            ax.plot(time_data, p50, color="green")
+            ax.plot(time_data, average, color="red")
+            ax.plot(time_data, p5, color="black")
 
-    # TODO AmtModel의 _calculate_parameters에서 AMT 연산할 수 있도록 제공
+            for y_pred in values['preds'] :
+                ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
+        plt.show()
+        assert(eval_values['total_loss'] < 93)
+    
     def test_pred_amt(self):
         dataset_file_path = './examples/THEO_AMT.csv'
         dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
@@ -227,12 +239,12 @@ class TotalTest(unittest.TestCase) :
         omega = Omega([[0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
-        sigma = Sigma( [[0.0177, 0.0762]], [True])
+        sigma = Sigma([0.0177, 0.0762], [True])
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names=['theta_0'],
-                                eta_names=[['eta_0', 'eta_1','eta_2']], 
-                                eps_names= [['eps_0','eps_1']], 
+                                eta_names=['eta_0', 'eta_1','eta_2'], 
+                                eps_names= ['eps_0','eps_1'], 
                                 omega=omega, 
                                 sigma=sigma)
         
@@ -270,8 +282,8 @@ class TotalTest(unittest.TestCase) :
 
         model = models.FOCEInter(pred_function_module, 
                                 theta_names = ['theta_0', 'theta_1', 'theta_2'],
-                                eta_names=[['eta_0', 'eta_1','eta_2']], 
-                                eps_names= [['eps_0','eps_1']], 
+                                eta_names=['eta_0', 'eta_1','eta_2'], 
+                                eps_names= ['eps_0','eps_1'], 
                                 omega=omega, 
                                 sigma=sigma)
         

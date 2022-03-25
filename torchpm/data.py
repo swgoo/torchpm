@@ -29,8 +29,6 @@ class CSVDataset(tc.utils.data.Dataset):
 
                  device : tc.device = tc.device("cpu")):
 
-        # self.file_path = file_path
-
         self.column_names = column_names
 
         self.device = device
