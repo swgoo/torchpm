@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, List, Optional
 
 import torch as tc
 import numpy as np
@@ -12,14 +12,14 @@ class CSVDataset(tc.utils.data.Dataset):
     """
     
     def __init__(self, 
-                 file_path : str,
-                 column_names : Iterable[str],
-                 device : tc.DeviceObjType = tc.device("cpu")):
-        self.file_path = file_path
+                 numpy_dataset : np.ndarray,
+                 column_names : List[str],
+                 device : tc.device = tc.device("cpu")):
+        # self.file_path = file_path
         self.column_names = column_names
         self.device = device
         
-        dataset_total = np.loadtxt(self.file_path, delimiter=',', dtype=np.float32, skiprows=1)
+        dataset_total = numpy_dataset
         y_true_total = dataset_total[:,self.column_names.index('DV')]
         
         ids, ids_start_idx = np.unique(dataset_total[:, column_names.index('ID')], return_index=True)
@@ -58,7 +58,7 @@ class DataPartitioner(object):
         partitions: sizes for dividing dataset by a ID.
         device: data loaded locations
     """
-    def __init__(self, data : tc.utils.data.Dataset, sizes : Iterable[int] = None, devices : Iterable[tc.DeviceObjType] = None):
+    def __init__(self, data : CSVDataset, sizes : List[int], devices : List[tc.DeviceObjType]):
 
         if len(sizes) != len(devices) :
             raise Exception('sizes length must equal devices length.')

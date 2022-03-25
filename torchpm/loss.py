@@ -6,11 +6,11 @@ from .misc import *
 
 class ObjectiveFunction(metaclass=abc.ABCMeta) :
     @abc.abstractmethod
-    def __call__(self, y_true, y_pred, g, h, eta, omega, sigma) :
+    def __call__(self, y_true, y_pred, g, h, eta, omega, sigma) -> tc.Tensor:
         pass
 
 class FOCEInterObjectiveFunction(ObjectiveFunction) :
-    def __call__(self, y_true, y_pred, g, h, eta, omega, sigma) :
+    def __call__(self, y_true, y_pred, g, h, eta, omega, sigma) -> tc.Tensor:
 
         res = y_true - y_pred
         v = (h @ sigma @ h.t()).diag().diag()

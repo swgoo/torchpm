@@ -1,12 +1,10 @@
-import numbers
 import time
-from typing import List, Dict, Iterable
-from sympy import false
+from typing import Callable, List, Dict, Optional
 import torch as tc
 import torch.distributed as dist
 
-from torchpm import estimated_parameter
-
+from .estimated_parameter import *
+from .data import CSVDataset
 from . import predfunction
 from . import loss
 from .misc import *
@@ -17,14 +15,16 @@ class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
                  pred_function_module : predfunction.PredictionFunctionModule,
-                 theta_names : Iterable[Iterable[str]],
-                 eta_names : Iterable[Iterable[str]],
-                 eps_names : Iterable[Iterable[str]],
-                 omega : estimated_parameter.Omega,
-                 sigma : estimated_parameter.Sigma,
+                 theta_names : List[str],
+                 eta_names : List[List[str]],
+                 eps_names : List[List[str]],
+                 omega : Omega,
+                 sigma : Sigma,
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
         super(FOCEInter, self).__init__()
         self.pred_function_module = pred_function_module
+
+
         self.theta_names = theta_names
         self.eta_names = eta_names
         self.eps_names = eps_names
@@ -53,7 +53,7 @@ class FOCEInter(tc.nn.Module) :
         eta = tc.stack(eta)
         eps = tc.stack(eps)
 
-        return y_pred, eta, eps, g, h, self.omega(), self.sigma(), pred_output['mdv_mask'], pred_output['output_columns']
+        return y_pred, eta, eps, g, h, self.omega().to(dataset.device), self.sigma().to(dataset.device), pred_output['mdv_mask'], pred_output['output_columns']
     
     def _partial_different(self, y_pred, eta, eps):
         eta_size = len(eta)
@@ -74,7 +74,7 @@ class FOCEInter(tc.nn.Module) :
                     h[i_h,i_eps] = h_elem[0][i_h]
         return y_pred, g, h
 
-    def optimization_function(self, dataset, optimizer, checkpoint_file_path : str = None):
+    def optimization_function(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
         """
         optimization function for L-BFGS 
         Args:
@@ -114,7 +114,7 @@ class FOCEInter(tc.nn.Module) :
             return total_loss
         return fit
     
-    def optimization_function_for_multiprocessing(self, rank, dataset, optimizer, checkpoint_file_path : str = None):
+    def optimization_function_for_multiprocessing(self, rank, dataset, optimizer, checkpoint_file_path : Optional[str] = None):
         """
         optimization function for L-BFGS multiprocessing
         Args:
@@ -172,7 +172,7 @@ class FOCEInter(tc.nn.Module) :
         total_loss = tc.tensor(0., device = self.pred_function_module.dataset.device)
         # self.pred_function_module.reset_epss()
 
-        losses : Dict[str, tc.Tensor] = {}
+        losses : Dict[str, float] = {}
         times : Dict[str, tc.Tensor] = {}
         preds : Dict[str, tc.Tensor] = {} 
         cwress : Dict[str, tc.Tensor] = {}
@@ -233,7 +233,7 @@ class FOCEInter(tc.nn.Module) :
         
         return parameters
 
-    def fit_population(self, checkpoint_file_path : str = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 1e-2, max_iteration = 1000,):
+    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-2, tolerance_change = 1e-2, max_iteration = 1000,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()
@@ -246,7 +246,7 @@ class FOCEInter(tc.nn.Module) :
         optimizer.step(opt_fn)
         return self
     
-    def fit_individual(self, checkpoint_file_path : str = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 3e-2, max_iteration = 1000,):
+    def fit_individual(self, checkpoint_file_path : Optional[str] = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 3e-2, max_iteration = 1000,):
         max_iter = max_iteration
         parameters = self.parameters_for_individual()
         optimizer = tc.optim.LBFGS(parameters, 
@@ -333,7 +333,7 @@ class FOCEInter(tc.nn.Module) :
         # return {'cov': cov, 'se': se, 'cor': correl, 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
 
     #TODO 경고, simulation 사용하면 안에 들어있던 eta데이터 덮어 씌움
-    def simulate(self, dataset, repeat) :
+    def simulate(self, dataset : CSVDataset, repeat : int) :
         """
         simulationg
         Args:
@@ -348,7 +348,7 @@ class FOCEInter(tc.nn.Module) :
         eta_parameter_values = self.pred_function_module.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)
         mvn_eta = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eta_size, device=dataset.device), omega)
-        etas = mvn_eta.rsample(tc.tensor([len(dataset), repeat], device=dataset.device))
+        etas = mvn_eta.rsample(tc.tensor((len(dataset), repeat), device=dataset.device))
 
         eps_names = list(itertools.chain(*self.eps_names))
         eps_parameter_values = self.pred_function_module.get_eps_parameter_values()
@@ -362,7 +362,7 @@ class FOCEInter(tc.nn.Module) :
         epss_result : Dict[str, tc.Tensor] = {}
         preds : Dict[str, List[tc.Tensor]] = {}
         times : Dict[str, tc.Tensor] = {}
-        parameters : Dict[str, Dict[str, tc.Tensor]] = {}
+        output_columns : Dict[str, List[Dict[str, tc.Tensor]]] = {}
  
         for i, (data, _) in enumerate(dataloader):
             
@@ -377,15 +377,13 @@ class FOCEInter(tc.nn.Module) :
             etas_result[id] = etas_cur
             epss_result[id] = epss_cur
             preds[id] = []
-            parameters[id] = []
+            output_columns[id] = []
 
             for repeat_iter in range(repeat) :
 
                 with tc.no_grad() :
                     eta_value = etas_cur[repeat_iter]
                     eps_value = epss_cur[repeat_iter]
-
-                    
 
                     for eta_i, name in enumerate(eta_names) :
                         eta_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eta_value[eta_i])})
@@ -397,6 +395,6 @@ class FOCEInter(tc.nn.Module) :
                     y_pred = r['y_pred']
 
                     preds[id].append(y_pred)
-                    parameters[id].append(r['output_columns'])
+                    output_columns[id].append(r['output_columns'])
 
-        return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'parameters': parameters}
+        return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'output_columns': output_columns}
