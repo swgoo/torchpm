@@ -184,10 +184,8 @@ class TotalTest(unittest.TestCase) :
 
         eval_values = model.evaluate()
         for k, v in eval_values.items():
-            if k == 'parameters': continue
-            print(k, v)
-        for k, v in eval_values["parameters"].items() :
-            print(k, '\n', v)
+            print(k)
+            print(v)
 
         for p in model.descale().named_parameters():
             print(p)
@@ -221,7 +219,6 @@ class TotalTest(unittest.TestCase) :
             for y_pred in values['preds'] :
                 ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
         plt.show()
-        assert(eval_values['total_loss'] < 93)
     
     def test_pred_amt(self):
         dataset_file_path = './examples/THEO_AMT.csv'
