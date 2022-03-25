@@ -168,16 +168,14 @@ class FOCEInter(tc.nn.Module) :
         total_loss = tc.tensor(0., device = self.pred_function_module.dataset.device)
         # self.pred_function_module.reset_epss()
 
-        losses : Dict[str, float] = {}
-        times : Dict[str, tc.Tensor] = {}
-        preds : Dict[str, tc.Tensor] = {} 
-        cwress : Dict[str, tc.Tensor] = {}
-        mdv_masks : Dict[str, tc.Tensor] = {}
-        ouput_columns : Dict[str, tc.Tensor] = {}
+        result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]]= {}
         for data, y_true in dataloader:
-
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameter = self(data)
             id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
+
+            result[id] = {}
+            result_cur_id = result[id]
+
 
             y_pred_masked = y_pred.masked_select(mdv_mask)
             eta_size = g.size()[-1]
@@ -190,27 +188,22 @@ class FOCEInter(tc.nn.Module) :
 
             y_true_masked = y_true.masked_select(mdv_mask)
             loss = self.objective_function(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
+
+            result_cur_id['loss'] = loss
             
-            cwress[id] = cwres(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
-            preds[id] = y_pred
-            losses[id] = float(loss)
-            times[id] = data[:,self.pred_function_module._column_names.index('TIME')]
-            mdv_masks[id] = mdv_mask
-            
-            ouput_columns[id] = parameter
-                        
-            with tc.no_grad() :
-                total_loss.add_(loss)
+            result_cur_id['cwres'] = cwres(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
+            result_cur_id['pred'] = y_pred
+            result_cur_id['time'] = data[:,self.pred_function_module._column_names.index('TIME')]
+            result_cur_id['mdv_mask'] = mdv_mask
+
+            for name, value in parameter.items() :
+                if name not in result_cur_id.keys() :
+                    result_cur_id[name] = []
+                result_cur_id[name].append(value)
             
         self.load_state_dict(state, strict=False)
         
-        return {'total_loss': total_loss, 
-                'losses': losses, 
-                'times': times, 
-                'preds': preds, 
-                'cwress': cwress,
-                'mdv_masks': mdv_masks,
-                'parameters': ouput_columns}
+        return result
     
     def descale(self) :
         self.pred_function_module.descale()
@@ -407,7 +400,4 @@ class FOCEInter(tc.nn.Module) :
                         if name not in result_cur_id.keys() :
                             result_cur_id[name] = []
                         result_cur_id[name].append(value)
-                    # output_columns[id].append(r['output_columns'])
-
-        # return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'output_columns': output_columns}
         return result
