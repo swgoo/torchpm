@@ -1,10 +1,7 @@
-import numbers
 import time
-from typing import Callable, List, Dict, Iterable, Optional, Union
-from sympy import false
+from typing import Callable, List, Dict, Optional
 import torch as tc
 import torch.distributed as dist
-import numpy as np
 
 from .estimated_parameter import *
 from .data import CSVDataset
@@ -365,7 +362,7 @@ class FOCEInter(tc.nn.Module) :
         epss_result : Dict[str, tc.Tensor] = {}
         preds : Dict[str, List[tc.Tensor]] = {}
         times : Dict[str, tc.Tensor] = {}
-        parameters : Dict[str, List[Dict[str, tc.Tensor]]] = {}
+        output_columns : Dict[str, List[Dict[str, tc.Tensor]]] = {}
  
         for i, (data, _) in enumerate(dataloader):
             
@@ -380,7 +377,7 @@ class FOCEInter(tc.nn.Module) :
             etas_result[id] = etas_cur
             epss_result[id] = epss_cur
             preds[id] = []
-            parameters[id] = []
+            output_columns[id] = []
 
             for repeat_iter in range(repeat) :
 
@@ -398,6 +395,6 @@ class FOCEInter(tc.nn.Module) :
                     y_pred = r['y_pred']
 
                     preds[id].append(y_pred)
-                    parameters[id].append(r['output_columns'])
+                    output_columns[id].append(r['output_columns'])
 
-        return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'parameters': parameters}
+        return {'times': times, 'preds': preds, 'etas': etas_result, 'epss': epss_result, 'output_columns': output_columns}

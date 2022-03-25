@@ -28,13 +28,11 @@ class PredictionFunctionModule(tc.nn.Module):
 
                 dataset : data.CSVDataset,
 
-                column_names : List[str],
-
                 output_column_names: List[str]):
 
         super(PredictionFunctionModule, self).__init__()
         self.dataset = dataset
-        self._column_names = column_names
+        self._column_names = dataset.column_names
         self._output_column_names = output_column_names
 
         self._ids = set()
@@ -52,9 +50,12 @@ class PredictionFunctionModule(tc.nn.Module):
             self._record_lengths[str(int(id))] = data[0].size()[0]
 
             self._max_record_length = max(data[0].size()[0], self._max_record_length)
+        
+        self._set_estimated_parameters()
+        self._initialize()
     
 
-    def initialize(self):
+    def _initialize(self):
 
         self._theta_names : Set[str] = set()
 
@@ -75,11 +76,11 @@ class PredictionFunctionModule(tc.nn.Module):
 
                 if att_type is Theta :
 
-                    self._theta_names.add(att_name.replace('theta_', ''))
+                    self._theta_names.add(att_name)
 
                 elif att_type is Eta :
 
-                    self._eta_names.add(att_name.replace('eta_', ''))
+                    self._eta_names.add(att_name)
 
                     for id in self._ids :
 
@@ -89,7 +90,7 @@ class PredictionFunctionModule(tc.nn.Module):
 
                 elif att_type is Eps :
 
-                    self._eps_names.add(att_name.replace('eps_', ''))
+                    self._eps_names.add(att_name)
 
                     for id in self._ids :
 
@@ -98,13 +99,13 @@ class PredictionFunctionModule(tc.nn.Module):
                         att.parameter_values[str(int(id))] = eps_value
 
 
-    def _get_estimated_parameters(self, prefix, names) :
+    def _get_estimated_parameters(self, names) :
 
         dictionary : Dict[str, tc.Tensor] = {}
 
         for name in names :
 
-            att = getattr(self, prefix + name)
+            att = getattr(self, name)
 
             dictionary[name] = att()
 
@@ -113,26 +114,26 @@ class PredictionFunctionModule(tc.nn.Module):
 
     def get_thetas(self) :
 
-        return self._get_estimated_parameters('theta_', self._theta_names)
+        return self._get_estimated_parameters(self._theta_names)
     
 
     def get_etas(self) :
 
-        return self._get_estimated_parameters('eta_', self._eta_names)
+        return self._get_estimated_parameters(self._eta_names)
     
 
     def get_epss(self) :
 
-        return self._get_estimated_parameters('eps_', self._eps_names)
+        return self._get_estimated_parameters(self._eps_names)
     
 
-    def _get_estimated_parameter_values(self, prefix, names) -> Dict[str, Any]:
+    def _get_estimated_parameter_values(self, names) -> Dict[str, Any]:
 
         dictionary : Dict[str, tc.Tensor] = {}
 
         for name in names :
 
-            att = getattr(self, prefix + name)
+            att = getattr(self, name)
             parameter_att_list = dir(att)
 
             if 'parameter_value' in parameter_att_list:
@@ -148,17 +149,17 @@ class PredictionFunctionModule(tc.nn.Module):
 
     def get_theta_parameter_values(self) :
 
-        return self._get_estimated_parameter_values('theta_', self._theta_names)
+        return self._get_estimated_parameter_values(self._theta_names)
     
 
     def get_eta_parameter_values(self) -> Dict[str, nn.ParameterDict]:
 
-        return self._get_estimated_parameter_values('eta_', self._eta_names)
+        return self._get_estimated_parameter_values(self._eta_names)
     
 
     def get_eps_parameter_values(self) -> Dict[str, Dict[str, nn.Parameter]]:
 
-        return self._get_estimated_parameter_values('eps_', self._eps_names)
+        return self._get_estimated_parameter_values(self._eps_names)
 
 
     def reset_epss(self) :
@@ -175,7 +176,7 @@ class PredictionFunctionModule(tc.nn.Module):
 
                 if att_type is Eps :
 
-                    self._eps_names.add(att_name.replace('eps_', ''))
+                    # self._eps_names.add(att_name.replace('eps_', ''))
 
                     for id in self._ids :
 
@@ -234,20 +235,21 @@ class PredictionFunctionModule(tc.nn.Module):
 
         for name in self._eta_names:
 
-            att = getattr(self, 'eta_' + name)
+            att = getattr(self, name)
             att.id = id
 
 
         for name in self._eps_names:
 
-            att = getattr(self, 'eps_' + name)
+            att = getattr(self, name)
             att.id = id
         
 
         covariates = self._get_covariates(dataset)
 
-        parameters = self._calculate_parameters(**covariates)
-
+        # parameters = self._calculate_parameters(covariates)
+        self._calculate_parameters(covariates)
+        parameters = covariates
         record_length = dataset.size()[0]
 
         for key, para in parameters.items():
@@ -277,17 +279,20 @@ class PredictionFunctionModule(tc.nn.Module):
                 output_columns[cov_name] = parameters[cov_name]
 
         return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
-    
 
     @abstractmethod
-
-    def _calculate_parameters(self, **covariates : Dict[str, tc.Tensor]) -> Dict[str, tc.Tensor]:
+    def _set_estimated_parameters(self):
         pass
     
 
     @abstractmethod
-
-    def _calculate_error(self, y_pred: tc.Tensor, **parameters: tc.Tensor) -> tuple[tc.Tensor, Dict[str, tc.Tensor]]:
+    def _calculate_parameters(self, covariates : Dict[str, tc.Tensor]) -> None:
+    # def _calculate_parameters(self, covariates : Dict[str, tc.Tensor]) -> Dict[str, tc.Tensor]:
+        pass
+    
+    @abstractmethod
+    def _calculate_error(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
+    # def _calculate_error(self, y_pred: tc.Tensor, parameters: tc.Tensor) -> tuple[tc.Tensor, Dict[str, tc.Tensor]]:
         pass
     
 
@@ -312,13 +317,11 @@ class PredictionFunctionModule(tc.nn.Module):
 
 class PredictionFunctionByTime(PredictionFunctionModule):
 
-    def __init__(self, dataset: data.CSVDataset, column_names: List[str], output_column_names: List[str]):
-        super().__init__(dataset, column_names, output_column_names)
-
+    def __init__(self, dataset: data.CSVDataset, output_column_names: List[str]):
+        super().__init__(dataset, output_column_names)
 
     @abstractmethod
-
-    def _calculate_preds(self, t, **parameters) -> tc.Tensor:
+    def _calculate_preds(self, t : tc.Tensor, parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
 
@@ -352,12 +355,12 @@ class PredictionFunctionByTime(PredictionFunctionModule):
 
             t = times - start_time
 
-            f_cur = self._calculate_preds(t, **parameters_sliced)
+            f_cur = self._calculate_preds(t, parameters_sliced)
 
             f = f + tc.cat([f_pre, f_cur], 0)
         
 
-        y_pred, parameters = self._calculate_error(f, **parameters)
+        y_pred = self._calculate_error(f, parameters)
 
         mdv_mask = dataset[:,self._column_names.index('MDV')] == 0
         
@@ -386,15 +389,14 @@ class PredictionFunctionByODE(PredictionFunctionModule):
 
     atol : float = 1e-2
 
-
-    def __init__(self, dataset: data.CSVDataset, column_names: List[str], output_column_names: List[str]):
-        super().__init__(dataset, column_names, output_column_names)
+    def __init__(self, dataset: data.CSVDataset, output_column_names: List[str]):
+        super().__init__(dataset, output_column_names)
         self.parameter_values : Dict[str, tc.Tensor] = {}
 
 
     @abstractmethod
 
-    def _calculate_preds(self, t : tc.Tensor, y: tc.Tensor , **parameters : tc.Tensor) -> tc.Tensor:
+    def _calculate_preds(self, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
  
 
@@ -405,7 +407,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
         parameters_sliced = {k: v[index] for k, v in self.parameter_values.items()}
     
 
-        return self._calculate_preds(t, y, **parameters_sliced) + \
+        return self._calculate_preds(t, y, parameters_sliced) + \
             self.infusion_rate * (self.infusion_end_time > t)
     
 
@@ -492,7 +494,7 @@ class PredictionFunctionByODE(PredictionFunctionModule):
 
             parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}
 
-            y_pred, parameters_sliced = self._calculate_error(y_integrated, **parameters_sliced)
+            y_pred = self._calculate_error(y_integrated, parameters_sliced)
             
 
             for k, v in parameters_sliced.items() :

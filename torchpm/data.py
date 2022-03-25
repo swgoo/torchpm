@@ -12,14 +12,14 @@ class CSVDataset(tc.utils.data.Dataset):
     """
     
     def __init__(self, 
-                 file_path : str,
+                 numpy_dataset : np.ndarray,
                  column_names : List[str],
                  device : tc.device = tc.device("cpu")):
-        self.file_path = file_path
+        # self.file_path = file_path
         self.column_names = column_names
         self.device = device
         
-        dataset_total = np.loadtxt(self.file_path, delimiter=',', dtype=np.float32, skiprows=1)
+        dataset_total = numpy_dataset
         y_true_total = dataset_total[:,self.column_names.index('DV')]
         
         ids, ids_start_idx = np.unique(dataset_total[:, column_names.index('ID')], return_index=True)
