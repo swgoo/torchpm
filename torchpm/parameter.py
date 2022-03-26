@@ -163,7 +163,6 @@ class CovarianceMatrix(nn.Module) :
 
         self.scaled_parameter_for_save : Optional[List[nn.Parameter]] = None
         self.is_scale = True
-        self.diagonals = diagonals
 
         self.lower_triangular_vector_lengthes = []
         for init_vector in lower_triangular_vectors_init_tensor :
@@ -188,18 +187,19 @@ class CovarianceMatrix(nn.Module) :
                             requires_grad=requires_grad))
         
         self.scales = []
-        if type(self.diagonals) is bool :
-            diagonals_old = self.diagonals
-            self.diagonals = []
+        self.diagonals : List[bool] = []
+        if type(diagonals) is bool :
+            diagonals_old = diagonals
             for init_vector in lower_triangular_vectors_init_tensor:
                 s = self._set_scale(init_vector, diagonals_old)
                 self.scales.append(s)
                 self.diagonals.append(diagonals_old)
-            
-        elif isinstance(self.diagonals, Iterable)  :
-            for init_vector, diagonal in zip(lower_triangular_vectors_init_tensor, self.diagonals):
+        elif isinstance(diagonals, Iterable)  :
+            self.diagonals = diagonals
+            for init_vector, diagonal in zip(lower_triangular_vectors_init_tensor, diagonals):
                 s = self._set_scale(init_vector, diagonal)
                 self.scales.append(s)
+        
 
 
     def _set_scale(self, lower_triangular_vector_init, diagonal) :

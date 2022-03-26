@@ -1,13 +1,10 @@
-
-import logging
-from typing import Any, Iterable
 import unittest
 import torch as tc
-from torchpm import estimated_parameter, predfunction, models, linearode
+from torchpm import predfunction, models, linearode
 from torchpm.data import CSVDataset
+from torchpm.parameter import *
 import matplotlib.pyplot as plt
 import numpy as np
-from torchpm.estimated_parameter import *
 
 if __name__ == '__main__' :
     unittest.main()
@@ -158,8 +155,6 @@ class TotalTest(unittest.TestCase) :
         dataset_file_path = './examples/THEO.csv'
         dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
 
-
-
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
         dataset = CSVDataset(dataset_np, column_names, device)
@@ -249,11 +244,11 @@ class TotalTest(unittest.TestCase) :
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
 
         eval_values = model.evaluate()
-        for k, v in eval_values.items():
-            if k == 'parameters': continue
-            print(k, v)
-        for k, v in eval_values["parameters"].items() :
-            print(k, '\n', v)
+        for id, values in eval_values.items():
+            print(id)
+            for k, v in values.items() :
+                print(k)
+                print(v)
 
         for p in model.descale().named_parameters():
             print(p)
@@ -293,6 +288,8 @@ class TotalTest(unittest.TestCase) :
         print(model.descale().covariance_step())
 
         eval_values = model.descale().evaluate()
-        for k, v in eval_values["parameters"].items() :
-            print(k)
-            print(v)
+        for id, values in eval_values.items() :
+            print(id)
+            for k, v in values.items() :
+                print(k)
+                print(v)
