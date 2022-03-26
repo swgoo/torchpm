@@ -3,7 +3,7 @@ from typing import Callable, List, Dict, Optional
 import torch as tc
 import torch.distributed as dist
 
-from .estimated_parameter import *
+from .parameter import *
 from .data import CSVDataset
 from . import predfunction
 from . import loss

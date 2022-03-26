@@ -15,7 +15,7 @@ from collections import ChainMap
 from torchpm import data
 
 
-from .estimated_parameter import *
+from .parameter import *
 
 from .misc import *
 
