@@ -1,5 +1,6 @@
 import time
 from typing import Callable, List, Dict, Optional
+import typing
 import torch as tc
 import torch.distributed as dist
 
@@ -14,7 +15,7 @@ class FOCEInter(tc.nn.Module) :
     def __init__(self,
                  dataset : CSVDataset,
                  output_column_names: List[str],
-                 pred_function_module : type[predfunction.PredictionFunctionModule],
+                 pred_function_module : typing.Type[predfunction.PredictionFunctionModule],
                  theta_names : List[str],
                  eta_names : List[str],
                  eps_names : List[str],
