@@ -245,11 +245,10 @@ class PredictionFunctionModule(tc.nn.Module):
             att.id = id
         
 
-        covariates = self._get_covariates(dataset)
+        input_columns = self._get_input_columns(dataset)
 
-        # parameters = self._calculate_parameters(covariates)
-        self._calculate_parameters(covariates)
-        parameters = covariates
+        self._calculate_parameters(input_columns)
+        parameters = input_columns
         record_length = dataset.size()[0]
 
         for key, para in parameters.items():
@@ -286,8 +285,7 @@ class PredictionFunctionModule(tc.nn.Module):
     
 
     @abstractmethod
-    def _calculate_parameters(self, covariates : Dict[str, tc.Tensor]) -> None:
-    # def _calculate_parameters(self, covariates : Dict[str, tc.Tensor]) -> Dict[str, tc.Tensor]:
+    def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
         pass
     
     @abstractmethod
@@ -300,18 +298,18 @@ class PredictionFunctionModule(tc.nn.Module):
         pass
 
 
-    def _get_covariates(self, dataset) :
+    def _get_input_columns(self, dataset) :
         dataset = dataset.t()
         
 
-        covariates = {}
+        input_columns = {}
 
         for i, name in enumerate(self._column_names) :
 
-            covariates[name] = dataset[i]
+            input_columns[name] = dataset[i]
         
 
-        return covariates
+        return input_columns
 
 
 

@@ -1,6 +1,6 @@
 import unittest
 import torch as tc
-from torchpm import predfunction, models, linearode
+from torchpm import covariate, predfunction, models, linearode
 from torchpm.data import CSVDataset
 from torchpm.parameter import *
 import matplotlib.pyplot as plt
@@ -67,11 +67,11 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
 
         self.gut_model = linearode.Comp1GutModelFunction()
     
-    def _calculate_parameters(self, covariates):
-        covariates['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        covariates['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
-        covariates['k_e'] = self.theta_2()*tc.exp(self.eta_2())
-        covariates['AMT'] = tc.tensor(320., device=self.dataset.device)
+    def _calculate_parameters(self, para):
+        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
+        para['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
+        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+        para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
     def _calculate_preds(self, t, p):
         dose = p['AMT'][0]
@@ -293,3 +293,37 @@ class TotalTest(unittest.TestCase) :
             for k, v in values.items() :
                 print(k)
                 print(v)
+    
+    def test_covariate_model(self) :
+        def function(v_pop, v_ind, BWT):
+            value = v_pop()*tc.exp(v_ind())*BWT/70
+            return {'v': value}
+        cov = covariate.Covariate(['v'],[[0,32,50]],['BWT'],function)
+
+        cov_model_decorator = covariate.CovariateModelDecorator(BasementModel, [cov])
+        CovModel = cov_model_decorator(BasementModel)
+
+        dataset_file_path = './examples/THEO.csv'
+        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+
+        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        dataset = CSVDataset(dataset_np, column_names, device)
+        
+        pred_function_module = CovModel(dataset = dataset,
+                                    output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e'])
+
+        omega = Omega([0.4397,
+                        0.0575,  0.0198, 
+                        -0.0069,  0.0116,  0.0205], False, requires_grads=True)
+        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
+
+        model = models.FOCEInter(pred_function_module, 
+                                theta_names=['theta_0', 'v_theta', 'theta_2'],
+                                eta_names= ['eta_0', 'v_eta','eta_2'], 
+                                eps_names= ['eps_0','eps_1'], 
+                                omega=omega, 
+                                sigma=sigma)
+                                
+        model = model.to(device)
+        model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
