@@ -1,6 +1,7 @@
 import unittest
 import torch as tc
 from torchpm import covariate, predfunction, models, linearode
+from torchpm import data
 from torchpm.data import CSVDataset
 from torchpm.parameter import *
 import matplotlib.pyplot as plt
@@ -159,15 +160,16 @@ class TotalTest(unittest.TestCase) :
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
         dataset = CSVDataset(dataset_np, column_names, device)
         
-        pred_function_module = BasementModel(dataset = dataset,
-                                    output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e'])
+        output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
         omega = Omega([0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205], False, requires_grads=False)
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
-        model = models.FOCEInter(pred_function_module, 
+        model = models.FOCEInter(dataset = dataset,
+                                output_column_names= output_column_names,
+                                pred_function_module = BasementModel, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
@@ -225,15 +227,15 @@ class TotalTest(unittest.TestCase) :
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         dataset = CSVDataset(dataset_np, column_names, device)
 
-        pred_function_module = AmtModel(dataset = dataset,
-                                    output_column_names=column_names+['k_a', 'v', 'k_e'],)
-
+        output_column_names=column_names+['k_a', 'v', 'k_e']
         omega = Omega([[0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
         sigma = Sigma([0.0177, 0.0762], [True])
 
-        model = models.FOCEInter(pred_function_module, 
+        model = models.FOCEInter(dataset=dataset,
+                                output_column_names=output_column_names,
+                                pred_function_module = AmtModel, 
                                 theta_names=['theta_0'],
                                 eta_names=['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
@@ -263,16 +265,16 @@ class TotalTest(unittest.TestCase) :
 
         device = tc.device("cpu")
         dataset = CSVDataset(dataset_np, column_names, device)
-        
-        pred_function_module = ODEModel(dataset = dataset,
-                                    output_column_names=column_names+['k_a', 'v', 'k_e'],)
+        output_column_names=column_names+['k_a', 'v', 'k_e']
 
         omega = Omega([[0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
         sigma = Sigma([[0.0177, 0.0762]], [True])
 
-        model = models.FOCEInter(pred_function_module, 
+        model = models.FOCEInter(dataset=dataset,
+                                output_column_names=output_column_names,
+                                pred_function_module = ODEModel, 
                                 theta_names = ['theta_0', 'theta_1', 'theta_2'],
                                 eta_names=['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
@@ -295,8 +297,8 @@ class TotalTest(unittest.TestCase) :
                 print(v)
     
     def test_covariate_model(self) :
-        def function(v_pop, v_ind, BWT):
-            value = v_pop()*tc.exp(v_ind())*BWT/70
+        def function(v_theta, v_eta, BWT):
+            value = v_theta()*tc.exp(v_eta())*BWT/70
             return {'v': value}
         cov = covariate.Covariate(['v'],[[0,32,50]],['BWT'],function)
 
@@ -309,16 +311,16 @@ class TotalTest(unittest.TestCase) :
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
         dataset = CSVDataset(dataset_np, column_names, device)
-        
-        pred_function_module = CovModel(dataset = dataset,
-                                    output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e'])
+        output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
         omega = Omega([0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205], False, requires_grads=True)
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
 
-        model = models.FOCEInter(pred_function_module, 
+        model = models.FOCEInter(dataset=dataset,
+                                output_column_names=output_column_names,
+                                pred_function_module=CovModel, 
                                 theta_names=['theta_0', 'v_theta', 'theta_2'],
                                 eta_names= ['eta_0', 'v_eta','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 

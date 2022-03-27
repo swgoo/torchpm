@@ -12,17 +12,18 @@ from .misc import *
 class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
-                 pred_function_module : predfunction.PredictionFunctionModule,
+                 dataset : CSVDataset,
+                 output_column_names: List[str],
+                 pred_function_module : type[predfunction.PredictionFunctionModule],
                  theta_names : List[str],
                  eta_names : List[str],
                  eps_names : List[str],
                  omega : Omega,
                  sigma : Sigma,
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
+
         super(FOCEInter, self).__init__()
-        self.pred_function_module = pred_function_module
-
-
+        self.pred_function_module = pred_function_module(dataset, output_column_names)
         self.theta_names = theta_names
         self.eta_names = eta_names
         self.eps_names = eps_names
