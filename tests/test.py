@@ -401,7 +401,7 @@ class TotalTest(unittest.TestCase) :
                                 sigma=sigma)
                                 
         model = model.to(device)
-        model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
+        model.fit_population(learning_rate = 1, tolerance_grad = 1e-2, tolerance_change= 1e-3)
     
     def test_covariate_ann_model(self) :
             
