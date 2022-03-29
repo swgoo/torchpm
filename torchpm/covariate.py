@@ -1,17 +1,12 @@
 from copy import deepcopy
 from dataclasses import dataclass
-import functools
-from random import random
 from typing import Any, Callable, ClassVar, List, Optional
 from torch import nn
-import random
-
 import torch as tc
-from torchpm.data import CSVDataset
-from torchpm.models import FOCEInter
-from torchpm.parameter import *
-from torchpm.predfunction import PredictionFunctionModule
-from . import *
+from .data import CSVDataset
+from .models import FOCEInter
+from .parameter import *
+from . import predfunction
 
 @dataclass
 class Covariate:

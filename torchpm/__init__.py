@@ -1,1 +1,1 @@
-__all__ = ['data', 'linearode', 'loss', 'misc', 'models', 'predfunction']
+__all__ = ['data', 'linearode', 'loss', 'misc', 'models', 'predfunction', 'covariate']
