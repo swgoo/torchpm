@@ -425,4 +425,4 @@ class TotalTest(unittest.TestCase) :
                                                         0.0575,  0.0198, 
                                                         -0.0069,  0.0116,  0.0205], False, requires_grads=True),
                                         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True]))
-        print(searcher.run())
+        print(searcher.run(tolerance_grad=1e-2, tolerance_change=1e-2))

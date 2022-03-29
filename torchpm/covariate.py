@@ -136,7 +136,8 @@ class DeepCovariateSearching:
 
 
         loss_history.append({'loss' : float(pre_total_loss),
-                            'removed covariates': []})
+                            'removed covariates': [],
+                            'selected' : True})
         print('================== start searching ============================')
         for cov_name in self.independent_parameter_names :
             self.independent_parameter_names_candidate.remove(cov_name)
@@ -155,20 +156,22 @@ class DeepCovariateSearching:
                 '\n total-pretotal: ', total_loss - pre_total_loss,
                 '\n=================================================')
             
-            removed_covs = deepcopy(loss_history[-1]['removed covariates'])
-            record = {'loss' : float(total_loss),
-                    'removed covariates': removed_covs}
-            removed_covs.append(cov_name)
-            loss_history.append(record)
+            
             #TODO p-value 찾아서 쓰기
-            if total_loss - pre_total_loss  < 3.84 :
+            loss_diff = total_loss - pre_total_loss
+            if loss_diff  < 3.84 :
+                removed_covs = deepcopy(loss_history[-1]['removed covariates'])
+                record = {'loss' : float(total_loss),
+                        'loss difference:' : float(loss_diff),
+                        'removed covariates': removed_covs,
+                        'selected' : False}
+                removed_covs.append(cov_name)
+                loss_history.append(record)
                 print('===============================',
                 '\n Removed :', cov_name,
                 '\n===================================')
                 pre_total_loss = total_loss
             else :
-                record = deepcopy(loss_history[-2])
-                loss_history.append(record)
                 self.independent_parameter_names_candidate.append(cov_name)
         
         return {'selected covariates': self.independent_parameter_names_candidate, 
