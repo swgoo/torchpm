@@ -52,9 +52,7 @@ class LinearODETest(unittest.TestCase) :
         plt.show()
 
 class BasementModel(predfunction.PredictionFunctionByTime) :
-    '''
-        pass
-    '''
+
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0., 1.5, 10.)
         self.theta_1 = Theta(0., 30., 100.)
@@ -71,7 +69,7 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
     
     def _calculate_parameters(self, para):
         para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        para['v'] = self.theta_1()*tc.exp(self.eta_1())#*para['BWT']/70
+        para['v'] = self.theta_1()*tc.exp(self.eta_1())
         para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
@@ -406,68 +404,25 @@ class TotalTest(unittest.TestCase) :
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
     
     def test_covariate_ann_model(self) :
-        
-        class Function(nn.Module):
-            def __init__(self) -> None:
-                super().__init__()
-                self.lin = nn.Sequential(nn.Linear(1,3), nn.Linear(3,3))
-            def forward(self, para) :
-                # self.lin.to(BWT.device)
-                lin_r = self.lin(para['BWT'].unsqueeze(-1)/70).t() 
-                k_a = para['k_a_theta']()*tc.exp(para['k_a_eta']()+lin_r[0])
-                v = para['v_theta']()*tc.exp(para['v_eta']()+lin_r[1])
-                k_e = para['k_e_theta']()*tc.exp(para['k_e_eta']()+lin_r[2])
-
-                return {'v': v, 'k_a': k_a, 'k_e': k_e}    
-
-        cov = covariate.Covariate(['k_a', 'v', 'k_e'],[[0,1,2],[0,32,50],[0,1,2]],['BWT'], Function())
-
-        cov_model_decorator = covariate.CovariateModelDecorator([cov])
-        CovModel = cov_model_decorator(BasementModel)
-        
-        dataset_file_path = './examples/THEO.csv'
-        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
-
-        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
-        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, device)
-        output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
-
-        omega = Omega([0.4397,
-                        0.0575,  0.0198, 
-                        -0.0069,  0.0116,  0.0205], False, requires_grads=True)
-        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
-
-        model = models.FOCEInter(dataset=dataset,
-                                output_column_names=output_column_names,
-                                pred_function_module=CovModel, 
-                                theta_names=['k_a_theta', 'v_theta', 'k_e_theta'],
-                                eta_names= ['k_a_eta', 'v_eta','k_e_eta'], 
-                                eps_names= ['eps_0','eps_1'], 
-                                omega=omega, 
-                                sigma=sigma)
-                                
-        model = model.to(device)
-        model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
-
-    def test_deep_covariate_searching(self) :
-        
             
         dataset_file_path = './examples/THEO_cov_searching.csv'
         dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
-
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT', 'fixed', 'rand-1+1', 'norm(0,1)', 'BWT-0.5+0.5']
-
         dataset = CSVDataset(dataset_np, column_names, device)
-        dependent_parameter_initial_values = [[0,1.4901,2],[30,32.4667,34],[0,0.08,0.1]]
-
+        
         dependent_parameter_names = ['k_a', 'v', 'k_e']
+        dependent_parameter_initial_values = [[0,1.4901,2],[30,32.4667,34],[0,0.08,0.1]]
         independent_parameter_names = ['BWT', 'fixed', 'rand-1+1', 'norm(0,1)', 'BWT-0.5+0.5']
+
         searcher = covariate.DeepCovariateSearching(dataset=dataset,
-                                        base_model=BasementModel,
+                                        BaseModel=BasementModel,
                                         dependent_parameter_names=dependent_parameter_names,
                                         independent_parameter_names=independent_parameter_names,
-                                        dependent_parameter_initial_values=dependent_parameter_initial_values)
-
+                                        dependent_parameter_initial_values=dependent_parameter_initial_values,
+                                        eps_names=['eps_0', 'eps_1'],
+                                        omega = Omega([0.4397,
+                                                        0.0575,  0.0198, 
+                                                        -0.0069,  0.0116,  0.0205], False, requires_grads=True),
+                                        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True]))
         print(searcher.run())
