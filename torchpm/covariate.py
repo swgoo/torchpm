@@ -73,15 +73,18 @@ class CovariateModelDecorator :
 @dataclass
 class DeepCovariateSearching:
     dataset : CSVDataset
-    base_model : predfunction.PredictionFunctionModule
+    BaseModel : predfunction.PredictionFunctionModule
     dependent_parameter_names : List[str]
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
+    eps_names : List[str]
+    omega : Omega
+    sigma : Sigma
 
     def __post_init(self) :
         pass
     
-    def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names):
+    def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names) -> Dict[str, nn.Module]:
         idp_para_names_length = len(independent_parameter_names)
         dp_para_names_length = len(dependent_parameter_names)
         class CovariateRelationshipFunction(nn.Module):
@@ -109,31 +112,19 @@ class DeepCovariateSearching:
                         self._get_covariate_relationship_function(dependent_parameter_names,
                                                                 independent_parameter_names)())
         cov_model_decorator = CovariateModelDecorator([cov])
-        CovModel = cov_model_decorator(self.base_model)
+        CovModel = cov_model_decorator(self.BaseModel)
 
         theta_names = [name + '_theta' for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
-        
-
-        dp_para_length = len(self.dependent_parameter_names)
-        matrix = tc.rand(dp_para_length,dp_para_length)
-        matrix = tc.mm(matrix, matrix.t())
-        matrix.add_(tc.eye(dp_para_length))
-
-        omega_init = matrix_to_lower_triangular_vector(matrix).tolist()
-        omega = Omega(omega_init, False, requires_grads=True)
-        
-        #TODO 나중에 개선
-        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
 
         model = models.FOCEInter(dataset=self.dataset,
-                                output_column_names=[], #TODO 나중에 추가
+                                output_column_names=[],
                                 pred_function_module=CovModel, 
-                                theta_names=theta_names,
+                                theta_names= theta_names,
                                 eta_names= eta_names, 
-                                eps_names= ['eps_0','eps_1'], #TODO 나중에 개선
-                                omega=omega, 
-                                sigma=sigma)
+                                eps_names= self.eps_names,
+                                omega=deepcopy(self.omega),
+                                sigma=deepcopy(self.sigma))
         return model.to(self.dataset.device)
 
     def run(self, learning_rate : float = 1,
@@ -148,6 +139,7 @@ class DeepCovariateSearching:
                                 tolerance_grad = tolerance_grad, 
                                 tolerance_change= tolerance_change, 
                                 max_iteration=max_iteration) 
+        print('================== start searching ============================')
         for name in self.independent_parameter_names :
             self.independent_parameter_names_candidate.remove(name)
 
@@ -174,14 +166,15 @@ class DeepCovariateSearching:
 
     def _fit(self, learning_rate : float = 1,
                     checkpoint_file_path: Optional[str] = None,
-                    tolerance_grad : float= 1e-2,
-                    tolerance_change : float = 1e-2,
+                    tolerance_grad : float= 1e-3,
+                    tolerance_change : float = 1e-3,
                     max_iteration : int = 1000) :
         model = self._get_model(self.dependent_parameter_names,
                                 self.dependent_parameter_initial_values,
                                 self.independent_parameter_names_candidate)
         
-        model.fit_population(learning_rate = learning_rate, 
+        model.fit_population(checkpoint_file_path=checkpoint_file_path,
+                            learning_rate = learning_rate, 
                             tolerance_grad = tolerance_grad, 
                             tolerance_change= tolerance_change, 
                             max_iteration=max_iteration)
@@ -190,6 +183,6 @@ class DeepCovariateSearching:
 
         total_loss = tc.tensor(0., device=self.dataset.device)
         for id, values in result.items() :
-            total_loss += values['loss']
+            total_loss += values['loss'].detach()
         
         return total_loss

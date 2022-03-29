@@ -14,13 +14,13 @@ class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
                  dataset : CSVDataset,
-                 output_column_names: List[str],
                  pred_function_module : typing.Type[predfunction.PredictionFunctionModule],
                  theta_names : List[str],
                  eta_names : List[str],
                  eps_names : List[str],
                  omega : Omega,
                  sigma : Sigma,
+                 output_column_names: List[str],
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
 
         super(FOCEInter, self).__init__()

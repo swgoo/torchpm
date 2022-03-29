@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List, Optional, Dict, Iterable, Union
 
 import torch as tc
@@ -148,6 +149,9 @@ class CovarianceMatrix(nn.Module) :
                 diagonals : Union[List[bool], bool],
                 requires_grads : Union[List[bool], bool] = True) :
         super().__init__()
+
+        self.lower_triangular_vectors_init = lower_triangular_vectors_init
+        self.requires_grads = requires_grads
 
         lower_triangular_vectors_init_tensor = tc.tensor(lower_triangular_vectors_init)
         if lower_triangular_vectors_init_tensor.dim() == 1 :
