@@ -112,7 +112,7 @@ class DeepCovariateSearching:
         theta_names = [name + '_theta' for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
 
-        model = models.FOCEInter(dataset=self.dataset,
+        model = FOCEInter(dataset=self.dataset,
                                 output_column_names=[],
                                 pred_function_module=CovModel, 
                                 theta_names= theta_names,
