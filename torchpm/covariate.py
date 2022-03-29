@@ -4,7 +4,7 @@ from typing import Any, Callable, ClassVar, List, Optional
 from torch import nn
 import torch as tc
 from .data import CSVDataset
-from .models import FOCEInter
+from . import models
 from .parameter import *
 from . import predfunction
 
@@ -112,7 +112,7 @@ class DeepCovariateSearching:
         theta_names = [name + '_theta' for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
 
-        model = FOCEInter(dataset=self.dataset,
+        model = models.FOCEInter(dataset=self.dataset,
                                 output_column_names=[],
                                 pred_function_module=CovModel, 
                                 theta_names= theta_names,
