@@ -1,10 +1,11 @@
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, List, Optional
+from typing import Any, Callable, List, Optional, OrderedDict
 from torch import nn
 import torch as tc
+
 from .data import CSVDataset
-from . import models
+from .models import FOCEInter
 from .parameter import *
 from . import predfunction
 
@@ -112,19 +113,19 @@ class DeepCovariateSearching:
         theta_names = [name + '_theta' for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
 
-        model = models.FOCEInter(dataset=self.dataset,
-                                output_column_names=[],
-                                pred_function_module=CovModel, 
-                                theta_names= theta_names,
-                                eta_names= eta_names, 
-                                eps_names= self.eps_names,
-                                omega=deepcopy(self.omega),
-                                sigma=deepcopy(self.sigma))
+        model = FOCEInter(dataset=self.dataset,
+                        output_column_names=[],
+                        pred_function_module=CovModel, 
+                        theta_names= theta_names,
+                        eta_names= eta_names, 
+                        eps_names= self.eps_names,
+                        omega=deepcopy(self.omega),
+                        sigma=deepcopy(self.sigma))
         return model.to(self.dataset.device)
 
     def run(self, learning_rate : float = 1,
                     checkpoint_file_path: Optional[str] = None,
-                    tolerance_grad : float= 1e-3,
+                    tolerance_grad : float= 1e-2,
                     tolerance_change : float = 1e-3,
                     max_iteration : int = 1000) :
 
@@ -134,9 +135,14 @@ class DeepCovariateSearching:
                                 tolerance_grad = tolerance_grad, 
                                 tolerance_change= tolerance_change, 
                                 max_iteration=max_iteration) 
+        loss_history = OrderedDict()
+        loss_history['Base'] = [True, float(pre_total_loss)]
         print('================== start searching ============================')
         for name in self.independent_parameter_names :
             self.independent_parameter_names_candidate.remove(name)
+            print('============================================',
+                '\n searching covariate: ', name,
+                '\n=============================================')
 
             total_loss = self._fit(learning_rate = learning_rate, 
                                 tolerance_grad = tolerance_grad, 
@@ -150,14 +156,16 @@ class DeepCovariateSearching:
                 '\n=================================================')
             #TODO p-value 찾아서 쓰기
             if total_loss - pre_total_loss  < 3.84 :
-                print('==========================================',
+                loss_history[name] = [False, float(total_loss)]
+                print('===============================',
                 '\n Removed :', name,
                 '\n===================================')
                 pre_total_loss = total_loss
             else :
+                loss_history[name] = [True, float(total_loss)]
                 self.independent_parameter_names_candidate.append(name)
         
-        return self.independent_parameter_names_candidate
+        return self.independent_parameter_names_candidate, loss_history
 
     def _fit(self, learning_rate : float = 1,
                     checkpoint_file_path: Optional[str] = None,
