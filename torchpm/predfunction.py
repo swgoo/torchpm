@@ -254,7 +254,6 @@ class PredictionFunctionModule(tc.nn.Module):
         for key, para in parameters.items():
 
             if para.dim() == 0 or para.size()[0] == 1 :
-
                 parameters[key] = para.repeat([record_length])
         return parameters
     
