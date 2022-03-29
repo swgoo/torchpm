@@ -46,12 +46,9 @@ class CovariateModelDecorator :
                 for i, cov in enumerate(meta_self.covariates):
 
                     para_dict = {}
-
-                    # ip_dict : Dict[str, tc.Tensor] = {}
                     for name in cov.independent_parameter_names :
                         para_dict[name] = parameters[name]
                     
-                    # dp_dict : Dict[str, tc.Tensor] = {}
                     for name in  cov.dependent_parameter_names :
                         pop_para_name = name + '_theta'
                         para_dict[pop_para_name] = getattr(self, pop_para_name)
@@ -125,7 +122,7 @@ class DeepCovariateSearching:
 
     def run(self, learning_rate : float = 1,
                     checkpoint_file_path: Optional[str] = None,
-                    tolerance_grad : float= 1e-2,
+                    tolerance_grad : float= 1e-3,
                     tolerance_change : float = 1e-3,
                     max_iteration : int = 1000) :
 
@@ -135,13 +132,16 @@ class DeepCovariateSearching:
                                 tolerance_grad = tolerance_grad, 
                                 tolerance_change= tolerance_change, 
                                 max_iteration=max_iteration) 
-        loss_history = OrderedDict()
-        loss_history['Base'] = [True, float(pre_total_loss)]
+        loss_history = []
+
+
+        loss_history.append({'loss' : float(pre_total_loss),
+                            'removed covariates': []})
         print('================== start searching ============================')
-        for name in self.independent_parameter_names :
-            self.independent_parameter_names_candidate.remove(name)
+        for cov_name in self.independent_parameter_names :
+            self.independent_parameter_names_candidate.remove(cov_name)
             print('============================================',
-                '\n searching covariate: ', name,
+                '\n searching covariate: ', cov_name,
                 '\n=============================================')
 
             total_loss = self._fit(learning_rate = learning_rate, 
@@ -149,23 +149,30 @@ class DeepCovariateSearching:
                                 tolerance_change= tolerance_change, 
                                 max_iteration=max_iteration)
             print('=================================================',
-                '\n covariate : ', name,
+                '\n covariate : ', cov_name,
                 '\n total : ', total_loss,
                 '\n pre total : ', pre_total_loss,
                 '\n total-pretotal: ', total_loss - pre_total_loss,
                 '\n=================================================')
+            
+            removed_covs = deepcopy(loss_history[-1]['removed covariates'])
+            record = {'loss' : float(total_loss),
+                    'removed covariates': removed_covs}
+            removed_covs.append(cov_name)
+            loss_history.append(record)
             #TODO p-value 찾아서 쓰기
             if total_loss - pre_total_loss  < 3.84 :
-                loss_history[name] = [False, float(total_loss)]
                 print('===============================',
-                '\n Removed :', name,
+                '\n Removed :', cov_name,
                 '\n===================================')
                 pre_total_loss = total_loss
             else :
-                loss_history[name] = [True, float(total_loss)]
-                self.independent_parameter_names_candidate.append(name)
+                record = deepcopy(loss_history[-2])
+                loss_history.append(record)
+                self.independent_parameter_names_candidate.append(cov_name)
         
-        return self.independent_parameter_names_candidate, loss_history
+        return {'selected covariates': self.independent_parameter_names_candidate, 
+                'history': loss_history}
 
     def _fit(self, learning_rate : float = 1,
                     checkpoint_file_path: Optional[str] = None,
