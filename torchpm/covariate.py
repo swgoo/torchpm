@@ -77,7 +77,7 @@ class DeepCovariateSearching:
     def __post_init(self) :
         pass
     
-    def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names) -> Dict[str, nn.Module]:
+    def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names) -> nn.Module:
         idp_para_names_length = len(independent_parameter_names)
         dp_para_names_length = len(dependent_parameter_names)
         class CovariateRelationshipFunction(nn.Module):
@@ -137,7 +137,7 @@ class DeepCovariateSearching:
 
         loss_history.append({'loss' : float(pre_total_loss),
                             'removed covariates': [],
-                            'selected' : True})
+                            'loss difference' : 0.})
         print('================== start searching ============================')
         for cov_name in self.independent_parameter_names :
             self.independent_parameter_names_candidate.remove(cov_name)
@@ -158,22 +158,25 @@ class DeepCovariateSearching:
             
             
             #TODO p-value 찾아서 쓰기
-            loss_diff = total_loss - pre_total_loss
+            loss_diff = float(total_loss - pre_total_loss)
+            removed_covs = deepcopy(loss_history[-1]['removed covariates'])
+            record = {'loss' : float(total_loss),
+                    'removed covariates': removed_covs,
+                    'loss difference' : loss_diff,}
+            removed_covs.append(cov_name)
+            loss_history.append(record)
             if loss_diff  < 3.84 :
-                removed_covs = deepcopy(loss_history[-1]['removed covariates'])
-                record = {'loss' : float(total_loss),
-                        'loss difference:' : float(loss_diff),
-                        'removed covariates': removed_covs,
-                        'selected' : False}
-                removed_covs.append(cov_name)
-                loss_history.append(record)
                 print('===============================',
                 '\n Removed :', cov_name,
                 '\n===================================')
                 pre_total_loss = total_loss
             else :
+                restored_record = deepcopy(loss_history[-2])
+                restored_record['loss difference'] = -loss_diff
+                loss_history.append(restored_record)
                 self.independent_parameter_names_candidate.append(cov_name)
-        
+                
+            
         return {'selected covariates': self.independent_parameter_names_candidate, 
                 'history': loss_history}
 
@@ -193,9 +196,9 @@ class DeepCovariateSearching:
                             max_iteration=max_iteration)
 
         result = model.descale().evaluate()
-
-        total_loss = tc.tensor(0., device=self.dataset.device)
-        for id, values in result.items() :
-            total_loss += values['loss'].detach()
+        with tc.no_grad() :
+            total_loss = tc.tensor(0., device=self.dataset.device)
+            for id, values in result.items() :
+                total_loss += values['loss']
         
         return total_loss
