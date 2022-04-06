@@ -49,6 +49,9 @@ class LinearODETest(unittest.TestCase) :
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
         ax.plot(t.to('cpu'), result[1].detach().to('cpu').numpy())
+        for v in range(100, 400, 10) :
+            result = model(t, ka, ke, dose) / (400/v)
+            ax.plot(t.to('cpu'), result[1].detach().to('cpu').numpy())
         plt.show()
 
 class BasementModel(predfunction.PredictionFunctionByTime) :

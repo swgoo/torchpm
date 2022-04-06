@@ -85,6 +85,7 @@ class DeepCovariateSearching:
                 super().__init__()
                 self.lin = nn.Sequential(
                             nn.Linear(idp_para_names_length, dp_para_names_length),
+                            nn.Sigmoid(),
                             nn.Linear(dp_para_names_length, dp_para_names_length))
 
             def forward(self, para_dict : Dict[str, Any]) -> Dict[str, tc.Tensor] :
