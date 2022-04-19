@@ -21,6 +21,23 @@ class LinearODETest(unittest.TestCase) :
     
     def tearDown(self):
         pass
+
+    
+    def test_infusion_new(self):
+        dist_mat = [[True]]
+        model = linearode.CompartmentModelGenerator(dist_mat, is_infusion=True)
+        d = tc.tensor(320.)
+        t = tc.range(0,24,0.05)
+        k_00 = tc.tensor(1.)
+        r = tc.tensor(160.)
+        result = model(t=t, k_00=k_00, d=d, r=r)
+        print(t)
+        print(result)
+        print('time-pred')
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
+        plt.show()
     
     def test_infusion(self):
         model = linearode.Comp1InfusionModelFunction()
@@ -52,6 +69,23 @@ class LinearODETest(unittest.TestCase) :
         for v in range(100, 400, 10) :
             result = model(t, ka, ke, dose) / (400/v)
             ax.plot(t.to('cpu'), result[1].detach().to('cpu').numpy())
+        plt.show()
+    
+    def test_gut_new(self):
+        model = linearode.CompartmentModelGenerator([[True]], has_depot=True, transit = 3, is_infusion=False)
+        dose = tc.tensor(320.)
+        t = tc.arange(0., 24., step=0.1)
+        k00 = tc.tensor(1.5)
+        k12 = tc.tensor(0.6)
+        k23 = tc.tensor(0.7)
+        k34 = tc.tensor(0.8)
+        k_administrated = tc.tensor(0.2)
+        result = model(t=t, k_00= k00, k_12 = k12, k_23 = k23, k_34 = k34, k_40 = k_administrated, d=dose)
+        print(t)
+        print(result)
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+        ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
         plt.show()
 
 class BasementModel(predfunction.PredictionFunctionByTime) :
