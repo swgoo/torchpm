@@ -23,7 +23,7 @@ class LinearODETest(unittest.TestCase) :
         pass
 
     
-    def test_infusion_new(self):
+    def test_infusion(self):
         dist_mat = [[True]]
         model = linearode.CompartmentModelGenerator(dist_mat, is_infusion=True)
         d = tc.tensor(320.)
@@ -38,40 +38,8 @@ class LinearODETest(unittest.TestCase) :
         ax = fig.add_subplot(1, 1, 1)
         ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
         plt.show()
-    
-    def test_infusion(self):
-        model = linearode.Comp1InfusionModelFunction()
-        dose = tc.tensor(320.)
-        t = tc.range(0,24,0.05)
-        ke = tc.tensor(1.)
-        rate = tc.tensor(160.)
-        result = model(t, ke, dose, rate)
-        print(t)
-        print(result)
-        print('time-pred')
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-        ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
-        plt.show()
 
     def test_gut(self):
-        model = linearode.Comp1GutModelFunction()
-        dose = tc.tensor(320.)
-        t = tc.arange(0., 24., step=0.1)
-        ka = tc.tensor(0.1)
-        ke = tc.tensor(1.5)
-        result = model(t, ka, ke, dose)
-        print(t)
-        print(result)
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-        ax.plot(t.to('cpu'), result[1].detach().to('cpu').numpy())
-        for v in range(100, 400, 10) :
-            result = model(t, ka, ke, dose) / (400/v)
-            ax.plot(t.to('cpu'), result[1].detach().to('cpu').numpy())
-        plt.show()
-    
-    def test_gut_new(self):
         model = linearode.CompartmentModelGenerator([[True]], has_depot=True, transit = 3, is_infusion=False)
         dose = tc.tensor(320.)
         t = tc.arange(0., 24., step=0.1)
