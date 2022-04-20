@@ -24,7 +24,12 @@ class FOCEInter(tc.nn.Module) :
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
 
         super(FOCEInter, self).__init__()
-        self.pred_function_module = pred_function_module(dataset, output_column_names)
+        pred_function_module_type = type(pred_function_module)
+        if pred_function_module_type is type :
+            self.pred_function_module = pred_function_module(dataset, output_column_names)
+        elif isinstance(pred_function_module, predfunction.PredictionFunctionModule) :
+            self.pred_function_module = pred_function_module
+        
         self.theta_names = theta_names
         self.eta_names = eta_names
         self.eps_names = eps_names

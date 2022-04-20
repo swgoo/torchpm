@@ -69,8 +69,6 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
 
         self.eps_0 = Eps()
         self.eps_1 = Eps()
-
-        self.gut_model = linearode.Comp1GutModelFunction()
     
     def _calculate_parameters(self, para):
         para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
@@ -83,8 +81,7 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
         k_a = p['k_a']
         v = p['v']
         k_e = p['k_e']
-        comps = self.gut_model(t, k_a, k_e, dose)
-        return comps[1]/v
+        return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
     def _calculate_error(self, y_pred, p):
         p['v_v'] = p['v'] 
@@ -106,8 +103,6 @@ class AnnModel(predfunction.PredictionFunctionByTime) :
         self.eps_0 = Eps()
         self.eps_1 = Eps()
 
-        self.gut_model = linearode.Comp1GutModelFunction()
-
         self.lin = nn.Sequential(nn.Linear(1,3),
                                     nn.Linear(3,3))
     
@@ -126,8 +121,7 @@ class AnnModel(predfunction.PredictionFunctionByTime) :
         k_a = p['k_a']
         v = p['v']
         k_e = p['k_e']
-        comps = self.gut_model(t, k_a, k_e, dose)
-        return comps[1]/v
+        return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
     def _calculate_error(self, y_pred, p):
         p['v_v'] = p['v'] 
