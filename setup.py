@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="torchpm",
-    version='0.0.5',
+    version='0.0.6',
     author="Sungwoo Goo",
     author_email="yeoun9@gmail.com",
     description="Pharmacometrics in PyTorch.",

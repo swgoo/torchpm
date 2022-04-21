@@ -14,7 +14,7 @@ class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
                  dataset : CSVDataset,
-                 pred_function_module : typing.Type[predfunction.PredictionFunctionModule],
+                 pred_function_module : Union[typing.Type[predfunction.PredictionFunctionModule], predfunction.PredictionFunctionModule],
                  theta_names : List[str],
                  eta_names : List[str],
                  eps_names : List[str],
