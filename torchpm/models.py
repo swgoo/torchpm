@@ -229,7 +229,7 @@ class FOCEInter(tc.nn.Module) :
         
         return parameters
 
-    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-2, tolerance_change = 1e-2, max_iteration = 1000,):
+    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-3, tolerance_change = 1e-3, max_iteration = 1000,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()

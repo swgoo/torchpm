@@ -140,13 +140,16 @@ class CompartmentModelGenerator(nn.Module) :
         function = sym.solvers.ode.systems.dsolve_system(dCdts, ics=ics, doit=True)
         return function[0]
 
-    def forward(self, **variables):
+    def forward(self, t, **variables):
         
         if self.is_infusion :
             infusion_end_time = variables['d'] / variables['r']
 
-            infusion_t = tc.masked_select(variables['t'], variables['t'] <= infusion_end_time)
-            elimination_t = tc.masked_select(variables['t'], variables['t'] > infusion_end_time)
+            
+            infusion_t = tc.masked_select(t, t <= infusion_end_time)
+            elimination_t = tc.masked_select(t, t > infusion_end_time)
+            # infusion_t = tc.masked_select(variables['t'], variables['t'] <= infusion_end_time)
+            # elimination_t = tc.masked_select(variables['t'], variables['t'] > infusion_end_time)
 
             variables_infusion = deepcopy(variables)
             variables_infusion['t'] = infusion_t
@@ -158,4 +161,5 @@ class CompartmentModelGenerator(nn.Module) :
 
             return tc.concat([infusion_amt, amt], dim = -1)
         else :
+            variables['t'] = t
             return self.model(**variables).t()

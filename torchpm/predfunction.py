@@ -341,14 +341,18 @@ class PredictionFunctionByTime(PredictionFunctionModule):
             dataset_pre = dataset[:start_time_index, :]
 
             f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
-            
+
 
             times = parameters['TIME'][start_time_index:]
-
             start_time = times[0]
+
+            amts = parameters['AMT'][start_time_index].repeat(parameters['AMT'][start_time_index:].size()[0])
 
             parameters_sliced = {k: v[start_time_index:] for k, v in parameters.items()}
             
+            parameters_sliced['TIME'] = times
+
+            parameters_sliced['AMT'] = amts
 
             t = times - start_time
 
