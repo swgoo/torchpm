@@ -34,7 +34,10 @@ class CSVDataset(tc.utils.data.Dataset):
         self.device = device
 
         y_true_total = numpy_dataset[:,self.column_names.index('DV')]
-        
+
+        self.mean = {}
+        for i in range(len(self.column_names)):
+            self.mean[self.column_names[i]] = numpy_dataset[:,i].mean()
 
         ids, ids_start_idx = np.unique(numpy_dataset[:, column_names.index('ID')], return_index=True)
 
@@ -43,6 +46,8 @@ class CSVDataset(tc.utils.data.Dataset):
         dataset_np = np.split(numpy_dataset, ids_start_idx)
 
         y_true_np = np.split(y_true_total, ids_start_idx)
+
+        
 
 
         self.dataset = [tc.from_numpy(data_np).to(device) for data_np in dataset_np]

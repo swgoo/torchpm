@@ -148,8 +148,6 @@ class CompartmentModelGenerator(nn.Module) :
             
             infusion_t = tc.masked_select(t, t <= infusion_end_time)
             elimination_t = tc.masked_select(t, t > infusion_end_time)
-            # infusion_t = tc.masked_select(variables['t'], variables['t'] <= infusion_end_time)
-            # elimination_t = tc.masked_select(variables['t'], variables['t'] > infusion_end_time)
 
             variables_infusion = deepcopy(variables)
             variables_infusion['t'] = infusion_t
