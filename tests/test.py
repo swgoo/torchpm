@@ -11,6 +11,75 @@ import numpy as np
 if __name__ == '__main__' :
     unittest.main()
 
+class FisherInformationMatrixTest(unittest.TestCase):
+    def test_fisher_information_matrix(self):
+        dataset_file_path = './examples/THEO.csv'
+        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+
+        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        dataset = CSVDataset(dataset_np, column_names, device)
+        
+        output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
+
+        omega = Omega([0.4397,
+                        0.0575,  0.0198, 
+                        -0.0069,  0.0116,  0.0205], False)
+        sigma = Sigma([[0.0177], [0.0762]], [True, True])
+
+        model = models.FOCEInter(dataset = dataset,
+                                output_column_names= output_column_names,
+                                pred_function_module = BasementModel, 
+                                theta_names=['theta_0', 'theta_1', 'theta_2'],
+                                eta_names= ['eta_0', 'eta_1','eta_2'], 
+                                eps_names= ['eps_0','eps_1'], 
+                                omega=omega, 
+                                sigma=sigma)
+                                
+        model = model.to(device)
+        # model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
+        # TODO 수정하기
+        # model = model.descale()
+        model.fit_population_FIM()
+
+        eval_values = model.evaluate()
+        for k, v in eval_values.items():
+            print(k)
+            print(v)
+
+        for p in model.descale().named_parameters():
+            print(p)
+
+        print(model.descale().covariance_step())
+
+        tc.manual_seed(42)
+        simulation_result = model.simulate(dataset, 300)
+
+        i = 0
+        fig = plt.figure()
+
+        for id, values in simulation_result.items() :
+            i += 1
+            ax = fig.add_subplot(12, 1, i)
+            print('id', id)
+            time_data : tc.Tensor = values['time'].to('cpu')
+            
+            preds : List[tc.Tensor] = values['preds']
+            preds_tensor = tc.stack(preds).to('cpu')
+            p95 = np.percentile(preds_tensor, 95, 0)
+            p50 = np.percentile(preds_tensor, 50, 0)
+            average = np.average(preds_tensor, 0)
+            p5 = np.percentile(preds_tensor, 5, 0)
+            
+            ax.plot(time_data, p95, color="black")
+            ax.plot(time_data, p50, color="green")
+            ax.plot(time_data, average, color="red")
+            ax.plot(time_data, p5, color="black")
+
+            for y_pred in values['preds'] :
+                ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
+        plt.show()
+
 """
     Args:.
     Attributes: .
@@ -59,7 +128,7 @@ class LinearODETest(unittest.TestCase) :
 class BasementModel(predfunction.PredictionFunctionByTime) :
 
     def _set_estimated_parameters(self):
-        self.theta_0 = Theta(0., 1.5, 10.)
+        self.theta_0 = Theta(0., 5, 10.)
         self.theta_1 = Theta(0., 30., 100.)
         self.theta_2 = Theta(0, 0.08, 1)
 

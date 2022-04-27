@@ -21,7 +21,8 @@ class FOCEInter(tc.nn.Module) :
                  omega : Omega,
                  sigma : Sigma,
                  output_column_names: List[str],
-                objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()):
+                objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction(),
+                design_optimal_function : loss.DesignOptimalFunction = loss.DOptimality()):
 
         super(FOCEInter, self).__init__()
         pred_function_module_type = type(pred_function_module)
@@ -36,6 +37,7 @@ class FOCEInter(tc.nn.Module) :
         self.omega = omega
         self.sigma = sigma
         self.objective_function = objective_function
+        self.design_optimal_function = design_optimal_function
         
     def forward(self, dataset):
         
@@ -118,6 +120,102 @@ class FOCEInter(tc.nn.Module) :
             print('running_time : ', time.time() - start_time, '\t total_loss:', total_loss)
             return total_loss
         return fit
+    
+    # TODO 뭔가 gradient가 중간에서 사라진거 같음.
+    def optimization_FIM(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
+        """
+        optimization function for L-BFGS 
+        Args:
+            dataset: model dataset
+            optimizer: L-BFGS optimizer
+            checkpoint_file_path : saving for optimized parameters
+        """
+        start_time = time.time()
+
+        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
+
+        def fit() :
+            optimizer.zero_grad()
+            total_loss = tc.zeros([], device = dataset.device)
+            
+            theta_dict = self.pred_function_module.get_theta_parameter_values()
+            cov_mat_dim =  len(theta_dict)
+            for tensor in self.omega.parameter_values :
+                cov_mat_dim += tensor.size()[0]
+            for tensor in self.sigma.parameter_values :
+                cov_mat_dim += tensor.size()[0]
+            
+            thetas = [theta_dict[key] for key in self.theta_names]
+
+            # requires_grad_memory = []
+            
+
+            # for para in estimated_parameters :
+            #     requires_grad_memory.append(para.requires_grad)
+            #     para.requires_grad = True      
+            
+
+
+
+
+            estimated_parameters = [*self.omega.parameter_values,
+                            *self.sigma.parameter_values]
+
+            for data, y_true in dataloader:
+                r_mat = tc.zeros(cov_mat_dim, cov_mat_dim, device=dataset.device)
+                r_list_theta = []
+                r_list = []
+
+                y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
+ 
+                y_pred = y_pred.masked_select(mdv_mask)
+                eta_size = g.size()[-1]
+                if eta_size > 0 :
+                    g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
+                eps_size = h.size()[-1]
+                if eps_size > 0:
+                    h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
+ 
+                y_true_masked = y_true.masked_select(mdv_mask)
+                minus_2_loglikelihood = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
+
+
+                gr_theta = tc.autograd.grad(minus_2_loglikelihood, thetas, create_graph=True, allow_unused=True, retain_graph=True)
+                gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
+                gr_theta_cat = tc.concat(gr_theta, dim=0)
+                for i, gr_cur in enumerate(gr_theta_cat) :
+                    hs = tc.autograd.grad(gr_cur, thetas, create_graph=True, retain_graph=True, allow_unused=True)
+
+                    hs = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in hs]
+                    hs_cat = tc.cat(hs)/2
+                    r_list_theta.append(hs_cat)
+
+
+                gr = tc.autograd.grad(minus_2_loglikelihood, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
+                gr = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr]
+                gr_cat = tc.concat(gr, dim=0)
+                for i, gr_cur in enumerate(gr_cat) :
+                    hs = tc.autograd.grad(gr_cur, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
+
+                    hs = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in hs]
+                    hs_cat = tc.cat(hs)/2
+                    r_list.append(hs_cat)
+
+                
+                r_mat = tc.block_diag(tc.stack(r_list_theta, dim=0), tc.stack(r_list, dim=0))
+
+                loss = self.design_optimal_function(r_mat)
+                loss.backward()
+
+                total_loss = total_loss + loss
+            
+            if checkpoint_file_path is not None :
+                tc.save(self.state_dict(), checkpoint_file_path)
+        
+            print('running_time : ', time.time() - start_time, '\t total_loss:', total_loss)
+            return -total_loss
+        return fit
+
     
     def optimization_function_for_multiprocessing(self, rank, dataset, optimizer, checkpoint_file_path : Optional[str] = None):
         """
@@ -254,6 +352,20 @@ class FOCEInter(tc.nn.Module) :
                                    tolerance_change = tolerance_change)
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
+    
+    # TODO 
+    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-3, tolerance_change = 1e-3, max_iteration = 1000,):
+        max_iter = max_iteration
+        parameters = self.parameters()
+        self.pred_function_module.reset_epss()
+        optimizer = tc.optim.LBFGS(parameters, 
+                                   max_iter = max_iter, 
+                                   lr = learning_rate, 
+                                   tolerance_grad = tolerance_grad, 
+                                   tolerance_change = tolerance_change)
+        opt_fn = self.optimization_FIM(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        optimizer.step(opt_fn)
+        return self
    
     def covariance_step(self) :
 

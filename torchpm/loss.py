@@ -38,3 +38,33 @@ class FOCEObjectiveFunction(ObjectiveFunction) :
         r = mat_sqrt_inv(c) @ (res + g @ eta)
         c_sign, c_det_value = c.slogdet()
         return tc.squeeze(c_det_value + r.t() @ r)
+    
+
+class DesignOptimalFunction(metaclass = abc.ABCMeta) :
+    @abc.abstractmethod
+    def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
+        pass
+
+class DOptimality(DesignOptimalFunction) :
+    def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
+        return tc.linalg.det(fisher_information_matrix)
+
+class AOptimality(DesignOptimalFunction) :
+    def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
+        return tc.trace(tc.linalg.inv(fisher_information_matrix))
+
+class DSOptimality(DesignOptimalFunction) :
+
+    '''
+        fisher_information_matrix : 
+        fisher_information_matrix_ns : No inclusion interesting parameters S
+    '''
+    def __call__(self, fisher_information_matrix : tc.Tensor, fisher_information_matrix_ns) -> tc.Tensor:
+        return tc.linalg.det(fisher_information_matrix) / tc.linalg.det(fisher_information_matrix_ns)
+
+class DEffectivenessOptimality(DesignOptimalFunction) :
+    def __call__(self, fisher_information_matrix : tc.Tensor, 
+                fisher_information_matrix_reference : tc.Tensor,
+                num_of_parameters) -> tc.Tensor:
+        r = -tc.linalg.det(fisher_information_matrix) / tc.linalg.det(fisher_information_matrix_reference)
+        return tc.pow(r, 1/num_of_parameters)
