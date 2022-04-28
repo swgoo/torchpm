@@ -47,7 +47,7 @@ class DesignOptimalFunction(metaclass = abc.ABCMeta) :
 
 class DOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
-        return tc.linalg.det(fisher_information_matrix)
+        return tc.linalg.det(tc.linalg.inv(fisher_information_matrix))
 
 class AOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
@@ -68,3 +68,14 @@ class DEffectivenessOptimality(DesignOptimalFunction) :
                 num_of_parameters) -> tc.Tensor:
         r = -tc.linalg.det(fisher_information_matrix) / tc.linalg.det(fisher_information_matrix_reference)
         return tc.pow(r, 1/num_of_parameters)
+
+# class FisherInformationMatrix:
+#     def __call__(self, dy_dtheta, omega, sigma):
+#         v = dy_dtheta @ omega @ dy_dtheta.t() + sigma.diag().diag()
+#         v_inv = v.inverse()
+#         a_matrix = dy_dtheta @ v_inv @ dy_dtheta.t()
+
+#         #V를 오메가 대각 행렬로 각각 미분을 때려줌.
+
+#         b_matrix = tc.trace(v_inv@)
+

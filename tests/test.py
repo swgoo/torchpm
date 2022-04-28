@@ -22,10 +22,8 @@ class FisherInformationMatrixTest(unittest.TestCase):
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
-        omega = Omega([0.4397,
-                        0.0575,  0.0198, 
-                        -0.0069,  0.0116,  0.0205], False)
-        sigma = Sigma([[0.0177], [0.0762]], [True, True])
+        omega = Omega([0.4397, 0.0198, 0.0205], True)
+        sigma = Sigma([0.0177, 0.0762], [True])
 
         model = models.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
@@ -39,6 +37,8 @@ class FisherInformationMatrixTest(unittest.TestCase):
         model = model.to(device)
         # model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
         # TODO 수정하기
+        
+        # model.fit_population()
         # model = model.descale()
         model.fit_population_FIM()
 
