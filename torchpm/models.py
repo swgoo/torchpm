@@ -22,7 +22,7 @@ class FOCEInter(tc.nn.Module) :
                  sigma : Sigma,
                  output_column_names: List[str],
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction(),
-                design_optimal_function : loss.DesignOptimalFunction = loss.DOptimality()):
+                optimal_design_creterion : loss.DesignOptimalFunction = loss.DOptimality()):
 
         super(FOCEInter, self).__init__()
         pred_function_module_type = type(pred_function_module)
@@ -37,7 +37,7 @@ class FOCEInter(tc.nn.Module) :
         self.omega = omega
         self.sigma = sigma
         self.objective_function = objective_function
-        self.design_optimal_function = design_optimal_function
+        self.design_optimal_function = optimal_design_creterion
         
     def forward(self, dataset):
         
@@ -147,21 +147,6 @@ class FOCEInter(tc.nn.Module) :
             
             thetas = [theta_dict[key] for key in self.theta_names]
 
-            # requires_grad_memory = []
-            
-
-            # for para in estimated_parameters :
-            #     requires_grad_memory.append(para.requires_grad)
-            #     para.requires_grad = True      
-            
-            
-
-            
-
-
-            lambda_parameters = [*self.omega.parameter_values,
-                            *self.sigma.parameter_values]
-
             for data, y_true in dataloader:
 
                 y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
@@ -195,13 +180,13 @@ class FOCEInter(tc.nn.Module) :
                 c_vector = [] 
                 for i in range(gr_theta.size()[-1]):
                     c_vector.append(gr_theta[:,i].t() @ v_inv_sqaure @ gr_theta[:,i])
-                c_vector = tc.cat(c_vector, dim=0)
+                c_vector = tc.stack(c_vector, dim=0).unsqueeze(0)
 
-                b_matrix = tc.cat([b_matrix, c_vector], dim=0)
+                b_matrix = tc.cat([b_matrix, c_vector])
 
-                d_scalar = tc.trace(v_inv_sqaure)
+                d_scalar = tc.trace(v_inv_sqaure).unsqueeze(0).unsqueeze(0)
 
-                b_matrix = tc.cat([b_matrix, tc.cat([c_vector, d_scalar], dim=0)], dim=1)
+                b_matrix = tc.cat([b_matrix, tc.cat([c_vector, d_scalar], dim=1).t()], dim=1)
 
                 fisher_information_matrix = tc.block_diag(a_matrix, b_matrix/2)
 
@@ -214,7 +199,7 @@ class FOCEInter(tc.nn.Module) :
                 tc.save(self.state_dict(), checkpoint_file_path)
         
             print('running_time : ', time.time() - start_time, '\t total_loss:', total_loss)
-            return total_loss
+            return -total_loss
         return fit
 
     

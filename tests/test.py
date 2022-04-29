@@ -23,14 +23,14 @@ class FisherInformationMatrixTest(unittest.TestCase):
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
         omega = Omega([0.4397, 0.0198, 0.0205], True)
-        sigma = Sigma([0.0177, 0.0762], [True])
+        sigma = Sigma([0.0177], [True])
 
         model = models.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
-                                pred_function_module = BasementModel, 
+                                pred_function_module = BasementModelFMI, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                                 eta_names= ['eta_0', 'eta_1','eta_2'], 
-                                eps_names= ['eps_0','eps_1'], 
+                                eps_names= ['eps_0'], 
                                 omega=omega, 
                                 sigma=sigma)
                                 
@@ -155,6 +155,38 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
     def _calculate_error(self, y_pred, p):
         p['v_v'] = p['v'] 
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
+
+class BasementModelFMI(predfunction.PredictionFunctionByTime) :
+
+    def _set_estimated_parameters(self):
+        self.theta_0 = Theta(0., 5, 10.)
+        self.theta_1 = Theta(0., 30., 100.)
+        self.theta_2 = Theta(0, 0.08, 1)
+
+        self.eta_0 = Eta()
+        self.eta_1 = Eta()
+        self.eta_2 = Eta()
+
+        self.eps_0 = Eps()
+        # self.eps_1 = Eps()
+    
+    def _calculate_parameters(self, para):
+        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
+        para['v'] = self.theta_1()*tc.exp(self.eta_1())
+        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+        para['AMT'] = tc.tensor(320., device=self.dataset.device)
+
+    def _calculate_preds(self, t, p):
+        dose = p['AMT'][0]
+        k_a = p['k_a']
+        v = p['v']
+        k_e = p['k_e']
+        return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
+        
+    def _calculate_error(self, y_pred, p):
+        p['v_v'] = p['v'] 
+        return y_pred +  self.eps_0()
+
 
 class AnnModel(predfunction.PredictionFunctionByTime) :
     '''
