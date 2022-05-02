@@ -38,7 +38,6 @@ class FisherInformationMatrixTest(unittest.TestCase):
         # model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
         # TODO 수정하기
         
-        # model.fit_population()
         # model = model.descale()
         model.fit_population_FIM()
 
@@ -128,7 +127,7 @@ class LinearODETest(unittest.TestCase) :
 class BasementModel(predfunction.PredictionFunctionByTime) :
 
     def _set_estimated_parameters(self):
-        self.theta_0 = Theta(0., 5, 10.)
+        self.theta_0 = Theta(0., 5., 10.)
         self.theta_1 = Theta(0., 30., 100.)
         self.theta_2 = Theta(0, 0.08, 1)
 
