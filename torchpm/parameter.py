@@ -96,9 +96,10 @@ class Theta(nn.Module):
 
 
         if self.is_scale :
-
-
-            return tc.exp(self.parameter_value - self.alpha)/(tc.exp(self.parameter_value - self.alpha) + 1)*(self.ub - self.lb) + self.lb
+            
+            theta = tc.exp(self.parameter_value - self.alpha)/(tc.exp(self.parameter_value - self.alpha) + 1)*(self.ub - self.lb) + self.lb
+            
+            return theta
 
 
         else :

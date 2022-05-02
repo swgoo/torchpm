@@ -27,7 +27,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
 
         model = models.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
-                                pred_function_module = BasementModelFMI, 
+                                pred_function_module = BasementModelFIM, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0'], 
@@ -156,24 +156,23 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
         p['v_v'] = p['v'] 
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
-class BasementModelFMI(predfunction.PredictionFunctionByTime) :
+class BasementModelFIM(predfunction.PredictionFunctionByTime) :
 
     def _set_estimated_parameters(self):
-        self.theta_0 = Theta(0., 5, 10.)
-        self.theta_1 = Theta(0., 30., 100.)
-        self.theta_2 = Theta(0, 0.08, 1)
+        self.theta_0 = Theta(0., 3.)
+        self.theta_1 = Theta(15., 25.)
+        self.theta_2 = Theta(0, 1.)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()
         self.eta_2 = Eta()
 
         self.eps_0 = Eps()
-        # self.eps_1 = Eps()
     
     def _calculate_parameters(self, para):
-        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        para['v'] = self.theta_1()*tc.exp(self.eta_1())
-        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+        para['k_a'] = self.theta_0() + self.eta_0()
+        para['v'] = self.theta_1() + self.eta_1()
+        para['k_e'] = self.theta_2() + self.eta_2()
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
     def _calculate_preds(self, t, p):

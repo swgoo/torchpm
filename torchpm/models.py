@@ -121,7 +121,6 @@ class FOCEInter(tc.nn.Module) :
             return total_loss
         return fit
     
-    # TODO 뭔가 gradient가 중간에서 사라진거 같음.
     def optimization_FIM(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
         """
         optimization function for L-BFGS 
@@ -136,7 +135,6 @@ class FOCEInter(tc.nn.Module) :
 
         def fit() :
             optimizer.zero_grad()
-            total_loss = tc.zeros([], device = dataset.device)
             
             theta_dict = self.pred_function_module.get_theta_parameter_values()
             cov_mat_dim =  len(theta_dict)
@@ -145,8 +143,14 @@ class FOCEInter(tc.nn.Module) :
             for tensor in self.sigma.parameter_values :
                 cov_mat_dim += tensor.size()[0]
             
-            thetas = [theta_dict[key] for key in self.theta_names]
+            # def hook(g):
+            #     v.grad_nonleaf = g
+            thetas = [theta_dict[key]() for key in self.theta_names]
+            # [theta.register_hook(hook) for theta in thetas]
+            # [theta.retain_grad() for theta in thetas]
+            # [theta.register_hook(hook) for theta in thetas]
 
+            fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = dataset.device)
             for data, y_true in dataloader:
 
                 y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
@@ -161,9 +165,10 @@ class FOCEInter(tc.nn.Module) :
  
                 # y_true_masked = y_true.masked_select(mdv_mask)
                 # minus_2_loglikelihood = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
-
+                
                 gr_theta = []
                 for y_elem in y_pred:
+                    y_elem.retain_grad()
                     gr_theta_elem = tc.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
                     gr_theta.append(tc.stack(gr_theta_elem))
                 gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
@@ -174,32 +179,32 @@ class FOCEInter(tc.nn.Module) :
                 v_inv = v.inverse()
 
                 a_matrix = gr_theta.t() @ v_inv @ gr_theta
-                #TODO 이거는 추정값이다. 더 자세하게 할수 있는 방법도 있음.
                 b_matrix = a_matrix * a_matrix
-                v_inv_sqaure = v_inv @ v_inv
-                c_vector = [] 
+                v_sqaure_inv = v_inv @ v_inv
+                c_vector = []
                 for i in range(gr_theta.size()[-1]):
-                    c_vector.append(gr_theta[:,i].t() @ v_inv_sqaure @ gr_theta[:,i])
+                    c_vector.append(gr_theta[:,i].t() @ v_sqaure_inv @ gr_theta[:,i])
                 c_vector = tc.stack(c_vector, dim=0).unsqueeze(0)
 
                 b_matrix = tc.cat([b_matrix, c_vector])
 
-                d_scalar = tc.trace(v_inv_sqaure).unsqueeze(0).unsqueeze(0)
+                d_scalar = tc.trace(v_sqaure_inv).unsqueeze(0).unsqueeze(0)
 
                 b_matrix = tc.cat([b_matrix, tc.cat([c_vector, d_scalar], dim=1).t()], dim=1)
 
                 fisher_information_matrix = tc.block_diag(a_matrix, b_matrix/2)
 
-                loss = self.design_optimal_function(fisher_information_matrix)
-                loss.backward()
-
-                total_loss = total_loss + loss
+                fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
+            
+            
+            loss = self.design_optimal_function(fisher_information_matrix_total)
+            loss.backward()
             
             if checkpoint_file_path is not None :
                 tc.save(self.state_dict(), checkpoint_file_path)
         
-            print('running_time : ', time.time() - start_time, '\t total_loss:', total_loss)
-            return -total_loss
+            print('running_time : ', time.time() - start_time, '\t total_loss:', loss)
+            return loss
         return fit
 
     
@@ -340,7 +345,7 @@ class FOCEInter(tc.nn.Module) :
         optimizer.step(opt_fn)
     
     # TODO 
-    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-3, tolerance_change = 1e-3, max_iteration = 1000,):
+    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-5, tolerance_change = 1e-5, max_iteration = 1000,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()

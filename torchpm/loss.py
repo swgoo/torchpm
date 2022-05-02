@@ -47,7 +47,7 @@ class DesignOptimalFunction(metaclass = abc.ABCMeta) :
 
 class DOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
-        return tc.linalg.det(fisher_information_matrix)
+        return tc.log(tc.linalg.det((fisher_information_matrix.t() @ fisher_information_matrix).inverse()))
 
 class AOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:

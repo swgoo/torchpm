@@ -145,7 +145,28 @@ class PredictionFunctionModule(tc.nn.Module):
                 dictionary[name] = att.parameter_values
 
         return dictionary
-    
+        
+    def _get_estimated_values(self, names) -> Dict[str, Any]:
+
+        dictionary : Dict[str, tc.Tensor] = {}
+
+        for name in names :
+
+            att = getattr(self, name)
+            parameter_att_list = dir(att)
+
+            if 'parameter_value' in parameter_att_list:
+
+                dictionary[name] = att
+
+            elif 'parameter_values' in parameter_att_list:
+
+                dictionary[name] = att
+
+        return dictionary
+
+    def get_theta_values(self) :
+        return self._get_estimated_values(self._theta_names)
 
     def get_theta_parameter_values(self) :
 
