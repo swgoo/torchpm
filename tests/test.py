@@ -38,7 +38,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
         # model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
         # TODO 수정하기
         
-        # model = model.descale()
+        model = model.descale()
         model.fit_population_FIM()
 
         eval_values = model.evaluate()
