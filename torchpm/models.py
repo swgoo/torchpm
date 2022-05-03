@@ -147,7 +147,8 @@ class FOCEInter(tc.nn.Module) :
             #     v.grad_nonleaf = g
             thetas = [theta_dict[key] for key in self.theta_names]
             # [theta.register_hook(hook) for theta in thetas]
-            # [theta.retain_grad() for theta in thetas]
+            # with tc.no_grad() :
+            #     [theta.clamp_(-3,3) for theta in thetas]
             # [theta.register_hook(hook) for theta in thetas]
 
             fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = dataset.device)
@@ -168,7 +169,6 @@ class FOCEInter(tc.nn.Module) :
                 
                 gr_theta = []
                 for y_elem in y_pred:
-                    # y_elem.retain_grad()
                     gr_theta_elem = tc.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
                     gr_theta.append(tc.stack(gr_theta_elem))
                 gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
@@ -345,7 +345,7 @@ class FOCEInter(tc.nn.Module) :
         optimizer.step(opt_fn)
     
     # TODO 
-    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-8, tolerance_change = 1e-8, max_iteration = 1000,):
+    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.5, tolerance_grad = 1e-8, tolerance_change = 1e-8, max_iteration = 1000,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()

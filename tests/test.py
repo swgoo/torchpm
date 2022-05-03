@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, predfunction, models, linearode
+from torchpm import covariate, predfunction, models, linearode, loss
 from torchpm import data
 from torchpm.data import CSVDataset
 from torchpm.parameter import *
@@ -22,7 +22,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
-        omega = Omega([0.4397, 0.0198, 0.0205], True)
+        omega = Omega([0.4397, 0.0198, 0.0205], [True])
         sigma = Sigma([0.0177], [True])
 
         model = models.FOCEInter(dataset = dataset,
@@ -32,14 +32,24 @@ class FisherInformationMatrixTest(unittest.TestCase):
                                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0'], 
                                 omega=omega, 
-                                sigma=sigma)
-                                
-        model = model.to(device)
-        # model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
-        # TODO 수정하기
-        
-        model = model.descale()
+                                sigma=sigma,
+                                optimal_design_creterion=loss.AOptimality()).to(device)
         model.fit_population_FIM()
+        parameters = model.state_dict()
+
+        model = models.FOCEInter(dataset = dataset,
+                                output_column_names= output_column_names,
+                                pred_function_module = BasementModelFIM, 
+                                theta_names=['theta_0', 'theta_1', 'theta_2'],
+                                eta_names= ['eta_0', 'eta_1','eta_2'], 
+                                eps_names= ['eps_0'], 
+                                omega=omega, 
+                                sigma=sigma,
+                                optimal_design_creterion=loss.DOptimality())
+        model.load_state_dict(parameters)
+        model = model.to(device)
+        model = model.fit_population_FIM()
+        
 
         eval_values = model.evaluate()
         for k, v in eval_values.items():
@@ -158,9 +168,9 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
 class BasementModelFIM(predfunction.PredictionFunctionByTime) :
 
     def _set_estimated_parameters(self):
-        self.theta_0 = Theta(0., 3.)
-        self.theta_1 = Theta(15., 25.)
-        self.theta_2 = Theta(0, 1.)
+        self.theta_0 = Theta(0.1, 3.)
+        self.theta_1 = Theta(0.1, 50.)
+        self.theta_2 = Theta(0.01, 1.)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()

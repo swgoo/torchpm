@@ -47,11 +47,18 @@ class DesignOptimalFunction(metaclass = abc.ABCMeta) :
 
 class DOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
-        return tc.log(tc.linalg.det((fisher_information_matrix.t() @ fisher_information_matrix).inverse()))
+        # return (fisher_information_matrix.t() @ fisher_information_matrix).inverse().det().log()
+        return -fisher_information_matrix.det().log()
 
 class AOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
-        return tc.trace(tc.linalg.inv(fisher_information_matrix))
+        mat = fisher_information_matrix.t() @ fisher_information_matrix
+        i_mat = tc.eye(mat.size()[0], device = mat.device) * 1e-6
+        
+        mat = mat + i_mat
+        mat = mat.inverse() + i_mat
+        mat = mat.trace()
+        return mat.log()
 
 class DSOptimality(DesignOptimalFunction) :
 

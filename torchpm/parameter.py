@@ -69,8 +69,8 @@ class Theta(nn.Module):
             iv = tc.tensor(init_value[1])
             self.ub = tc.tensor(init_value[2])
                 
-        lb = self.lb
-        ub = self.ub
+        lb = self.lb - tc.tensor(1e-6)
+        ub = self.ub + tc.tensor(1e-6)
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
         self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)
@@ -96,13 +96,16 @@ class Theta(nn.Module):
 
 
         if self.is_scale :
-            
-            theta = tc.exp(self.parameter_value - self.alpha)/(tc.exp(self.parameter_value - self.alpha) + 1)*(self.ub - self.lb) + self.lb
+            para = self.parameter_value.clamp(-10, 10)
+            theta = tc.exp(para - self.alpha)/(tc.exp(para - self.alpha) + 1)*(self.ub - self.lb) + self.lb
             
             return theta
 
 
         else :
+            # with tc.no_grad():
+            #     self.parameter_value.clamp_(self.lb, self.ub)
+
             return self.parameter_value
 
 
@@ -256,6 +259,10 @@ class CovarianceMatrix(nn.Module) :
     def forward(self):
         m = []
 
+        #TODO 임시 코드
+        with tc.no_grad() :
+            for parameter in self.parameter_values:
+                parameter.clamp_(-3, 3)
 
         if self.is_scale :
             for tensor, scale, diagonal in zip(self.parameter_values, self.scales, self.diagonals) :
