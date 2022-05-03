@@ -25,6 +25,8 @@ class FisherInformationMatrixTest(unittest.TestCase):
         omega = Omega([0.4397, 0.0198, 0.0205], [True])
         sigma = Sigma([0.0177], [True])
 
+
+        print('=================================== A Optimal ===================================')
         model = models.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
                                 pred_function_module = BasementModelFIM, 
@@ -35,26 +37,34 @@ class FisherInformationMatrixTest(unittest.TestCase):
                                 sigma=sigma,
                                 optimal_design_creterion=loss.AOptimality()).to(device)
         model.fit_population_FIM()
-        parameters = model.state_dict()
 
-        model = models.FOCEInter(dataset = dataset,
-                                output_column_names= output_column_names,
-                                pred_function_module = BasementModelFIM, 
-                                theta_names=['theta_0', 'theta_1', 'theta_2'],
-                                eta_names= ['eta_0', 'eta_1','eta_2'], 
-                                eps_names= ['eps_0'], 
-                                omega=omega, 
-                                sigma=sigma,
-                                optimal_design_creterion=loss.DOptimality())
-        model.load_state_dict(parameters)
-        model = model.to(device)
-        model = model.fit_population_FIM()
-        
+        # print('=================================== D Optimal ===================================')
 
-        eval_values = model.evaluate()
-        for k, v in eval_values.items():
+        # model = models.FOCEInter(dataset = dataset,
+        #                         output_column_names= output_column_names,
+        #                         pred_function_module = BasementModelFIM, 
+        #                         theta_names=['theta_0', 'theta_1', 'theta_2'],
+        #                         eta_names= ['eta_0', 'eta_1','eta_2'], 
+        #                         eps_names= ['eps_0'], 
+        #                         omega=omega, 
+        #                         sigma=sigma,
+        #                         optimal_design_creterion=loss.DOptimality())
+        # model.load_state_dict(parameters)
+        # model = model.to(device)
+        # model = model.fit_population_FIM()
+
+        model = model.descale()
+
+        eval_fim_values, loss_value = model.evaluate_FIM()
+        print(loss_value)
+        for k, v in eval_fim_values.items():
             print(k)
             print(v)
+
+        # eval_values = model.evaluate()
+        # for k, v in eval_values.items():
+        #     print(k)
+        #     print(v)
 
         for p in model.descale().named_parameters():
             print(p)
@@ -168,9 +178,9 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
 class BasementModelFIM(predfunction.PredictionFunctionByTime) :
 
     def _set_estimated_parameters(self):
-        self.theta_0 = Theta(0.1, 3.)
-        self.theta_1 = Theta(0.1, 50.)
-        self.theta_2 = Theta(0.01, 1.)
+        self.theta_0 = Theta(0.1, 2., 3.)
+        self.theta_1 = Theta(0.1, 40., 50.)
+        self.theta_2 = Theta(0.01, 0.8, 1.)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()

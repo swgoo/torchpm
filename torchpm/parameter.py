@@ -1,5 +1,6 @@
 from copy import deepcopy
 from typing import List, Optional, Dict, Iterable, Union
+from numpy import diag
 
 import torch as tc
 
@@ -103,8 +104,10 @@ class Theta(nn.Module):
 
 
         else :
-            # with tc.no_grad():
-            #     self.parameter_value.clamp_(self.lb, self.ub)
+            with tc.no_grad():
+                self.parameter_value.clamp_(self.lb, self.ub)
+            # para = tc.log((self.alpha.exp()*(self.parameter_value-self.lb))/(self.ub-self.parameter_value))
+            # theta = tc.exp(para - self.alpha)/(tc.exp(para - self.alpha) + 1)*(self.ub - self.lb) + self.lb                        
 
             return self.parameter_value
 
@@ -212,18 +215,27 @@ class CovarianceMatrix(nn.Module) :
 
     def _set_scale(self, lower_triangular_vector_init, diagonal) :
         var_mat = lower_triangular_vector_to_covariance_matrix(lower_triangular_vector_init, diagonal)
-        m1 = tc.linalg.cholesky(var_mat).transpose(-2, -1).conj()
+        # m1 = tc.linalg.cholesky(var_mat).transpose(-2, -1).conj()
+        m1 = tc.linalg.cholesky(var_mat).transpose(-2, -1)
         v1 = m1.diag()
         m2 = tc.abs(10 * (m1 - v1.diag()) + (v1/tc.exp(tc.tensor(0.1))).diag())
         return m2.t()
     
 
 
-    def _calculate_scaled_matrix(self, scaled_matrix, scale) :
-        maT = scaled_matrix * scale
+    def _get_descaled_matrix(self, scaled_matrix, scale) :
+        x = scaled_matrix * scale
         diag_part = scaled_matrix.diag().exp() * scale.diag()
-        maT = tc.tril(maT) - maT.diag().diag() + diag_part.diag()
+        maT = tc.tril(x) - x.diag().diag() + diag_part.diag()
         return maT @ maT.t()
+    
+    def _get_scaled_matrix(self, descaled_matrix, scale) :
+
+        maT = tc.linalg.cholesky(descaled_matrix)
+        # maT = scaled_matrix * scale - (scaled_matrix * scale).diag().diag() + (scaled_matrix.diag().exp() * scale.diag()).diag()
+        scale_matrix = (maT - maT.diag().diag())/scale + (maT/scale).log().diag().diag()
+        scale_matrix = scale_matrix.nan_to_num()
+        return scale_matrix @ scale_matrix.t()
 
     def descale(self) :
         if self.is_scale is True:
@@ -233,9 +245,9 @@ class CovarianceMatrix(nn.Module) :
                     self.scaled_parameters_for_save.append(parameter.data.clone())
                 
                 matrixes = []
-                for vector, scale, diagonal in zip(self.parameter_values, self.scales, self.diagonals) :
-                    mat = lower_triangular_vector_to_covariance_matrix(vector, diagonal)
-                    matrixes.append(self._calculate_scaled_matrix(mat, scale.to(mat.device)))
+                for parameter, scale, diagonal in zip(self.parameter_values, self.scales, self.diagonals) :
+                    mat = lower_triangular_vector_to_covariance_matrix(parameter, diagonal)
+                    matrixes.append(self._get_descaled_matrix(mat, scale.to(mat.device)))
                 
                 for matrix, para, diagonal in zip(matrixes, self.parameter_values, self.diagonals) :
                     if diagonal :
@@ -259,19 +271,20 @@ class CovarianceMatrix(nn.Module) :
     def forward(self):
         m = []
 
-        #TODO 임시 코드
-        with tc.no_grad() :
-            for parameter in self.parameter_values:
-                parameter.clamp_(-3, 3)
 
         if self.is_scale :
             for tensor, scale, diagonal in zip(self.parameter_values, self.scales, self.diagonals) :
                 mat = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
-                m.append(self._calculate_scaled_matrix(mat, scale.to(mat.device)))
+                m.append(self._get_descaled_matrix(mat, scale.to(mat.device)))
         else :
             for tensor, diagonal in zip(self.parameter_values, self.diagonals) :
-                m.append(lower_triangular_vector_to_covariance_matrix(tensor, diagonal))
+                # scale = self._set_scale(tensor, diagonal)
 
+                # m_block = lower_triangular_vector_to_covariance_matrix(tc.ones_like(tensor)*0.1, diagonal)
+                
+                # m_block = self._get_descaled_matrix(m_block, scale.to(tensor.device))
+                m_block = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
+                m.append(m_block)
         return tc.block_diag(*m)
 
 class Omega(CovarianceMatrix):

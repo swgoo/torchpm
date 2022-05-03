@@ -257,6 +257,84 @@ class FOCEInter(tc.nn.Module) :
             return total_loss
         return fit
 
+    def evaluate_FIM(self) :
+        dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
+
+        
+        theta_dict = self.pred_function_module.get_theta_parameter_values()
+        cov_mat_dim =  len(theta_dict)
+        for tensor in self.omega.parameter_values :
+            cov_mat_dim += tensor.size()[0]
+        for tensor in self.sigma.parameter_values :
+            cov_mat_dim += tensor.size()[0]
+        
+        thetas = [theta_dict[key] for key in self.theta_names]
+        
+        result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]]= {}
+
+        fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = self.pred_function_module.dataset.device)
+        for data, y_true in dataloader:
+
+            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
+
+            id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
+            result[id] = {}
+            result_cur_id = result[id]
+
+            y_pred_masked = y_pred.masked_select(mdv_mask)
+            # eta_size = g.size()[-1]
+            # if eta_size > 0 :
+            #     g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
+            eps_size = h.size()[-1]
+            if eps_size > 0:
+                h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
+
+            
+            
+            gr_theta = []
+            for y_elem in y_pred_masked:
+                gr_theta_elem = tc.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
+                gr_theta.append(tc.stack(gr_theta_elem))
+            gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
+            gr_theta = tc.stack(gr_theta, dim=0)
+
+            #TODO sigma 개선
+            v = gr_theta @ omega @ gr_theta.t() + (h @ sigma @ h.t()).diag().diag()
+            v_inv = v.inverse()
+
+            a_matrix = gr_theta.t() @ v_inv @ gr_theta
+            b_matrix = a_matrix * a_matrix
+            v_sqaure_inv = v_inv @ v_inv
+            c_vector = []
+            for i in range(gr_theta.size()[-1]):
+                c_vector.append(gr_theta[:,i].t() @ v_sqaure_inv @ gr_theta[:,i])
+            c_vector = tc.stack(c_vector, dim=0).unsqueeze(0)
+
+            b_matrix = tc.cat([b_matrix, c_vector])
+
+            d_scalar = tc.trace(v_sqaure_inv).unsqueeze(0).unsqueeze(0)
+
+            b_matrix = tc.cat([b_matrix, tc.cat([c_vector, d_scalar], dim=1).t()], dim=1)
+
+            fisher_information_matrix = tc.block_diag(a_matrix, b_matrix/2)
+
+            fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
+            
+            
+            
+
+            result_cur_id['pred'] = y_pred
+            result_cur_id['time'] = data[:,self.pred_function_module._column_names.index('TIME')]
+            result_cur_id['mdv_mask'] = mdv_mask
+
+            for name, value in parameters.items() :
+                if name not in result_cur_id.keys() :
+                    result_cur_id[name] = []
+                result_cur_id[name].append(value)
+
+        loss = self.design_optimal_function(fisher_information_matrix_total)
+        return result, loss
+
     def evaluate(self):
 
         dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
@@ -268,7 +346,7 @@ class FOCEInter(tc.nn.Module) :
 
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]]= {}
         for data, y_true in dataloader:
-            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameter = self(data)
+            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
             id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
 
             result[id] = {}
@@ -294,7 +372,7 @@ class FOCEInter(tc.nn.Module) :
             result_cur_id['time'] = data[:,self.pred_function_module._column_names.index('TIME')]
             result_cur_id['mdv_mask'] = mdv_mask
 
-            for name, value in parameter.items() :
+            for name, value in parameters.items() :
                 if name not in result_cur_id.keys() :
                     result_cur_id[name] = []
                 result_cur_id[name].append(value)
