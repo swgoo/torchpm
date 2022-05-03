@@ -143,13 +143,7 @@ class FOCEInter(tc.nn.Module) :
             for tensor in self.sigma.parameter_values :
                 cov_mat_dim += tensor.size()[0]
             
-            # def hook(g):
-            #     v.grad_nonleaf = g
             thetas = [theta_dict[key] for key in self.theta_names]
-            # [theta.register_hook(hook) for theta in thetas]
-            # with tc.no_grad() :
-            #     [theta.clamp_(-3,3) for theta in thetas]
-            # [theta.register_hook(hook) for theta in thetas]
 
             fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = dataset.device)
             for data, y_true in dataloader:
