@@ -59,6 +59,7 @@ class DOptimality(DesignOptimalFunction) :
 class AOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
         mat = fisher_information_matrix.t() @ fisher_information_matrix
+        # mat = fisher_information_matrix
         i_mat = tc.eye(mat.size()[0], device = mat.device) * 1e-6
         
         mat = mat + i_mat

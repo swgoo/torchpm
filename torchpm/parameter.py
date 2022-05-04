@@ -104,8 +104,8 @@ class Theta(nn.Module):
 
 
         else :
-            with tc.no_grad():
-                self.parameter_value.clamp_(self.lb, self.ub)
+            # with tc.no_grad():
+                # self.parameter_value.clamp_(self.lb, self.ub)
             # para = tc.log((self.alpha.exp()*(self.parameter_value-self.lb))/(self.ub-self.parameter_value))
             # theta = tc.exp(para - self.alpha)/(tc.exp(para - self.alpha) + 1)*(self.ub - self.lb) + self.lb                        
 
@@ -283,9 +283,9 @@ class CovarianceMatrix(nn.Module) :
                 # m_block = lower_triangular_vector_to_covariance_matrix(tc.ones_like(tensor)*0.1, diagonal)
                 
                 # m_block = self._get_descaled_matrix(m_block, scale.to(tensor.device))
-                if diagonal :
-                    with tc.no_grad() :
-                        tensor.clamp_(1e-6)
+                # if diagonal :
+                #     with tc.no_grad() :
+                #         tensor.clamp_(min=1e-6)
 
                 m_block = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
                 m.append(m_block)

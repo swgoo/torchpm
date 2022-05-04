@@ -171,6 +171,7 @@ class FOCEInter(tc.nn.Module) :
 
                 #TODO sigma 개선
                 v = gr_theta @ omega @ gr_theta.t() + (h @ sigma @ h.t()).diag().diag()
+                v = v + tc.eye(v.size()[0], device = dataset.device) * 1e-6
                 v_inv = v.inverse()
 
                 a_matrix = gr_theta.t() @ v_inv @ gr_theta
@@ -251,6 +252,7 @@ class FOCEInter(tc.nn.Module) :
 
             #TODO sigma 개선
             v = gr_theta @ omega @ gr_theta.t() + (h @ sigma @ h.t()).diag().diag()
+            v = v + tc.eye(v.size()[0], device = v.device) * 1e-6
             v_inv = v.inverse()
 
             a_matrix = gr_theta.t() @ v_inv @ gr_theta
@@ -500,7 +502,7 @@ class FOCEInter(tc.nn.Module) :
         optimizer.step(opt_fn)
     
     # TODO 
-    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.5, tolerance_grad = 1e-8, tolerance_change = 1e-8, max_iteration = 1000,):
+    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.01, tolerance_grad = 1e-4, tolerance_change = 1e-4, max_iteration = 1000,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()

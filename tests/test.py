@@ -22,8 +22,8 @@ class FisherInformationMatrixTest(unittest.TestCase):
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
-        omega = Omega([0.4397, 0.0198, 0.0205], [True])
-        sigma = Sigma([0.0177], [True])
+        omega = Omega([0.1, 0.1, 0.1], [True])
+        sigma = Sigma([0.1], [True])
 
         
 
@@ -41,32 +41,18 @@ class FisherInformationMatrixTest(unittest.TestCase):
                                 optimal_design_creterion=loss.AOptimality()).to(device)
         model.fit_population_FIM()
         model = model.descale()
+        # model.fit_population_FIM(learning_rate=0.01)
         # model.fit_population_FIM()
 
-        optimizer = tc.optim.Adam(model.parameters(), lr=0.01)
+        print('=================================== Adam ===================================')
+
+        parameters = [*model.omega.parameter_values, *model.sigma.parameter_values]
+        parameters = model.parameters()
+        optimizer = tc.optim.Adam(parameters, lr=0.005)
 
         for i in range(100):
             model.optimization_FIM(optimizer)
         
-        # parameters = model.state_dict()
-
-        # print('=================================== D Optimal ===================================')
-
-        # model = models.FOCEInter(dataset = dataset,
-        #                         output_column_names= output_column_names,
-        #                         pred_function_module = BasementModelFIM, 
-        #                         theta_names=['theta_0', 'theta_1', 'theta_2'],
-        #                         eta_names= ['eta_0', 'eta_1','eta_2'], 
-        #                         eps_names= ['eps_0'], 
-        #                         omega=omega, 
-        #                         sigma=sigma,
-        #                         optimal_design_creterion=loss.DOptimality())
-        # model.load_state_dict(parameters)
-        # model = model.to(device)
-        # model = model.fit_population_FIM()
-        # model = model.descale()
-        # for i in range(100):
-        #     model.optimization_FIM(optimizer)
 
         model = model.descale()
 
@@ -193,8 +179,8 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
 class BasementModelFIM(predfunction.PredictionFunctionByTime) :
 
     def _set_estimated_parameters(self):
-        self.theta_0 = Theta(0.1, 2., 3.)
-        self.theta_1 = Theta(0.1, 40., 50.)
+        self.theta_0 = Theta(0.01, 2., 10.)
+        self.theta_1 = Theta(0.01, 30., 40.)
         self.theta_2 = Theta(0.01, 0.8, 1.)
 
         self.eta_0 = Eta()
@@ -204,9 +190,9 @@ class BasementModelFIM(predfunction.PredictionFunctionByTime) :
         self.eps_0 = Eps()
     
     def _calculate_parameters(self, para):
-        para['k_a'] = self.theta_0() + self.eta_0()
-        para['v'] = self.theta_1() + self.eta_1()
-        para['k_e'] = self.theta_2() + self.eta_2()
+        para['k_a'] = self.theta_0() * self.eta_0().exp()
+        para['v'] = self.theta_1() * self.eta_1().exp()
+        para['k_e'] = self.theta_2() * self.eta_2().exp()
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
     def _calculate_preds(self, t, p):
