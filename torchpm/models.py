@@ -38,6 +38,7 @@ class FOCEInter(tc.nn.Module) :
         self.sigma = sigma
         self.objective_function = objective_function
         self.design_optimal_function = optimal_design_creterion
+        self.dataloader = None
         
     def forward(self, dataset):
         
@@ -121,7 +122,7 @@ class FOCEInter(tc.nn.Module) :
             return total_loss
         return fit
     
-    def optimization_FIM(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
+    def optimization_closure_FIM(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
         """
         optimization function for L-BFGS 
         Args:
@@ -200,6 +201,88 @@ class FOCEInter(tc.nn.Module) :
             print('running_time : ', time.time() - start_time, '\t total_loss:', loss)
             return loss
         return fit
+    
+    def optimization_FIM(self, optimizer, checkpoint_file_path : Optional[str] = None):
+        """
+        optimization function for L-BFGS 
+        Args:
+            dataset: model dataset
+            optimizer: L-BFGS optimizer
+            checkpoint_file_path : saving for optimized parameters
+        """
+        start_time = time.time()
+        
+        if self.dataloader is None :
+            self.dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
+
+        optimizer.zero_grad()
+        
+        theta_dict = self.pred_function_module.get_theta_parameter_values()
+        cov_mat_dim =  len(theta_dict)
+        for tensor in self.omega.parameter_values :
+            cov_mat_dim += tensor.size()[0]
+        for tensor in self.sigma.parameter_values :
+            cov_mat_dim += tensor.size()[0]
+        
+        thetas = [theta_dict[key] for key in self.theta_names]
+
+        fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = self.pred_function_module.dataset.device)
+        for data, y_true in self.dataloader:
+
+            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
+
+            y_pred = y_pred.masked_select(mdv_mask)
+            # eta_size = g.size()[-1]
+            # if eta_size > 0 :
+            #     g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
+            eps_size = h.size()[-1]
+            if eps_size > 0:
+                h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
+
+            # y_true_masked = y_true.masked_select(mdv_mask)
+            # minus_2_loglikelihood = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
+            
+            gr_theta = []
+            for y_elem in y_pred:
+                gr_theta_elem = tc.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
+                gr_theta.append(tc.stack(gr_theta_elem))
+            gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
+            gr_theta = tc.stack(gr_theta, dim=0)
+
+            #TODO sigma 개선
+            v = gr_theta @ omega @ gr_theta.t() + (h @ sigma @ h.t()).diag().diag()
+            v_inv = v.inverse()
+
+            a_matrix = gr_theta.t() @ v_inv @ gr_theta
+            b_matrix = a_matrix * a_matrix
+            v_sqaure_inv = v_inv @ v_inv
+            c_vector = []
+            for i in range(gr_theta.size()[-1]):
+                c_vector.append(gr_theta[:,i].t() @ v_sqaure_inv @ gr_theta[:,i])
+            c_vector = tc.stack(c_vector, dim=0).unsqueeze(0)
+
+            b_matrix = tc.cat([b_matrix, c_vector])
+
+            d_scalar = tc.trace(v_sqaure_inv).unsqueeze(0).unsqueeze(0)
+
+            b_matrix = tc.cat([b_matrix, tc.cat([c_vector, d_scalar], dim=1).t()], dim=1)
+
+            fisher_information_matrix = tc.block_diag(a_matrix, b_matrix/2)
+
+            fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
+            
+            
+        loss = self.design_optimal_function(fisher_information_matrix_total)
+        loss.backward()
+        
+        if checkpoint_file_path is not None :
+            tc.save(self.state_dict(), checkpoint_file_path)
+    
+        print('running_time : ', time.time() - start_time, '\t total_loss:', loss)
+        optimizer.step()
+        
+
+
 
     
     def optimization_function_for_multiprocessing(self, rank, dataset, optimizer, checkpoint_file_path : Optional[str] = None):
@@ -426,7 +509,7 @@ class FOCEInter(tc.nn.Module) :
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
                                    tolerance_change = tolerance_change)
-        opt_fn = self.optimization_FIM(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        opt_fn = self.optimization_closure_FIM(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
         return self
    

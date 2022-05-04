@@ -283,6 +283,10 @@ class CovarianceMatrix(nn.Module) :
                 # m_block = lower_triangular_vector_to_covariance_matrix(tc.ones_like(tensor)*0.1, diagonal)
                 
                 # m_block = self._get_descaled_matrix(m_block, scale.to(tensor.device))
+                if diagonal :
+                    with tc.no_grad() :
+                        tensor.clamp_(1e-6)
+
                 m_block = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
                 m.append(m_block)
         return tc.block_diag(*m)

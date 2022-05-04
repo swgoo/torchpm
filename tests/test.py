@@ -25,6 +25,9 @@ class FisherInformationMatrixTest(unittest.TestCase):
         omega = Omega([0.4397, 0.0198, 0.0205], [True])
         sigma = Sigma([0.0177], [True])
 
+        
+
+
 
         print('=================================== A Optimal ===================================')
         model = models.FOCEInter(dataset = dataset,
@@ -37,6 +40,15 @@ class FisherInformationMatrixTest(unittest.TestCase):
                                 sigma=sigma,
                                 optimal_design_creterion=loss.AOptimality()).to(device)
         model.fit_population_FIM()
+        model = model.descale()
+        # model.fit_population_FIM()
+
+        optimizer = tc.optim.Adam(model.parameters(), lr=0.01)
+
+        for i in range(100):
+            model.optimization_FIM(optimizer)
+        
+        # parameters = model.state_dict()
 
         # print('=================================== D Optimal ===================================')
 
@@ -52,6 +64,9 @@ class FisherInformationMatrixTest(unittest.TestCase):
         # model.load_state_dict(parameters)
         # model = model.to(device)
         # model = model.fit_population_FIM()
+        # model = model.descale()
+        # for i in range(100):
+        #     model.optimization_FIM(optimizer)
 
         model = model.descale()
 

@@ -51,7 +51,7 @@ class DOptimality(DesignOptimalFunction) :
         i_mat = tc.eye(mat.size()[0], device=mat.device) * 1e-6
 
         mat = mat + i_mat
-        mat = mat.inverse() + i_mat
+        mat = (mat.t() @ mat).inverse() + i_mat
 
         return mat.det().log()
         # return -fisher_information_matrix.det().log()
