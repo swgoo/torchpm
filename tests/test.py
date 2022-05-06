@@ -51,7 +51,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
         optimizer = tc.optim.Adam(parameters, lr=0.005)
 
         for i in range(100):
-            model.optimization_FIM(optimizer)
+            model.optimization_function_FIM(optimizer)
         
 
         model = model.descale()

@@ -22,7 +22,7 @@ class FOCEInter(tc.nn.Module) :
                  sigma : Sigma,
                  output_column_names: List[str],
                 objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction(),
-                optimal_design_creterion : loss.DesignOptimalFunction = loss.DOptimality()):
+                optimal_design_creterion : loss.DesignOptimalFunction = loss.AOptimality()):
 
         super(FOCEInter, self).__init__()
         pred_function_module_type = type(pred_function_module)
@@ -65,7 +65,7 @@ class FOCEInter(tc.nn.Module) :
         eta_size = len(eta)
         eps_size = len(eps)
 
-        if by_etas:
+        if by_epss:
             h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
             for i_h, y_pred_elem in enumerate(y_pred) :
                 if eps_size > 0 :
@@ -74,7 +74,7 @@ class FOCEInter(tc.nn.Module) :
                         h[i_h,i_eps] = h_elem[0][i_h]
         else : h = None
 
-        if by_epss:
+        if by_etas:
             g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
             for i_g, y_pred_elem in enumerate(y_pred) :
                 if eta_size > 0 :
@@ -85,7 +85,7 @@ class FOCEInter(tc.nn.Module) :
         
         return y_pred, g, h
 
-    def optimization_function(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
+    def optimization_function_closure(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
         """
         optimization function for L-BFGS 
         Args:
@@ -125,7 +125,7 @@ class FOCEInter(tc.nn.Module) :
             return total_loss
         return fit
     
-    def optimization_closure_FIM(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
+    def optimization_function_closure_FIM(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
         """
         optimization function for L-BFGS 
         Args:
@@ -204,7 +204,7 @@ class FOCEInter(tc.nn.Module) :
             return loss
         return fit
     
-    def optimization_FIM(self, optimizer, checkpoint_file_path : Optional[str] = None):
+    def optimization_function_FIM(self, optimizer, checkpoint_file_path : Optional[str] = None):
         """
         optimization function for L-BFGS 
         Args:
@@ -231,21 +231,16 @@ class FOCEInter(tc.nn.Module) :
         fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = self.pred_function_module.dataset.device)
         for data, y_true in self.dataloader:
 
-            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
+            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data, partial_differentiate_by_etas = False, partial_differentiate_by_epss = True)
 
-            y_pred = y_pred.masked_select(mdv_mask)
-            # eta_size = g.size()[-1]
-            # if eta_size > 0 :
-            #     g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
+            y_pred_masked = y_pred.masked_select(mdv_mask)
+
             eps_size = h.size()[-1]
             if eps_size > 0:
                 h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
-
-            # y_true_masked = y_true.masked_select(mdv_mask)
-            # minus_2_loglikelihood = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
             
             gr_theta = []
-            for y_elem in y_pred:
+            for y_elem in y_pred_masked:
                 gr_theta_elem = tc.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
                 gr_theta.append(tc.stack(gr_theta_elem))
             gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
@@ -478,7 +473,7 @@ class FOCEInter(tc.nn.Module) :
         
         return parameters
 
-    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-3, tolerance_change = 1e-3, max_iteration = 9999,):
+    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-5, tolerance_change = 1e-5, max_iteration = 9999,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()
@@ -486,20 +481,22 @@ class FOCEInter(tc.nn.Module) :
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
-                                   tolerance_change = tolerance_change)
-        opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+                                   tolerance_change = tolerance_change,
+                                   line_search_fn = 'strong_wolfe')
+        opt_fn = self.optimization_function_closure(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
         return self
     
-    def fit_individual(self, checkpoint_file_path : Optional[str] = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 3e-2, max_iteration = 9999,):
+    def fit_individual(self, checkpoint_file_path : Optional[str] = None, learning_rate = 1, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
         max_iter = max_iteration
         parameters = self.parameters_for_individual()
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
-                                   tolerance_change = tolerance_change)
-        opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+                                   tolerance_change = tolerance_change,
+                                   line_search_fn = 'strong_wolfe')
+        opt_fn = self.optimization_function_closure(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
     
     def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.01, tolerance_grad = 1e-4, tolerance_change = 1e-4, max_iteration = 1000,):
@@ -510,8 +507,9 @@ class FOCEInter(tc.nn.Module) :
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
-                                   tolerance_change = tolerance_change)
-        opt_fn = self.optimization_closure_FIM(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+                                   tolerance_change = tolerance_change,
+                                   line_search_fn = 'strong_wolfe')
+        opt_fn = self.optimization_function_closure_FIM(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
         return self
    
