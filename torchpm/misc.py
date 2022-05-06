@@ -17,7 +17,7 @@ def lower_triangular_vector_to_covariance_matrix(lower_triangular_vector, diag :
         m[tril_indices[0], tril_indices[1]] = lower_triangular_vector
         return m + tc.tril(m).transpose(0,1) - m.diag().diag()
 
-def matrix_to_lower_triangular_vector(m):
+def matrix_to_lower_triangular_vector(m : tc.Tensor):
     tril_indices = m.tril().nonzero().t()
     return m[tril_indices[0], tril_indices[1]]
 

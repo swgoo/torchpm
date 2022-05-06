@@ -19,6 +19,7 @@ class FOCEInterObjectiveFunction(ObjectiveFunction) :
         
         eta_size = eta.size()[-1]
         if eta_size > 0 :
+            omega = omega + tc.eye(eta_size, device=omega.device) * 1e-6
             inv_omega = omega.inverse()
             term3 = eta @ inv_omega @ eta
             term4_sign, term4 = omega.slogdet()

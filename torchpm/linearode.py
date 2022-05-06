@@ -7,11 +7,12 @@ import sympytorch as spt
 from torch import nn
 
 class CompartmentModelGenerator(nn.Module) :
-    def __init__(self, distribution_bool_matrix: List[List[bool]], has_depot : bool = False, transit : int = 0, administrated_compartment_num = 0, is_infusion : bool= False) -> None:
+    def __init__(self, distribution_bool_matrix: List[List[bool]], has_depot : bool = False, transit : int = 0, observed_compartment_num = 0, administrated_compartment_num = 0, is_infusion : bool= False) -> None:
         super().__init__()
 
         self.distribution_bool_matrix = deepcopy(distribution_bool_matrix)
         self.is_infusion = is_infusion
+        self.obeserved_compartment_num = observed_compartment_num
         self.administrated_compartment_num = administrated_compartment_num
         self.depot_compartment_num = administrated_compartment_num
         if has_depot :
@@ -33,12 +34,10 @@ class CompartmentModelGenerator(nn.Module) :
                     row.append(False)
             
             #depot to transit 0
-            self.distribution_bool_matrix[len(distribution_bool_matrix)][len(distribution_bool_matrix)+1] = True
-            transit_start = len(distribution_bool_matrix) + 1 
+            self.distribution_bool_matrix[self.depot_compartment_num][self.depot_compartment_num+1] = True
+            transit_start = self.depot_compartment_num + 1 
             for i in range(transit_start, transit_start + transit - 1):
                 self.distribution_bool_matrix[i][i+1] = True
-                #TODO
-                # self.distribution_bool_matrix[i+1][i] = True
             self.distribution_bool_matrix[-1][self.administrated_compartment_num] = True
             
         dCdts = self._get_dCdts(is_infusion=False)
@@ -50,19 +49,19 @@ class CompartmentModelGenerator(nn.Module) :
             t_sym, dose_sym, r_sym = sym.symbols('t d r', positive = True, real=True)
             dCdts_infusion = self._get_dCdts(is_infusion=True)
             initial_states_infusion = self._get_initial_states(is_infusion=True)
-            infusion_cs = self._solve(dCdts_infusion, initial_states_infusion)
+            cs_infusion = self._solve(dCdts_infusion, initial_states_infusion)
 
-            initial_states[sym.symbols('c_' + str(self.depot_compartment_num), cls=sym.Function)(0)] = infusion_cs[self.depot_compartment_num].rhs.subs({t_sym: dose_sym/r_sym})
+            initial_states[sym.symbols('c_' + str(self.depot_compartment_num), cls=sym.Function)(0)] = cs_infusion[self.depot_compartment_num].rhs.subs({t_sym: dose_sym/r_sym})
             cs = self._solve(dCdts, initial_states)
             
             for i in range(len(cs)) :
                 cs[i] = sym.Eq(cs[i].lhs, cs[i].rhs.subs({t_sym: t_sym - dose_sym/r_sym}))
             
 
-            infusion_comps = []
-            for comp in infusion_cs :
-                infusion_comps.append(comp.rhs)
-            self.infusion_model = spt.SymPyModule(expressions=infusion_comps)
+            comps_infusion = []
+            for comp in cs_infusion :
+                comps_infusion.append(comp.rhs)
+            self.infusion_model = spt.SymPyModule(expressions=comps_infusion)
 
             
             

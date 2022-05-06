@@ -104,51 +104,29 @@ class Theta(nn.Module):
 
 
         else :
-            # with tc.no_grad():
-                # self.parameter_value.clamp_(self.lb, self.ub)
-            # para = tc.log((self.alpha.exp()*(self.parameter_value-self.lb))/(self.ub-self.parameter_value))
-            # theta = tc.exp(para - self.alpha)/(tc.exp(para - self.alpha) + 1)*(self.ub - self.lb) + self.lb                        
-
             return self.parameter_value
 
 
 
 class Eta(nn.Module) :
 
-
     def __init__(self) -> None:
         super().__init__()
-
-
         self.parameter_values = nn.ParameterDict()
-    
-
 
     def forward(self):
-
-
         return self.parameter_values[str(self.id)]
 
 
 
 class Eps(nn.Module):
 
-
     def __init__(self) -> None:
         super().__init__()
-
-
         self.parameter_values : Dict[str, nn.Parameter] = {}
-    
-
 
     def forward(self):
-
-
         return self.parameter_values[str(self.id)]
-
-
-
 
 class CovarianceMatrix(nn.Module) :
     def __init__(self,
@@ -211,8 +189,6 @@ class CovarianceMatrix(nn.Module) :
                 s = self._set_scale(init_vector, diagonal)
                 self.scales.append(s)
         
-
-
     def _set_scale(self, lower_triangular_vector_init, diagonal) :
         var_mat = lower_triangular_vector_to_covariance_matrix(lower_triangular_vector_init, diagonal)
         # m1 = tc.linalg.cholesky(var_mat).transpose(-2, -1).conj()
@@ -220,8 +196,6 @@ class CovarianceMatrix(nn.Module) :
         v1 = m1.diag()
         m2 = tc.abs(10 * (m1 - v1.diag()) + (v1/tc.exp(tc.tensor(0.1))).diag())
         return m2.t()
-    
-
 
     def _get_descaled_matrix(self, scaled_matrix, scale) :
         x = scaled_matrix * scale
@@ -278,14 +252,6 @@ class CovarianceMatrix(nn.Module) :
                 m.append(self._get_descaled_matrix(mat, scale.to(mat.device)))
         else :
             for tensor, diagonal in zip(self.parameter_values, self.diagonals) :
-                # scale = self._set_scale(tensor, diagonal)
-
-                # m_block = lower_triangular_vector_to_covariance_matrix(tc.ones_like(tensor)*0.1, diagonal)
-                
-                # m_block = self._get_descaled_matrix(m_block, scale.to(tensor.device))
-                # if diagonal :
-                #     with tc.no_grad() :
-                #         tensor.clamp_(min=1e-6)
 
                 m_block = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
                 m.append(m_block)

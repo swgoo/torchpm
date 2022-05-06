@@ -40,7 +40,7 @@ class FOCEInter(tc.nn.Module) :
         self.design_optimal_function = optimal_design_creterion
         self.dataloader = None
         
-    def forward(self, dataset):
+    def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :
         
         pred_output = self.pred_function_module(dataset)
 
@@ -54,31 +54,34 @@ class FOCEInter(tc.nn.Module) :
         for eps_name in self.eps_names:\
             eps.append(epss[eps_name])
 
-        y_pred, g, h = self._partial_different(pred_output['y_pred'], eta, eps)
+        y_pred, g, h = self._partial_differentiate(pred_output['y_pred'], eta, eps, by_etas = partial_differentiate_by_etas, by_epss = partial_differentiate_by_epss)
 
         eta = tc.stack(eta)
         eps = tc.stack(eps)
 
         return y_pred, eta, eps, g, h, self.omega().to(dataset.device), self.sigma().to(dataset.device), pred_output['mdv_mask'], pred_output['output_columns']
     
-    def _partial_different(self, y_pred, eta, eps):
+    def _partial_differentiate(self, y_pred, eta, eps, by_etas, by_epss) :
         eta_size = len(eta)
         eps_size = len(eps)
 
-        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
-        for i_h, y_pred_elem in enumerate(y_pred) :
-            if eps_size > 0 :
-                for i_eps, cur_eps in enumerate(eps):
-                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
-                    h[i_h,i_eps] = h_elem[0][i_h]
+        if by_etas:
+            h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
+            for i_h, y_pred_elem in enumerate(y_pred) :
+                if eps_size > 0 :
+                    for i_eps, cur_eps in enumerate(eps):
+                        h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
+                        h[i_h,i_eps] = h_elem[0][i_h]
+        else : h = None
 
-        g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
-        for i_g, y_pred_elem in enumerate(y_pred) :
-            if eta_size > 0 :
-                for i_eta, cur_eta in enumerate(eta) :
-                    g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
-                    g[i_g, i_eta] = g_elem[0]
-        
+        if by_epss:
+            g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
+            for i_g, y_pred_elem in enumerate(y_pred) :
+                if eta_size > 0 :
+                    for i_eta, cur_eta in enumerate(eta) :
+                        g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
+                        g[i_g, i_eta] = g_elem[0]
+        else : g = None
         
         return y_pred, g, h
 
@@ -149,12 +152,10 @@ class FOCEInter(tc.nn.Module) :
             fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = dataset.device)
             for data, y_true in dataloader:
 
-                y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
+                y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data, partial_differentiate_by_etas = False, partial_differentiate_by_epss = True)
  
-                y_pred = y_pred.masked_select(mdv_mask)
-                # eta_size = g.size()[-1]
-                # if eta_size > 0 :
-                #     g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
+                y_pred_masked = y_pred.masked_select(mdv_mask)
+                
                 eps_size = h.size()[-1]
                 if eps_size > 0:
                     h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
@@ -163,13 +164,13 @@ class FOCEInter(tc.nn.Module) :
                 # minus_2_loglikelihood = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
                 
                 gr_theta = []
-                for y_elem in y_pred:
+                for y_elem in y_pred_masked:
                     gr_theta_elem = tc.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
                     gr_theta.append(tc.stack(gr_theta_elem))
                 gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
                 gr_theta = tc.stack(gr_theta, dim=0)
 
-                #TODO sigma 개선
+                #TODO sigma 개선?
                 v = gr_theta @ omega @ gr_theta.t() + (h @ sigma @ h.t()).diag().diag()
                 v = v + tc.eye(v.size()[0], device = dataset.device) * 1e-6
                 v_inv = v.inverse()
@@ -477,7 +478,7 @@ class FOCEInter(tc.nn.Module) :
         
         return parameters
 
-    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-3, tolerance_change = 1e-3, max_iteration = 1000,):
+    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-3, tolerance_change = 1e-3, max_iteration = 9999,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()
@@ -490,7 +491,7 @@ class FOCEInter(tc.nn.Module) :
         optimizer.step(opt_fn)
         return self
     
-    def fit_individual(self, checkpoint_file_path : Optional[str] = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 3e-2, max_iteration = 1000,):
+    def fit_individual(self, checkpoint_file_path : Optional[str] = None, learning_rate = 1, tolerance_grad = 1e-2, tolerance_change = 3e-2, max_iteration = 9999,):
         max_iter = max_iteration
         parameters = self.parameters_for_individual()
         optimizer = tc.optim.LBFGS(parameters, 
@@ -501,7 +502,6 @@ class FOCEInter(tc.nn.Module) :
         opt_fn = self.optimization_function(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
     
-    # TODO 
     def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.01, tolerance_grad = 1e-4, tolerance_change = 1e-4, max_iteration = 1000,):
         max_iter = max_iteration
         parameters = self.parameters()
@@ -596,7 +596,6 @@ class FOCEInter(tc.nn.Module) :
             para.requires_grad = grad
         
         return {'cov': cov, 'se': se, 'cor': correl, 'ei_values': ei_values_sorted , 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
-        # return {'cov': cov, 'se': se, 'cor': correl, 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
 
     #TODO 경고, simulation 사용하면 안에 들어있던 eta데이터 덮어 씌움
     def simulate(self, dataset : CSVDataset, repeat : int) :
@@ -622,12 +621,6 @@ class FOCEInter(tc.nn.Module) :
 
         dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
 
-        # etas_result : Dict[str, tc.Tensor] = {}
-        # epss_result : Dict[str, tc.Tensor] = {}
-        # preds : Dict[str, List[tc.Tensor]] = {}
-        # times : Dict[str, tc.Tensor] = {}
-        # output_columns : Dict[str, List[Dict[str, tc.Tensor]]] = {}
-
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]] = {}
         for i, (data, _) in enumerate(dataloader):
             
@@ -638,11 +631,6 @@ class FOCEInter(tc.nn.Module) :
 
             time_data = data[:,self.pred_function_module._column_names.index('TIME')].t()
 
-            # times[id] = time_data
-            # etas_result[id] = etas_cur
-            # epss_result[id] = epss_cur
-            # preds[id] = []
-            # output_columns[id] = []
             result[id] = {}
             result_cur_id : Dict[str, Union[tc.Tensor, List[tc.Tensor]]] = result[id]
             result_cur_id['time'] = time_data
