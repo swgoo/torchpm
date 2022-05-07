@@ -25,8 +25,8 @@ class CovariateModelDecorator :
         self.covariates = covariates            
     
     def __call__(self, cls):
-        if not issubclass(cls, predfunction.PredictionFunctionModule) :
-            raise Exception('Decorated class must be ' + str(predfunction.PredictionFunctionModule))
+        if not issubclass(cls, predfunction.PredictionFunction) :
+            raise Exception('Decorated class must be ' + str(predfunction.PredictionFunction))
         meta_self = self
         class CovariateModel(cls):
             
@@ -66,7 +66,7 @@ class CovariateModelDecorator :
 @dataclass
 class DeepCovariateSearching:
     dataset : CSVDataset
-    BaseModel : predfunction.PredictionFunctionModule
+    BaseModel : predfunction.PredictionFunction
     dependent_parameter_names : List[str]
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]

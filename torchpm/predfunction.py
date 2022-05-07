@@ -20,7 +20,7 @@ from .parameter import *
 from .misc import *
 
 
-class PredictionFunctionModule(tc.nn.Module):
+class PredictionFunction(tc.nn.Module):
 
     ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
 
@@ -30,7 +30,7 @@ class PredictionFunctionModule(tc.nn.Module):
 
                 output_column_names: List[str]):
 
-        super(PredictionFunctionModule, self).__init__()
+        super(PredictionFunction, self).__init__()
         self.dataset = dataset
         self._column_names = dataset.column_names
         self._output_column_names = output_column_names
@@ -52,10 +52,6 @@ class PredictionFunctionModule(tc.nn.Module):
             self._max_record_length = max(data[0].size()[0], self._max_record_length)
         
         self._set_estimated_parameters()
-        self._initialize()
-    
-
-    def _initialize(self):
 
         self._theta_names : Set[str] = set()
 
@@ -333,7 +329,7 @@ class PredictionFunctionModule(tc.nn.Module):
 
 
 
-class PredictionFunctionByTime(PredictionFunctionModule):
+class PredictionFunctionByTime(PredictionFunction):
 
     def __init__(self, dataset: data.CSVDataset, output_column_names: List[str]):
         super().__init__(dataset, output_column_names)
@@ -393,7 +389,7 @@ class PredictionFunctionByTime(PredictionFunctionModule):
         return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
 
 
-class PredictionFunctionByODE(PredictionFunctionModule):
+class PredictionFunctionByODE(PredictionFunction):
 
     """
 

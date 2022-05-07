@@ -23,7 +23,7 @@ class CompartmentModelGenerator(nn.Module) :
         
             self.depot_compartment_num = len(distribution_bool_matrix)
 
-        if transit > 0 :
+        if has_depot and transit > 0 :
             self.distribution_bool_matrix[-1][self.administrated_compartment_num] = False
             length = len(self.distribution_bool_matrix)
             for row in range(transit) :
