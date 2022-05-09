@@ -278,6 +278,8 @@ class FOCEInter(tc.nn.Module) :
     
         print('running_time : ', time.time() - start_time, '\t total_loss:', loss)
         optimizer.step()
+
+        return loss
         
 
 
@@ -499,7 +501,7 @@ class FOCEInter(tc.nn.Module) :
         opt_fn = self.optimization_function_closure(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
     
-    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.01, tolerance_grad = 1e-4, tolerance_change = 1e-4, max_iteration = 1000,):
+    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.1, tolerance_grad = 1e-4, tolerance_change = 1e-4, max_iteration = 9999,):
         max_iter = max_iteration
         parameters = self.parameters()
         self.pred_function_module.reset_epss()
@@ -511,6 +513,19 @@ class FOCEInter(tc.nn.Module) :
                                    line_search_fn = 'strong_wolfe')
         opt_fn = self.optimization_function_closure_FIM(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
+        
+        self = self.descale()
+        parameters = self.parameters()
+        optimizer = tc.optim.Adam(parameters, lr = learning_rate)
+        loss_prev = float("inf")
+        loss_best = float("inf")
+        for epoch in range(max_iteration) :
+            loss = self.optimization_function_FIM(optimizer, checkpoint_file_path = checkpoint_file_path)    
+            if (loss - loss_prev).abs() < tolerance_change and loss_best > loss :
+                break
+            else : loss_prev = loss
+            if loss_best > loss :
+                loss_best = loss            
         return self
    
     def covariance_step(self) :

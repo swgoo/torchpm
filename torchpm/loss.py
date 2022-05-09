@@ -61,10 +61,11 @@ class AOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
         mat = fisher_information_matrix.t() @ fisher_information_matrix
         # mat = fisher_information_matrix
-        i_mat = tc.eye(mat.size()[0], device = mat.device) * 1e-6
-        
+        i_mat = ((tc.ones_like(mat.diag()) * (mat.diag() <= 0)) * 1e-6).diag()
         mat = mat + i_mat
-        mat = mat.inverse() + i_mat
+        mat = mat.inverse()
+        i_mat = ((tc.ones_like(mat.diag()) * (mat.diag() <= 0)) * 1e-6).diag()
+        mat = mat + i_mat
         mat = mat.trace()
         return mat.log()
 

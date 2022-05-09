@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, predfunction, models, linearode, loss
+from torchpm import covariate, odesolver, predfunction, models, loss
 from torchpm import data
 from torchpm.data import CSVDataset
 from torchpm.parameter import *
@@ -114,7 +114,7 @@ class LinearODETest(unittest.TestCase) :
     
     def test_infusion(self):
         dist_mat = [[True]]
-        model = linearode.CompartmentModelGenerator(dist_mat, is_infusion=True)
+        model = odesolver.CompartmentModelGenerator(dist_mat, is_infusion=True)
         d = tc.tensor(320.)
         t = tc.range(0,24,0.05)
         k_00 = tc.tensor(1.)
@@ -129,7 +129,7 @@ class LinearODETest(unittest.TestCase) :
         plt.show()
 
     def test_gut(self):
-        model = linearode.CompartmentModelGenerator([[True]], has_depot=True, transit = 3, is_infusion=False)
+        model = odesolver.CompartmentModelGenerator([[True]], has_depot=True, transit = 3, is_infusion=False)
         dose = tc.tensor(320.)
         t = tc.arange(0., 24., step=0.1)
         k00 = tc.tensor(1.5)
