@@ -21,8 +21,8 @@ class FOCEInter(tc.nn.Module) :
                  omega : Omega,
                  sigma : Sigma,
                  output_column_names: List[str],
-                objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction(),
-                optimal_design_creterion : loss.DesignOptimalFunction = loss.AOptimality()):
+                objective_function : Optional[loss.ObjectiveFunction] = None,
+                optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None):
 
         super(FOCEInter, self).__init__()
         pred_function_module_type = type(pred_function_module)
@@ -36,8 +36,8 @@ class FOCEInter(tc.nn.Module) :
         self.eps_names = eps_names
         self.omega = omega
         self.sigma = sigma
-        self.objective_function = objective_function
-        self.design_optimal_function = optimal_design_creterion
+        self.objective_function = objective_function if objective_function is not None else loss.FOCEInterObjectiveFunction()
+        self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.AOptimality()
         self.dataloader = None
         
     def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :

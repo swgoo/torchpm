@@ -51,7 +51,7 @@ class CompartmentModelGenerator(nn.Module) :
             initial_states_infusion = self._get_initial_states(is_infusion=True)
             cs_infusion = self._solve(dCdts_infusion, initial_states_infusion)
 
-            initial_states[sym.symbols('c_' + str(self.depot_compartment_num), cls=sym.Function)(0)] = cs_infusion[self.depot_compartment_num].rhs.subs({t_sym: dose_sym/r_sym})
+            initial_states[sym.symbols('c_' + str(self.depot_compartment_num), cls=sym.Function)(0)] = cs_infusion[self.depot_compartment_num].rhs.subs({t_sym: dose_sym/r_sym})  # type: ignore
             cs = self._solve(dCdts, initial_states)
             
             for i in range(len(cs)) :
@@ -85,7 +85,7 @@ class CompartmentModelGenerator(nn.Module) :
             ics: initial states of compartments
         """
         comps_num = len(self.distribution_bool_matrix)
-        comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]
+        comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]  # type: ignore
         d = sym.symbols('d') #dose
 
         ics = {comp(0): 0 for comp in comps}
@@ -104,7 +104,7 @@ class CompartmentModelGenerator(nn.Module) :
         t = sym.symbols('t', positive = True, real=True) #time
         r = sym.symbols('r', positive = True, real=True) #infusion rate
         
-        comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]
+        comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]  # type: ignore
 
         elimination_rate = sym.eye(comps_num)
         for i in range(comps_num) :
