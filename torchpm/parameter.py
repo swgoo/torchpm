@@ -25,8 +25,10 @@ class Theta(nn.Module):
     Attributes: .
     """
 
-    def __init__(self, *init_value: float, requires_grad = True):
+    def __init__(self, *init_value: float, fiexd = False, requires_grad = True):
         super().__init__()
+
+        self.fixed = fiexd
 
         if len(init_value) > 3 :
             raise Exception('it must be len(init_value) < 3')
@@ -40,13 +42,13 @@ class Theta(nn.Module):
 
         if len(init_value) == 1 :
             
-            iv = tc.tensor(init_value[1])
+            iv = tc.tensor(init_value[0])
 
-            if self.lb > init_value :
-                self.lb = tc.tensor(init_value)
+            if self.lb > init_value[0] :
+                self.lb = tc.tensor(init_value[0])
 
-            if self.ub < init_value :
-                self.ub = tc.tensor(init_value)
+            if self.ub < init_value[0] :
+                self.ub = tc.tensor(init_value[0])
 
         elif len(init_value) == 2 :
             
@@ -74,7 +76,7 @@ class Theta(nn.Module):
         ub = self.ub + tc.tensor(1e-6)
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
-        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)
+        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad) 
 
     def descale(self) :
         if self.is_scale:
@@ -132,11 +134,15 @@ class CovarianceMatrix(nn.Module) :
     def __init__(self,
                 lower_triangular_vectors_init : Union[List[List[float]], List[float]] , 
                 diagonals : Union[List[bool], bool],
+                fixed :Union[List[bool], bool] = False,
                 requires_grads : Union[List[bool], bool] = True) :
         super().__init__()
 
         self.lower_triangular_vectors_init = lower_triangular_vectors_init
         self.requires_grads = requires_grads
+        
+        if isinstance(fixed, bool) :
+            self.fixed = [fixed]
 
         lower_triangular_vectors_init_tensor = tc.tensor(lower_triangular_vectors_init)
         if lower_triangular_vectors_init_tensor.dim() == 1 :
@@ -162,7 +168,7 @@ class CovarianceMatrix(nn.Module) :
         if type(requires_grads) is bool :
             for length in self.lower_triangular_vector_lengthes:    
                 self.parameter_values.append(
-                    nn.Parameter(
+                    nn.Parameter( 
                         tc.tensor([0.1]*length,  
                                 device=lower_triangular_vectors_init_tensor[0].device),
                                 requires_grad=requires_grads,))
