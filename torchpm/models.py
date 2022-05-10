@@ -14,7 +14,7 @@ class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
                  dataset : CSVDataset,
-                 pred_function_module : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction],
+                 pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction],
                  theta_names : List[str],
                  eta_names : List[str],
                  eps_names : List[str],
@@ -25,11 +25,11 @@ class FOCEInter(tc.nn.Module) :
                 optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None):
 
         super(FOCEInter, self).__init__()
-        pred_function_module_type = type(pred_function_module)
+        pred_function_module_type = type(pred_function)
         if pred_function_module_type is type :
-            self.pred_function_module = pred_function_module(dataset, output_column_names)
-        elif isinstance(pred_function_module, predfunction.PredictionFunction) :
-            self.pred_function_module = pred_function_module
+            self.pred_function = pred_function(dataset, output_column_names)
+        elif isinstance(pred_function, predfunction.PredictionFunction) :
+            self.pred_function = pred_function
         
         self.theta_names = theta_names
         self.eta_names = eta_names
@@ -42,7 +42,7 @@ class FOCEInter(tc.nn.Module) :
         
     def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :
         
-        pred_output = self.pred_function_module(dataset)
+        pred_output = self.pred_function(dataset)
 
         etas = pred_output['etas']
         eta = []
@@ -135,12 +135,12 @@ class FOCEInter(tc.nn.Module) :
         """
         start_time = time.time()
 
-        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  # type: ignore
 
         def fit() :
             optimizer.zero_grad()
             
-            theta_dict = self.pred_function_module.get_theta_parameter_values()
+            theta_dict = self.pred_function.get_theta_parameter_values()
             cov_mat_dim =  len(theta_dict)
             for tensor in self.omega.parameter_values :
                 cov_mat_dim += tensor.size()[0]
@@ -215,11 +215,11 @@ class FOCEInter(tc.nn.Module) :
         start_time = time.time()
         
         if self.dataloader is None :
-            self.dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
+            self.dataloader = tc.utils.data.DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
 
         optimizer.zero_grad()
         
-        theta_dict = self.pred_function_module.get_theta_parameter_values()
+        theta_dict = self.pred_function.get_theta_parameter_values()
         cov_mat_dim =  len(theta_dict)
         for tensor in self.omega.parameter_values :
             cov_mat_dim += tensor.size()[0]
@@ -228,7 +228,7 @@ class FOCEInter(tc.nn.Module) :
         
         thetas = [theta_dict[key] for key in self.theta_names]
 
-        fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = self.pred_function_module.dataset.device)
+        fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = self.pred_function.dataset.device)
         for data, y_true in self.dataloader:
 
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data, partial_differentiate_by_etas = False, partial_differentiate_by_epss = True)
@@ -277,7 +277,6 @@ class FOCEInter(tc.nn.Module) :
             tc.save(self.state_dict(), checkpoint_file_path)
     
         print('running_time : ', time.time() - start_time, '\t total_loss:', loss)
-        optimizer.step()
 
         return loss
         
@@ -299,7 +298,7 @@ class FOCEInter(tc.nn.Module) :
         dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
         def fit() :
             optimizer.zero_grad()
-            total_loss = tc.zeros([], device = self.pred_function_module.dataset.device)
+            total_loss = tc.zeros([], device = self.pred_function.dataset.device)
         
             for data, y_true in dataloader:
                 y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
@@ -335,10 +334,10 @@ class FOCEInter(tc.nn.Module) :
         return fit
 
     def evaluate_FIM(self) :
-        dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = tc.utils.data.DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
 
         
-        theta_dict = self.pred_function_module.get_theta_parameter_values()
+        theta_dict = self.pred_function.get_theta_parameter_values()
         cov_mat_dim =  len(theta_dict)
         for tensor in self.omega.parameter_values :
             cov_mat_dim += tensor.size()[0]
@@ -349,12 +348,12 @@ class FOCEInter(tc.nn.Module) :
         
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]]= {}
 
-        fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = self.pred_function_module.dataset.device)
+        fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = self.pred_function.dataset.device)
         for data, y_true in dataloader:
 
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
 
-            id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
+            id = str(int(data[:,self.pred_function._column_names.index('ID')][0]))
             result[id] = {}
             result_cur_id = result[id]
 
@@ -401,7 +400,7 @@ class FOCEInter(tc.nn.Module) :
             
 
             result_cur_id['pred'] = y_pred
-            result_cur_id['time'] = data[:,self.pred_function_module._column_names.index('TIME')]
+            result_cur_id['time'] = data[:,self.pred_function._column_names.index('TIME')]
             result_cur_id['mdv_mask'] = mdv_mask
 
             for name, value in parameters.items() :
@@ -414,20 +413,20 @@ class FOCEInter(tc.nn.Module) :
 
     def evaluate(self):
 
-        dataloader = tc.utils.data.DataLoader(self.pred_function_module.dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = tc.utils.data.DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
 
         state = self.state_dict()
         
-        total_loss = tc.tensor(0., device = self.pred_function_module.dataset.device)
+        total_loss = tc.tensor(0., device = self.pred_function.dataset.device)
         # self.pred_function_module.reset_epss()
 
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]]= {}
         for data, y_true in dataloader:
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
-            id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
+            id = str(int(data[:,self.pred_function._column_names.index('ID')][0]))
 
             result[id] = {}
-            result_cur_id = result[id]
+            result_cur_id : Dict[str, Union[tc.Tensor, List[tc.Tensor]]] = result[id]
 
 
             y_pred_masked = y_pred.masked_select(mdv_mask)
@@ -446,7 +445,7 @@ class FOCEInter(tc.nn.Module) :
             
             result_cur_id['cwres'] = cwres(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
             result_cur_id['pred'] = y_pred
-            result_cur_id['time'] = data[:,self.pred_function_module._column_names.index('TIME')]
+            result_cur_id['time'] = data[:,self.pred_function._column_names.index('TIME')]
             result_cur_id['mdv_mask'] = mdv_mask
 
             for name, value in parameters.items() :
@@ -459,7 +458,7 @@ class FOCEInter(tc.nn.Module) :
         return result
     
     def descale(self) :
-        self.pred_function_module.descale()
+        self.pred_function.descale()
         self.omega.descale()
         self.sigma.descale()
         return self
@@ -467,10 +466,10 @@ class FOCEInter(tc.nn.Module) :
     def parameters_for_individual(self) :
         parameters = []
 
-        for k, p in self.pred_function_module.get_etas().items() :
+        for k, p in self.pred_function.get_etas().items() :
             parameters.append(p)
         
-        for k, p in self.pred_function_module.get_epss().items() :
+        for k, p in self.pred_function.get_epss().items() :
             parameters.append(p)
         
         return parameters
@@ -478,14 +477,14 @@ class FOCEInter(tc.nn.Module) :
     def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-5, tolerance_change = 1e-5, max_iteration = 9999,):
         max_iter = max_iteration
         parameters = self.parameters()
-        self.pred_function_module.reset_epss()
+        self.pred_function.reset_epss()
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
                                    tolerance_change = tolerance_change,
                                    line_search_fn = 'strong_wolfe')
-        opt_fn = self.optimization_function_closure(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        opt_fn = self.optimization_function_closure(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
         return self
     
@@ -498,25 +497,26 @@ class FOCEInter(tc.nn.Module) :
                                    tolerance_grad = tolerance_grad, 
                                    tolerance_change = tolerance_change,
                                    line_search_fn = 'strong_wolfe')
-        opt_fn = self.optimization_function_closure(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        opt_fn = self.optimization_function_closure(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
     
-    def fit_population_FIM(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.1, tolerance_grad = 1e-4, tolerance_change = 1e-4, max_iteration = 9999,):
+    def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
         max_iter = max_iteration
-        parameters = self.parameters()
-        self.pred_function_module.reset_epss()
+        # parameters = self.parameters()
+        self.pred_function.reset_epss()
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
                                    lr = learning_rate, 
                                    tolerance_grad = tolerance_grad, 
                                    tolerance_change = tolerance_change,
                                    line_search_fn = 'strong_wolfe')
-        opt_fn = self.optimization_function_closure_FIM(self.pred_function_module.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        opt_fn = self.optimization_function_closure_FIM(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
-        
-        self = self.descale()
-        parameters = self.parameters()
+    
+    def fit_population_FIM_by_adam(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.05, tolerance_change = 1e-3, max_iteration = 9999,):
         optimizer = tc.optim.Adam(parameters, lr = learning_rate)
+        # scheduler = tc.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999)
+
         loss_prev = float("inf")
         loss_best = float("inf")
         for epoch in range(max_iteration) :
@@ -525,14 +525,16 @@ class FOCEInter(tc.nn.Module) :
                 break
             else : loss_prev = loss
             if loss_best > loss :
-                loss_best = loss            
+                loss_best = loss 
+            optimizer.step()
+            # scheduler.step()           
         return self
    
     def covariance_step(self) :
 
-        dataset = self.pred_function_module.dataset
+        dataset = self.pred_function.dataset
 
-        theta_dict = self.pred_function_module.get_theta_parameter_values()
+        theta_dict = self.pred_function.get_theta_parameter_values()
 
         cov_mat_dim =  len(theta_dict)
         for tensor in self.omega.parameter_values :
@@ -555,13 +557,13 @@ class FOCEInter(tc.nn.Module) :
  
         s_mat = tc.zeros(cov_mat_dim, cov_mat_dim, device=dataset.device)
 
-        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  # type: ignore
  
         for data, y_true in dataloader:
             
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, _ = self(data)
 
-            id = str(int(data[:,self.pred_function_module._column_names.index('ID')][0]))
+            id = str(int(data[:,self.pred_function._column_names.index('ID')][0]))
             print('id', id)
  
             y_pred = y_pred.masked_select(mdv_mask)
@@ -622,27 +624,27 @@ class FOCEInter(tc.nn.Module) :
         sigma = self.sigma()
 
 
-        eta_parameter_values = self.pred_function_module.get_eta_parameter_values()
+        eta_parameter_values = self.pred_function.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)
         mvn_eta = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eta_size, device=dataset.device), omega)
         etas = mvn_eta.rsample(tc.tensor((len(dataset), repeat), device=dataset.device))
 
-        eps_parameter_values = self.pred_function_module.get_eps_parameter_values()
+        eps_parameter_values = self.pred_function.get_eps_parameter_values()
         eps_size = len(eps_parameter_values)
         mvn_eps = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eps_size, device=dataset.device), sigma)
-        epss = mvn_eps.rsample(tc.tensor([len(dataset), repeat, self.pred_function_module._max_record_length], device=dataset.device))
+        epss = mvn_eps.rsample(tc.tensor([len(dataset), repeat, self.pred_function._max_record_length], device=dataset.device))
 
         dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
 
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]] = {}
         for i, (data, _) in enumerate(dataloader):
             
-            id = str(int(data[:, self.pred_function_module._column_names.index('ID')][0]))
+            id = str(int(data[:, self.pred_function._column_names.index('ID')][0]))
             
             etas_cur = etas[i,:,:]
             epss_cur = epss[i,:,:]
 
-            time_data = data[:,self.pred_function_module._column_names.index('TIME')].t()
+            time_data = data[:,self.pred_function._column_names.index('TIME')].t()
 
             result[id] = {}
             result_cur_id : Dict[str, Union[tc.Tensor, List[tc.Tensor]]] = result[id]
@@ -662,7 +664,7 @@ class FOCEInter(tc.nn.Module) :
                     for eps_i, name in enumerate(self.eps_names) :
                         eps_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eps_value[:data.size()[0],eps_i])})
 
-                    r  = self.pred_function_module(data)
+                    r  = self.pred_function(data)
                     y_pred = r['y_pred']
 
                     result_cur_id['preds'].append(y_pred)

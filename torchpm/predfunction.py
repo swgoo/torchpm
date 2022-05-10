@@ -34,64 +34,43 @@ class PredictionFunction(tc.nn.Module):
         self.dataset = dataset
         self._column_names = dataset.column_names
         self._output_column_names = output_column_names
-
         self._ids = set()
-
         self._record_lengths : Dict[str, int] = {}
-
         self._max_record_length = 0
 
-
-        for data in tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0):
-
+        for data in tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
             id = data[0][:, self._column_names.index('ID')][0]
             self._ids.add(int(id))
-
             self._record_lengths[str(int(id))] = data[0].size()[0]
-
             self._max_record_length = max(data[0].size()[0], self._max_record_length)
         
         self._set_estimated_parameters()
-
         self._theta_names : Set[str] = set()
-
         self._eta_names : Set[str] = set()
-
         self._eps_names : Set[str] = set()
-        
 
         attributes = dir(self)
 
         for att_name in attributes:
-
             att = getattr(self, att_name)
-
             att_type = type(att)
 
             with tc.no_grad() :
-
                 if att_type is Theta :
-
                     self._theta_names.add(att_name)
 
                 elif att_type is Eta :
-
                     self._eta_names.add(att_name)
 
                     for id in self._ids :
-
                         eta_value = tc.tensor(0.1, device=self.dataset.device) 
-
-                        att.parameter_values.update({str(int(id)): tc.nn.Parameter(eta_value)})
+                        att.parameter_values.update({str(int(id)): tc.nn.Parameter(eta_value)}) # type: ignore
 
                 elif att_type is Eps :
-
                     self._eps_names.add(att_name)
 
                     for id in self._ids :
-
                         eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
-
                         att.parameter_values[str(int(id))] = eps_value
 
 
@@ -109,35 +88,28 @@ class PredictionFunction(tc.nn.Module):
 
 
     def get_thetas(self) :
-
         return self._get_estimated_parameters(self._theta_names)
     
 
     def get_etas(self) :
-
         return self._get_estimated_parameters(self._eta_names)
     
 
     def get_epss(self) :
-
         return self._get_estimated_parameters(self._eps_names)
     
 
     def _get_estimated_parameter_values(self, names) -> Dict[str, Any]:
-
         dictionary : Dict[str, tc.Tensor] = {}
 
         for name in names :
-
             att = getattr(self, name)
             parameter_att_list = dir(att)
 
             if 'parameter_value' in parameter_att_list:
-
                 dictionary[name] = att.parameter_value
 
             elif 'parameter_values' in parameter_att_list:
-
                 dictionary[name] = att.parameter_values
 
         return dictionary
@@ -169,12 +141,12 @@ class PredictionFunction(tc.nn.Module):
         return self._get_estimated_parameter_values(self._theta_names)
     
 
-    def get_eta_parameter_values(self) -> Dict[str, nn.ParameterDict]:
+    def get_eta_parameter_values(self) -> Dict[str, nn.ParameterDict]:  # type: ignore
 
         return self._get_estimated_parameter_values(self._eta_names)
     
 
-    def get_eps_parameter_values(self) -> Dict[str, Dict[str, nn.Parameter]]:
+    def get_eps_parameter_values(self) -> Dict[str, Dict[str, nn.Parameter]]:  # type: ignore
 
         return self._get_estimated_parameter_values(self._eps_names)
 
@@ -505,9 +477,9 @@ class PredictionFunctionByODE(PredictionFunction):
             y_init = result[-1]
             
 
-            cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset.device)
+            cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset.device)  # type: ignore
 
-            y_integrated = y_integrated.masked_select(cmt_mask==1)
+            y_integrated = y_integrated.masked_select(cmt_mask==1)  # type: ignore
 
 
             parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}

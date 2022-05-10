@@ -113,7 +113,7 @@ class DeepCovariateSearching:
 
         model = FOCEInter(dataset=self.dataset,
                         output_column_names=[],
-                        pred_function_module=CovModel, 
+                        pred_function=CovModel, 
                         theta_names= theta_names,
                         eta_names= eta_names, 
                         eps_names= self.eps_names,

@@ -32,26 +32,36 @@ class FisherInformationMatrixTest(unittest.TestCase):
         print('=================================== A Optimal ===================================')
         model = models.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
-                                pred_function_module = BasementModelFIM, 
+                                pred_function = BasementModelFIM, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0'], 
                                 omega=omega, 
                                 sigma=sigma,
                                 optimal_design_creterion=loss.AOptimality()).to(device)
-        model.fit_population_FIM()
+
+        model.fit_population_FIM(model.parameters())
+
+        print('=================================== A Optimal, omega, sigma ===================================')
+
         model = model.descale()
-        # model.fit_population_FIM(learning_rate=0.01)
-        # model.fit_population_FIM()
+        parameters = [*model.omega.parameter_values, *model.sigma.parameter_values]
+        model.fit_population_FIM(parameters)
+        
+
+
+        for p in model.descale().named_parameters():
+            print(p)
 
         print('=================================== Adam ===================================')
 
         parameters = [*model.omega.parameter_values, *model.sigma.parameter_values]
-        parameters = model.parameters()
-        optimizer = tc.optim.Adam(parameters, lr=0.005)
+        # parameters = model.parameters()
+        optimizer = tc.optim.Adam(parameters, lr=0.001)
 
         for i in range(100):
             model.optimization_function_FIM(optimizer)
+            optimizer.step()
         
 
         model = model.descale()
@@ -334,7 +344,7 @@ class TotalTest(unittest.TestCase) :
 
         model = models.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
-                                pred_function_module = BasementModel, 
+                                pred_function = BasementModel, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
@@ -399,7 +409,7 @@ class TotalTest(unittest.TestCase) :
 
         model = models.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
-                                pred_function_module = AnnModel, 
+                                pred_function = AnnModel, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
@@ -427,7 +437,7 @@ class TotalTest(unittest.TestCase) :
 
         model = models.FOCEInter(dataset=dataset,
                                 output_column_names=output_column_names,
-                                pred_function_module = AmtModel, 
+                                pred_function = AmtModel, 
                                 theta_names=['theta_0'],
                                 eta_names=['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
@@ -466,7 +476,7 @@ class TotalTest(unittest.TestCase) :
 
         model = models.FOCEInter(dataset=dataset,
                                 output_column_names=output_column_names,
-                                pred_function_module = ODEModel, 
+                                pred_function = ODEModel, 
                                 theta_names = ['theta_0', 'theta_1', 'theta_2'],
                                 eta_names=['eta_0', 'eta_1','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
@@ -512,7 +522,7 @@ class TotalTest(unittest.TestCase) :
 
         model = models.FOCEInter(dataset=dataset,
                                 output_column_names=output_column_names,
-                                pred_function_module=CovModel, 
+                                pred_function=CovModel, 
                                 theta_names=['theta_0', 'v_theta', 'theta_2'],
                                 eta_names= ['eta_0', 'v_eta','eta_2'], 
                                 eps_names= ['eps_0','eps_1'], 
