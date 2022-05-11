@@ -25,10 +25,10 @@ class Theta(nn.Module):
     Attributes: .
     """
 
-    def __init__(self, *init_value: float, fiexd = False, requires_grad = True):
+    def __init__(self, *init_value: float, fixed = False, requires_grad = True):
         super().__init__()
 
-        self.fixed = fiexd
+        self.fixed = fixed
 
         if len(init_value) > 3 :
             raise Exception('it must be len(init_value) < 3')
@@ -76,7 +76,7 @@ class Theta(nn.Module):
         ub = self.ub + tc.tensor(1e-6)
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
-        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad) 
+        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)
 
     def descale(self) :
         if self.is_scale:
@@ -134,10 +134,11 @@ class CovarianceMatrix(nn.Module) :
     def __init__(self,
                 lower_triangular_vectors_init : Union[List[List[float]], List[float]] , 
                 diagonals : Union[List[bool], bool],
+                parameter_names : List[str],
                 fixed :Union[List[bool], bool] = False,
                 requires_grads : Union[List[bool], bool] = True) :
         super().__init__()
-
+        
         self.lower_triangular_vectors_init = lower_triangular_vectors_init
         self.requires_grads = requires_grads
         

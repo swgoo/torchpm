@@ -45,6 +45,10 @@ class PredictionFunction(tc.nn.Module):
             self._max_record_length = max(data[0].size()[0], self._max_record_length)
         
         self._set_estimated_parameters()
+        self._init_parameters()
+        
+    
+    def _init_parameters(self):
         self._theta_names : Set[str] = set()
         self._eta_names : Set[str] = set()
         self._eps_names : Set[str] = set()
@@ -76,26 +80,25 @@ class PredictionFunction(tc.nn.Module):
 
     def _get_estimated_parameters(self, names) :
 
-        dictionary : Dict[str, tc.Tensor] = {}
+        dictionary : Dict[str, Any] = {}
 
         for name in names :
 
             att = getattr(self, name)
 
-            dictionary[name] = att()
+            dictionary[name] = att
 
         return dictionary
 
 
-    def get_thetas(self) :
+    def get_thetas(self) -> Dict[str, Theta]:
         return self._get_estimated_parameters(self._theta_names)
     
 
-    def get_etas(self) :
+    def get_etas(self) -> Dict[str, Eta]:
         return self._get_estimated_parameters(self._eta_names)
-    
 
-    def get_epss(self) :
+    def get_epss(self) -> Dict[str, Eps]:
         return self._get_estimated_parameters(self._eps_names)
     
 

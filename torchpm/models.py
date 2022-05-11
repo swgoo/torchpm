@@ -39,6 +39,33 @@ class FOCEInter(tc.nn.Module) :
         self.objective_function = objective_function if objective_function is not None else loss.FOCEInterObjectiveFunction()
         self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.AOptimality()
         self.dataloader = None
+    
+    def get_unfixed_parameter_values(self) -> List[nn.Parameter]:
+        unfixed_parameter_values = []
+
+        omega_len = len(self.omega.parameter_values)
+        for i, parameter_value, fixed in zip(range(omega_len), self.omega.parameter_values, self.omega.fixed) :
+            if not fixed :
+                unfixed_parameter_values.append(parameter_value) 
+        
+        sigma_len = len(self.sigma.parameter_values)
+        for i, parameter_value, fixed in zip(range(sigma_len), self.sigma.parameter_values, self.sigma.fixed) :
+            if not fixed :
+                unfixed_parameter_values.append(parameter_value)
+        
+        for k, p in self.pred_function.get_thetas().items() :
+            if not p.fixed :
+                unfixed_parameter_values.append(p.parameter_value)
+            
+        for k, p in self.pred_function.get_etas().items() :
+            unfixed_parameter_values.extend(list(p.parameter_values.values()))
+        
+        for k, p in self.pred_function.get_epss().items() :
+            unfixed_parameter_values.extend(list(p.parameter_values.values()))
+        
+        return unfixed_parameter_values
+
+
         
     def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :
         
@@ -47,12 +74,12 @@ class FOCEInter(tc.nn.Module) :
         etas = pred_output['etas']
         eta = []
         for eta_name in self.eta_names:
-            eta.append(etas[eta_name])
+            eta.append(etas[eta_name]())
 
         epss = pred_output['epss']
         eps = []
-        for eps_name in self.eps_names:\
-            eps.append(epss[eps_name])
+        for eps_name in self.eps_names:
+            eps.append(epss[eps_name]())
 
         y_pred, g, h = self._partial_differentiate(pred_output['y_pred'], eta, eps, by_etas = partial_differentiate_by_etas, by_epss = partial_differentiate_by_epss)
 
