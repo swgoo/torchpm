@@ -34,6 +34,12 @@ def covariance_to_correlation(m):
     d = m.diag().sqrt()
     return ((m.t()/d).t())/d
 
+def make_positive_definite_matrix(dimension: int) -> tc.Tensor:
+    mat = tc.rand(dimension, dimension) * 0.1 + 0.1
+    mat = mat @ mat.t()
+    mat.add_(tc.eye(dimension))
+    return mat
+
 # def mx(m, x) :
 #     ei_values, ei_vectors = symeig(m)
 #     return ei_vectors @ (ei_values.abs()**x).diag() @ ei_vectors.t()
