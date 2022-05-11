@@ -134,7 +134,6 @@ class CovarianceMatrix(nn.Module) :
     def __init__(self,
                 lower_triangular_vectors_init : Union[List[List[float]], List[float]] , 
                 diagonals : Union[List[bool], bool],
-                parameter_names : List[str],
                 fixed :Union[List[bool], bool] = False,
                 requires_grads : Union[List[bool], bool] = True) :
         super().__init__()
