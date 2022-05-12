@@ -35,9 +35,9 @@ class Theta(nn.Module):
         self.is_scale = True
 
 
-        self.lb : tc.Tensor = tc.tensor(0.)
+        self.lb : tc.Tensor = tc.tensor(1.e-6)
         iv = tc.tensor(0)
-        self.ub : tc.Tensor = tc.tensor(1.0e6)
+        self.ub : tc.Tensor = tc.tensor(1.e6)
         
 
         if len(init_value) == 1 :
@@ -72,8 +72,8 @@ class Theta(nn.Module):
             iv = tc.tensor(init_value[1])
             self.ub = tc.tensor(init_value[2])
                 
-        lb = self.lb - tc.tensor(1e-6)
-        ub = self.ub + tc.tensor(1e-6)
+        lb = self.lb
+        ub = self.ub
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
         self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)

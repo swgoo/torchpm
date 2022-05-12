@@ -11,6 +11,23 @@ import numpy as np
 if __name__ == '__main__' :
     unittest.main()
 
+class ShowTimeDVTest(unittest.TestCase):
+    def test_show_time_dv(self):
+        dataset_file_path = './examples/THEO.csv'
+        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        dataset = CSVDataset(dataset_np, column_names)
+
+        for data, y_true in dataset:
+            time = data.t()[column_names.index('TIME')]
+            
+        
+            fig = plt.figure()   
+            ax = fig.add_subplot(1, 1, 1)             
+            ax.plot(time, y_true, color="black")
+            plt.show()
+
+
 class FisherInformationMatrixTest(unittest.TestCase):
     def test_fisher_information_matrix(self):
         dataset_file_path = './examples/THEO.csv'
@@ -368,11 +385,12 @@ class TotalTest(unittest.TestCase) :
         simulation_result = model.simulate(dataset, 300)
 
         i = 0
-        fig = plt.figure()
+        
 
         for id, values in simulation_result.items() :
-            i += 1
-            ax = fig.add_subplot(12, 1, i)
+            fig = plt.figure()
+            # i += 1
+            ax = fig.add_subplot(1, 1, 1)
             print('id', id)
             time_data : tc.Tensor = values['time'].to('cpu')
             
@@ -390,7 +408,8 @@ class TotalTest(unittest.TestCase) :
 
             for y_pred in values['preds'] :
                 ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
-        plt.show()
+            
+            plt.show()
     
     def test_ANN_model(self):
         dataset_file_path = './examples/THEO.csv'

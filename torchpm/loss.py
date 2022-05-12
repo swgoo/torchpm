@@ -48,25 +48,27 @@ class DesignOptimalFunction(metaclass = abc.ABCMeta) :
 
 class DOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
-        mat = fisher_information_matrix.t() @ fisher_information_matrix
+        # mat = fisher_information_matrix.t() @ fisher_information_matrix
+        mat = fisher_information_matrix
         i_mat = tc.eye(mat.size()[0], device=mat.device) * 1e-6
+        # mat = mat + i_mat
+        mat = mat.inverse()
+        _, r = tc.linalg.slogdet(mat)
 
-        mat = mat + i_mat
-        mat = (mat.t() @ mat).inverse() + i_mat
-
-        return mat.det().log()
+        return r
         # return -fisher_information_matrix.det().log()
 
 class AOptimality(DesignOptimalFunction) :
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
         mat = fisher_information_matrix.t() @ fisher_information_matrix
         # mat = fisher_information_matrix
-        # i_mat = ((tc.ones_like(mat.diag()) * (mat.diag() <= 0)) * 1e-6).diag()
         i_mat = tc.eye(mat.size()[0], device=mat.device) * 1e-6
+        # i_mat = ((tc.ones_like(mat.diag()) * (mat.diag() <= 0)) * 1e-3).diag()
+        
         mat = mat + i_mat
         mat = mat.inverse()
-        # i_mat = ((tc.ones_like(mat.diag()) * (mat.diag() <= 0)) * 1e-6).diag()
-        mat = mat + i_mat
+        # i_mat = ((tc.ones_like(mat.diag()) * (mat.diag() <= 0)) * 1e-3).diag()
+        # mat = mat + i_mat
         mat = mat.trace()
         return mat.log()
 

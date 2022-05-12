@@ -37,7 +37,8 @@ class FOCEInter(tc.nn.Module) :
         self.omega = omega
         self.sigma = sigma
         self.objective_function = objective_function if objective_function is not None else loss.FOCEInterObjectiveFunction()
-        self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.AOptimality()
+        # TODO 기본 optimality 결정
+        self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.DOptimality()
         self.dataloader = None
     
     def get_unfixed_parameter_values(self) -> List[nn.Parameter]:
@@ -199,6 +200,7 @@ class FOCEInter(tc.nn.Module) :
 
                 #TODO sigma 개선?
                 v = gr_theta @ omega @ gr_theta.t() + (h @ sigma @ h.t()).diag().diag()
+                # v = gr_theta @ omega @ gr_theta.t() +  tc.eye(gr_theta.size()[0], device = dataset.device) * (sigma)
                 v = v + tc.eye(v.size()[0], device = dataset.device) * 1e-6
                 v_inv = v.inverse()
 
@@ -526,8 +528,8 @@ class FOCEInter(tc.nn.Module) :
                                    line_search_fn = 'strong_wolfe')
         opt_fn = self.optimization_function_closure(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
-    
-    def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
+    # TODO learning_rate 0.5
+    def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.5, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
         max_iter = max_iteration
         # parameters = self.parameters()
         self.pred_function.reset_epss()
