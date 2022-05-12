@@ -529,7 +529,7 @@ class FOCEInter(tc.nn.Module) :
         opt_fn = self.optimization_function_closure(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
     # TODO learning_rate 0.5
-    def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.5, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
+    def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.6, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
         max_iter = max_iteration
         # parameters = self.parameters()
         self.pred_function.reset_epss()

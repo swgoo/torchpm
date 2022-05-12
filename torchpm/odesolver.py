@@ -46,7 +46,7 @@ class CompartmentModelGenerator(nn.Module) :
 
         if is_infusion :
         
-            t_sym, dose_sym, r_sym = sym.symbols('t d r', positive = True, real=True)
+            t_sym, dose_sym, r_sym = sym.symbols('t d r', positive = True, real=True, allow_half=False)
             dCdts_infusion = self._get_dCdts(is_infusion=True)
             initial_states_infusion = self._get_initial_states(is_infusion=True)
             cs_infusion = self._solve(dCdts_infusion, initial_states_infusion)
@@ -61,15 +61,17 @@ class CompartmentModelGenerator(nn.Module) :
             comps_infusion = []
             for comp in cs_infusion :
                 comps_infusion.append(comp.rhs)
-            self.infusion_model = spt.SymPyModule(expressions=comps_infusion)
+            self.infusion_model = spt.SymPyModule(expressions=comps_infusion, extra_funcs={sym.core.numbers.Half: lambda : tc.tensor(1/2)})
 
             
-            
+                # sym.core.numbers.Rational: lambda p, q=None: p/q
 
         comps = []
         for comp in cs :
             comps.append(comp.rhs)
-        self.model = spt.SymPyModule(expressions=comps)
+        #TODO 제거
+        # comps.append(sym.Eq(sym.core.numbers.Half, tc.tensor(1/2), sympify=False))
+        self.model = spt.SymPyModule(expressions=comps, extra_funcs={sym.core.numbers.Half: lambda : tc.tensor(1/2)})
     
     
 
@@ -86,7 +88,7 @@ class CompartmentModelGenerator(nn.Module) :
         """
         comps_num = len(self.distribution_bool_matrix)
         comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]  # type: ignore
-        d = sym.symbols('d') #dose
+        d = sym.symbols('d', allow_half=False) #dose
 
         ics = {comp(0): 0 for comp in comps}
         ics[comps[self.depot_compartment_num](0)] = 0 if is_infusion else d
@@ -101,21 +103,21 @@ class CompartmentModelGenerator(nn.Module) :
 
         comps_num = len(self.distribution_bool_matrix)
 
-        t = sym.symbols('t', positive = True, real=True) #time
-        r = sym.symbols('r', positive = True, real=True) #infusion rate
+        t = sym.symbols('t', positive = True, real=True, allow_half=False) #time
+        r = sym.symbols('r', positive = True, real=True, allow_half=False) #infusion rate
         
         comps = [sym.symbols("c_"+ str(i), cls=sym.Function) for i in range(comps_num)]  # type: ignore
 
         elimination_rate = sym.eye(comps_num)
         for i in range(comps_num) :
-            elimination_rate[i,i] = sym.symbols('k_' + str(i) + str(i), positive = True, real=True) if self.distribution_bool_matrix[i][i] else 0
+            elimination_rate[i,i] = sym.symbols('k_' + str(i) + str(i), positive = True, real=True, allow_half=False) if self.distribution_bool_matrix[i][i] else 0
 
         distribution_rate = sym.zeros(comps_num, comps_num)
         for i in range(comps_num) :
             for j in range(comps_num) :
                 if i == j or not self.distribution_bool_matrix[i][j]:
                     continue
-                distribution_rate[i,j] = sym.symbols('k_'+str(i)+str(j), positive = True, real=True)
+                distribution_rate[i,j] = sym.symbols('k_'+str(i)+str(j), positive = True, real=True, allow_half=False)
         
         comps_matrix = sym.Matrix([comps[i](t) for i in range(comps_num)])
         dcdt_eqs = distribution_rate.T * comps_matrix \
@@ -148,14 +150,13 @@ class CompartmentModelGenerator(nn.Module) :
             infusion_t = tc.masked_select(t, t <= infusion_end_time)
             elimination_t = tc.masked_select(t, t > infusion_end_time)
 
-            variables_infusion = deepcopy(variables)
-            variables_infusion['t'] = infusion_t
-            infusion_amt = self.infusion_model(**variables_infusion).t()
+            variables['t'] = infusion_t
+            infusion_amt = self.infusion_model(**variables).t()
 
-            variables_elimination = deepcopy(variables)
-            variables_elimination['t'] = elimination_t
-            amt = self.model(**variables_elimination).t()
+            variables['t'] = elimination_t
+            amt = self.model(**variables).t()
 
+            variables['t'] = t
             return tc.concat([infusion_amt, amt], dim = -1)
         else :
             variables['t'] = t
