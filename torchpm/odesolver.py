@@ -63,34 +63,35 @@ class CompartmentModelGenerator(nn.Module) :
         if self.is_infusion :
             t_sym = sym.symbols('t', real=True, negative = False, finite = True)
             r_sym, dose_sym = sym.symbols('r, d', real=True, positive = True, finite = True)
-            dCdts_infusion = self._get_dCdts(is_infusion=True)
             initial_states_infusion = self._get_initial_states(is_infusion=self.is_infusion)
-            cs_infusion = self._solve(dCdts_infusion, initial_states_infusion)
+            cs_infusion = self._solve_linode(initial_states_infusion, is_infusion=True)
+            
+            # cs_infusion = self._solve(dCdts_infusion, initial_states_infusion)
 
-            dCdts = self._get_dCdts(is_infusion=False)
+            
             initial_states = self._get_initial_states(is_infusion=self.is_infusion)
             for i in range(len(initial_states)) :
-                key = sym.symbols("c_"+ str(i), cls=sym.Function, real = True, negative = False, finite = True)(0) # type: ignore
-                initial_states[key] = cs_infusion[i].rhs.subs({t_sym: dose_sym/r_sym})
+                initial_states[i, 0] = cs_infusion[i].subs({t_sym: dose_sym/r_sym})
+            cs = self._solve_linode(initial_states, is_infusion=False)
+            
 
-            cs = self._solve(dCdts, initial_states)
+            # cs = self._solve(dCdts, initial_states)
             
             for i in range(len(cs)) :
-                cs[i] = sym.Eq(cs[i].lhs, cs[i].rhs.subs({t_sym: t_sym - dose_sym/r_sym}))
+                cs[i] = cs[i].subs({t_sym: t_sym - dose_sym/r_sym})
 
             comps_infusion = []
             for comp in cs_infusion :
-                comps_infusion.append(comp.rhs)
+                comps_infusion.append(comp)
             self.infusion_model = spt.SymPyModule(expressions=comps_infusion)
         
-        else: 
-            dCdts = self._get_dCdts(is_infusion=self.is_infusion)
-            initial_states = self._get_initial_states(is_infusion=self.is_infusion)
-            cs = self._solve(dCdts, initial_states)
+        else:
+            initial_states = self._get_initial_states(is_infusion=self.is_infusion) 
+            cs = self._solve_linode(initial_states, is_infusion=self.is_infusion)
         
         comps = []
         for comp in cs :
-            comps.append(comp.rhs)
+            comps.append(comp)
         self.model = spt.SymPyModule(expressions=comps)
     
     
@@ -107,15 +108,22 @@ class CompartmentModelGenerator(nn.Module) :
         Returns:
             ics: initial states of compartments
         """
+        t = sym.symbols('t', real=True, negative = False, finite = True)
         comps_num = len(self.distribution_bool_matrix)
-        comps = [sym.symbols("c_"+ str(i), cls=sym.Function, real = True, negative = False, finite = True) for i in range(comps_num)]  # type: ignore
+        comps = [0 for i in range(comps_num)]
+        funcs = [sym.Function('f_'+ str(i)) for i in range(comps_num)]
         d = sym.symbols('d', real = True, Positve = True, finite = True) #dose
+        result = []
+        
+        for i, func in enumerate(funcs) :
+            if i == self.depot_compartment_num and not is_infusion :
+                result.append(d)
+            else :
+                result.append(0)
 
-        ics = {comp(0): 0 for comp in comps}
-        ics[comps[self.depot_compartment_num](0)] = 0 if is_infusion else d
-        return ics
+        return sym.Matrix(result)
 
-    def _get_dCdts(self, is_infusion : bool = False) -> List[sym.Eq]:
+    def _solve_linode(self, initial_states, is_infusion : bool = False) -> List[sym.Eq]:
         """
         Returns:
             eqs: differential equations of compartments
@@ -144,55 +152,41 @@ class CompartmentModelGenerator(nn.Module) :
         dcdt_eqs = (distribution_rate.T  \
                     - sym.diag(*(distribution_rate * sym.ones(comps_num, 1))) \
                     - elimination_rate) * comps_matrix
+        a_matrix = (distribution_rate.T  \
+                    - sym.diag(*(distribution_rate * sym.ones(comps_num, 1))) \
+                    - elimination_rate)
         if is_infusion :
             infusion = sym.Matrix([r if i == self.depot_compartment_num else 0. for i in range(comps_num) ])
-            dcdt_eqs = dcdt_eqs + infusion
-
-        eqs = [sym.Eq(comps[i](t).diff(t), dcdt_eqs[i]) for i in range(comps_num)]
+            # dcdt_eqs = dcdt_eqs + infusion
+        else :
+            infusion = sym.Matrix([0. for i in range(comps_num)])
+        if is_infusion :
+            eqs = sym.solvers.ode.linodesolve(A = a_matrix, t = t, b = infusion, B= None, doit=True, type='type2')
+        else :
+            eqs = sym.solvers.ode.linodesolve(A = a_matrix, t = t, b = infusion, B= None, doit=True, type='type1')
+        # eqs = [sym.Eq(comps[i](t).diff(t), dcdt_eqs[i]) for i in range(comps_num)]
+        eqs[0].free_symbols
+        list(eqs[0].free_symbols)[0].name
         return eqs
-    
-    def _solve(self, dCdts, ics) :
-        """
-        solve differential equations
-        Args:
-            eqs: differential equations of compartments
-            ics: initial states of compartments
-        Return :
-            compartment functions by time
 
-            
-        """
-        comps_num = len(dCdts)
-        
-        
-        parameters = dict(
-                dCdts=str(dCdts), 
-                ics=str(ics))
-        parameters = HashableDict(parameters)
-
-        comps = [sym.symbols("c_"+ str(i), cls=sym.Function, negative = False, real = True, finite=True)(sym.symbols('t', negative = False, real = True, finite=True)) for i in range(comps_num)]  # type: ignore
-        
-        # function = sym.solvers.ode.systems.dsolve_system(dCdts, ics=ics, doit=True, simplify=True)[0]
-        # return function
-
-        db = shelve.open('./ode.db')
-        try :
-            function_serialized = db[str(parameters)]
-            function = []
-            for i, f in enumerate(function_serialized) :
-                rhs = pickle.loads(f)
-                lhs = comps[i]
-                function.append(sym.Eq(lhs, rhs, simpify=False))
-            return function
-        except KeyError :
-            function = sym.solvers.ode.systems.dsolve_system(dCdts, ics=ics, doit=True, simplify=True)[0]
-            function_serialized = []
-            for f in function :
-                function_serialized.append(pickle.dumps(f.rhs))
-            db[str(parameters)] = function_serialized
-            return function
-        finally :
-            db.close()
+    #     db = shelve.open('./ode.db')
+    #     try :
+    #         function_serialized = db[str(parameters)]
+    #         function = []
+    #         for i, f in enumerate(function_serialized) :
+    #             rhs = pickle.loads(f)
+    #             lhs = comps[i]
+    #             function.append(sym.Eq(lhs, rhs, simpify=False))
+    #         return function
+    #     except KeyError :
+    #         function = sym.solvers.ode.systems.dsolve_system(dCdts, ics=ics, doit=True, simplify=True)[0]
+    #         function_serialized = []
+    #         for f in function :
+    #             function_serialized.append(pickle.dumps(f.rhs))
+    #         db[str(parameters)] = function_serialized
+    #         return function
+    #     finally :
+    #         db.close()
 
         
 
