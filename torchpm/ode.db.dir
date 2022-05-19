@@ -1,0 +1,1 @@
+'{"dcdt_eqs": "Eq(Derivative(c_0(t), t), -k_00*c_0(t))", "ics": "{c_0(0): d}"}', (0, 656)

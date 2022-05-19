@@ -141,7 +141,7 @@ class LinearODETest(unittest.TestCase) :
     
     def test_infusion(self):
         dist_mat = [[True]]
-        model = odesolver.CompartmentModelGenerator(dist_mat, is_infusion=True)
+        model = odesolver.SymbolicCompartmentModelGenerator(dist_mat, is_infusion=True)
         d = tc.tensor(320.)
         t = tc.range(0,24,0.05)
         k_00 = tc.tensor(1.)
@@ -156,7 +156,7 @@ class LinearODETest(unittest.TestCase) :
         plt.show()
 
     def test_gut(self):
-        model = odesolver.CompartmentModelGenerator([[True]], has_depot=True, transit = 3, is_infusion=False)
+        model = odesolver.SymbolicCompartmentModelGenerator([[True]], has_depot=True, transit = 3, is_infusion=False)
         dose = tc.tensor(320.)
         t = tc.arange(0., 24., step=0.1)
         k00 = tc.tensor(1.5)
