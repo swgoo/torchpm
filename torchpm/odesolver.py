@@ -22,6 +22,11 @@ class CompartmentDistributionMatrix(enum.Enum) :
     ONE_COMP_DIST : Tuple[Tuple[bool]] = ((True))  # type: ignore
     TWO_COMP_DIST : Tuple[Tuple[bool]] = ((True, True), (True, False))  # type: ignore
     THREE_COMP_DIST : Tuple[Tuple[bool]] = ((True, True, True), (True, False, False), (True, False, False))  # type: ignore
+twoCompartmentInfusionKey = ModelConfig(
+                CompartmentDistributionMatrix.TWO_COMP_DIST.value,
+                is_infusion = True)
+
+DB[json.dumps(asdict(twoCompartmentInfusionKey), sort_keys=True)] = TwoCompartmentInfusion
 
 class CompartmentModelGenerator(nn.Module) :
     DB_FILE_NAME = "ode.db"
@@ -283,7 +288,7 @@ class ModelConfig:
     is_infusion: bool = False
 
 class PreparedCompartmentModel :
-    DB : Dict[str, typing.Type[nn.Module]]
+    DB : Dict[str, typing.Type[nn.Module]] = {}
     
     def __init__(self, 
             distribution_matrix: Union[Tuple[Tuple[bool]], bool], 
@@ -305,7 +310,6 @@ class PreparedCompartmentModel :
                 observed_compartment_num, 
                 administrated_compartment_num, 
                 is_infusion)
-        self.DB = {}
 
         twoCompartmentInfusionKey = ModelConfig(
                 CompartmentDistributionMatrix.TWO_COMP_DIST.value,
@@ -319,19 +323,12 @@ class PreparedCompartmentModel :
 
     def get_eqs_from_db(self) :
         db = self.DB
-        key = json.dumps({
-                'distribution_matrix': str(self.distribution_matrix), 
-                'has_depot': str(self.has_depot),
-                'transit': self.transit,
-                'observed_compartment_num': self.observed_compartment_num,
-                'administrated_compartment_num': self.administrated_compartment_num,
-                'is_infusion': self.is_infusion}, sort_keys=True)
+        model_cofig = ModelConfig(self.distribution_matrix, self.has_depot, self.transit, self.observed_compartment_num, self.administrated_compartment_num, self.is_infusion)
+        key = json.dumps(asdict(model_cofig), sort_keys=True)
         try :
             return db[key]
         except KeyError :
             return None
-    
-
     
 class TwoCompartmentInfusion(nn.Module) :
     def __init__(self) -> None:

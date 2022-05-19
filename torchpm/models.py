@@ -41,7 +41,7 @@ class FOCEInter(tc.nn.Module) :
         self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.DOptimality()
         self.dataloader = None
     
-    def get_unfixed_parameter_values(self) -> List[nn.Parameter]:
+    def get_unfixed_parameter_values(self) -> List[nn.Parameter]:  # type: ignore
         unfixed_parameter_values = []
 
         omega_len = len(self.omega.parameter_values)
