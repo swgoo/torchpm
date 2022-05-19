@@ -124,8 +124,6 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
             r_sym, dose_sym = sym.symbols('r, d', real=True, positive = True, finite = True)
             initial_states_infusion = self._get_initial_states(is_infusion=self.is_infusion)
             cs_infusion = self._solve_linode(initial_states_infusion, is_infusion=True)
-            
-            # cs_infusion = self._solve(dCdts_infusion, initial_states_infusion)
 
             funcs = self._get_functions()
             initial_states = self._get_initial_states(is_infusion=self.is_infusion)
@@ -136,18 +134,12 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
             for i in range(len(cs)) :
                 cs[i] = cs[i].subs({t_sym: t_sym - dose_sym/r_sym})
 
-            # comps_infusion = []
-            # for comp in cs_infusion :
-            #     comps_infusion.append(comp)
             self.infusion_model = spt.SymPyModule(expressions=cs_infusion)
         
         else:
             initial_states = self._get_initial_states(is_infusion=self.is_infusion) 
             cs = self._solve_linode(initial_states, is_infusion=self.is_infusion)
         
-        # comps = []
-        # for comp in cs :
-        #     comps.append(comp)
         self.model = spt.SymPyModule(expressions=cs)
     
     
