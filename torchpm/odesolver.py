@@ -4,9 +4,8 @@ import enum
 from functools import cache
 import os
 import pickle
-from re import X
 import shelve
-from typing import ClassVar, List, Optional, Dict, Iterable, Tuple, Union
+from typing import List, Dict, Tuple, Union
 import typing
 from attr import asdict
 import torch as tc
@@ -14,7 +13,6 @@ import numpy as np
 import sympy as sym
 import sympytorch as spt
 from torch import nn
-import torch
 import json
 
 @enum.unique
@@ -22,14 +20,51 @@ class CompartmentDistributionMatrix(enum.Enum) :
     ONE_COMP_DIST : Tuple[Tuple[bool]] = ((True))  # type: ignore
     TWO_COMP_DIST : Tuple[Tuple[bool]] = ((True, True), (True, False))  # type: ignore
     THREE_COMP_DIST : Tuple[Tuple[bool]] = ((True, True, True), (True, False, False), (True, False, False))  # type: ignore
-twoCompartmentInfusionKey = ModelConfig(
-                CompartmentDistributionMatrix.TWO_COMP_DIST.value,
-                is_infusion = True)
 
-DB[json.dumps(asdict(twoCompartmentInfusionKey), sort_keys=True)] = TwoCompartmentInfusion
+@dataclass()
+class ModelConfig:
+    distribution_matrix: Union[Tuple[Tuple[bool]], bool] 
+    has_depot: bool = False
+    transit: int = 0
+    observed_compartment_num : int = 0
+    administrated_compartment_num : int = 0
+    is_infusion: bool = False
+
+DB : Dict[ModelConfig, nn.Module] = {}
+def __init__() :
+    twoCompartmentInfusionKey = ModelConfig(
+                    CompartmentDistributionMatrix.TWO_COMP_DIST.value,
+                    is_infusion = True)
+    DB[twoCompartmentInfusionKey] = TwoCompartmentInfusion()
+__init__()
 
 class CompartmentModelGenerator(nn.Module) :
     DB_FILE_NAME = "ode.db"
+
+    def __init__(self, 
+            distribution_bool_matrix: Union[Tuple[Tuple[bool]], bool], 
+            has_depot : bool = False, 
+            transit : int = 0, 
+            observed_compartment_num = 0, 
+            administrated_compartment_num = 0, 
+            is_infusion : bool= False) -> None:
+        super().__init__()
+
+        self.distribution_matrix = []
+        if isinstance(distribution_bool_matrix, bool) :
+            self.distribution_matrix = [[distribution_bool_matrix]]
+        elif isinstance(distribution_bool_matrix, Tuple) :
+            for row in list(distribution_bool_matrix) :
+                self.distribution_matrix.append(list(row))
+
+        self.is_infusion = is_infusion
+        self.observed_compartment_num = observed_compartment_num
+        self.administrated_compartment_num = administrated_compartment_num
+        self.depot_compartment_num = administrated_compartment_num
+        self.has_depot = has_depot
+        self.transit = transit
+
+        self._make_distribution_matrix()
 
     def _make_distribution_matrix(self) -> None:
         if self.has_depot :
@@ -61,34 +96,8 @@ class CompartmentModelGenerator(nn.Module) :
         if self.distribution_matrix == [] :
             self._make_distribution_matrix()
         return self.distribution_matrix
-    
 
-    def __init__(self, 
-            distribution_bool_matrix: Union[Tuple[Tuple[bool]], bool], 
-            has_depot : bool = False, 
-            transit : int = 0, 
-            observed_compartment_num = 0, 
-            administrated_compartment_num = 0, 
-            is_infusion : bool= False) -> None:
-        super().__init__()
-
-        self.distribution_matrix = []
-        if isinstance(distribution_bool_matrix, bool) :
-            self.distribution_matrix = [[distribution_bool_matrix]]
-        elif isinstance(distribution_bool_matrix, Tuple) :
-            for row in list(distribution_bool_matrix) :
-                self.distribution_matrix.append(list(row))
-
-        self.is_infusion = is_infusion
-        self.observed_compartment_num = observed_compartment_num
-        self.administrated_compartment_num = administrated_compartment_num
-        self.depot_compartment_num = administrated_compartment_num
-        self.has_depot = has_depot
-        self.transit = transit
-
-        self._make_distribution_matrix()
-
-class NumericalCompartmentModelGenerator(CompartmentModelGenerator) :
+class NumericCompartmentModelGenerator(CompartmentModelGenerator) :
     
     def forward(self, y, **k : tc.Tensor) :
 
@@ -255,8 +264,6 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         finally :
             db.close()
 
-        
-
     def forward(self, t, **variables):
         
         if self.is_infusion :
@@ -277,15 +284,6 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         else :
             variables['t'] = t
             return self.model(**variables).t()
-
-@dataclass
-class ModelConfig:
-    distribution_matrix: Union[Tuple[Tuple[bool]], bool] 
-    has_depot: bool = False
-    transit: int = 0
-    observed_compartment_num : int = 0
-    administrated_compartment_num : int = 0
-    is_infusion: bool = False
 
 class PreparedCompartmentModel :
     DB : Dict[str, typing.Type[nn.Module]] = {}
@@ -318,7 +316,6 @@ class PreparedCompartmentModel :
                 observed_compartment_num, 
                 administrated_compartment_num, 
                 is_infusion)
-        self.DB[json.dumps(asdict(twoCompartmentInfusionKey), sort_keys=True)] = TwoCompartmentInfusion
 
 
     def get_eqs_from_db(self) :
@@ -350,3 +347,5 @@ class TwoCompartmentInfusion(nn.Module) :
                 + b/beta * (1 - tc.exp(-beta*(infusion_time))))*tc.exp(-beta*(elimination_t-infusion_time))
 
         return tc.concat([amt_infusion, amt_elimination])
+
+
