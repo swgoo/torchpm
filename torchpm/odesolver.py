@@ -31,6 +31,7 @@ class ModelConfig:
     observed_compartment_num : int = 0
     administrated_compartment_num : int = 0
     is_infusion: bool = False
+    is_delay_time: bool = False
 
 DB : Dict[ModelConfig, typing.Type[nn.Module]] = {}  # type: ignore
 def __init__() :
@@ -60,6 +61,7 @@ class CompartmentModelGenerator(nn.Module) :
         self.depot_compartment_num = model_config.administrated_compartment_num
         self.has_depot = model_config.has_depot
         self.transit = model_config.transit
+        self.is_delay_time = model_config.is_delay_time
 
         self._make_distribution_matrix()
 
@@ -96,26 +98,29 @@ class CompartmentModelGenerator(nn.Module) :
 
 class NumericCompartmentModelGenerator(CompartmentModelGenerator) :
     
-    def forward(self, y, **k : tc.Tensor) :
+    def forward(self, y, t, **variables : tc.Tensor) :
 
         comps_num = len(self.distribution_matrix)
 
         elimination_rate = tc.eye(comps_num)
         for i in range(comps_num) :
-            elimination_rate[i,i] = k['k_' + str(i) + str(i)] if self.distribution_matrix[i][i] else 0
+            elimination_rate[i,i] = variables['k_' + str(i) + str(i)] if self.distribution_matrix[i][i] else 0
 
         distribution_rate = tc.zeros(comps_num, comps_num)
         for i in range(comps_num) :
             for j in range(comps_num) :
                 if i == j or not self.distribution_matrix[i][j]:
                     continue
-                distribution_rate[i,j] = k['k_'+str(i)+str(j)]
+                distribution_rate[i,j] = variables['k_'+str(i)+str(j)]
         
         dcdt_matrix = distribution_rate.t()  \
                     - tc.diag(distribution_rate @ tc.ones(comps_num, 1)) \
                     - elimination_rate
 
-        return dcdt_matrix @ y
+        if self.is_delay_time and variables['delay_time'] > t :
+            return tc.zeros_like(y)
+        else :
+            return dcdt_matrix @ y
 
 
 class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
@@ -255,10 +260,8 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
             db.close()
 
     def forward(self, t, **variables):
-        
         if self.is_infusion :
             infusion_end_time = variables['d'] / variables['r']
-
             
             infusion_t = tc.masked_select(t, t <= infusion_end_time)
             elimination_t = tc.masked_select(t, t > infusion_end_time)
@@ -270,10 +273,16 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
             amt = self.model(**variables).t()
 
             variables['t'] = t
-            return tc.concat([infusion_amt, amt], dim = -1)
+            amts = tc.concat([infusion_amt, amt], dim = -1)
+        elif self.is_delay_time and self.has_depot :
+            delay_time = variables['delay_time']
+            variables['t'] = (t - delay_time).clamp(min=0)
+            amts = self.model(**variables).t()
         else :
             variables['t'] = t
-            return self.model(**variables).t()
+            amts = self.model(**variables).t()
+        return amts
+
 
 class PreparedCompartmentModel(CompartmentModelGenerator) :
     
