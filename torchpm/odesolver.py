@@ -11,12 +11,6 @@ import sympytorch as spt
 from torch import nn
 import json
 
-'''
-TODO
-time delay 기능 추가
-    ODE는 time delay 이전에는 투여가 일어나지 않는 상태로 하면 될듯    
-'''
-
 @enum.unique
 class CompartmentDistributionMatrix(enum.Enum) :
     ONE_COMP_DIST   = True  # type: ignore
@@ -74,6 +68,7 @@ class CompartmentModelGenerator(nn.Module) :
         
             self.depot_compartment_num = len(self.distribution_matrix) - 1
 
+        self.transit_compartment_nums = []
         if self.has_depot and self.transit > 0 :
             self.distribution_matrix[-1][self.administrated_compartment_num] = False
             length = len(self.distribution_matrix)
@@ -85,10 +80,13 @@ class CompartmentModelGenerator(nn.Module) :
                     row.append(False)
             
             #depot to transit 0
+            
             self.distribution_matrix[self.depot_compartment_num][self.depot_compartment_num+1] = True
+            self.transit_compartment_nums.append(self.depot_compartment_num+1)
             transit_start = self.depot_compartment_num + 1 
             for i in range(transit_start, transit_start + self.transit - 1):
                 self.distribution_matrix[i][i+1] = True
+                self.transit_compartment_nums.append(i)
             self.distribution_matrix[-1][self.administrated_compartment_num] = True
     
     def get_distribution_matrix(self) -> List[List[bool]]:
