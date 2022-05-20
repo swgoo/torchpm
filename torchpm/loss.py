@@ -14,7 +14,7 @@ class FOCEInterObjectiveFunction(ObjectiveFunction) :
         v = (h @ sigma @ h.t()).diag().diag()
         
         inv_v = v.inverse()
-        term1_sign, term1 = v.slogdet()
+        _, term1 = v.slogdet()
         term2 = res @ inv_v @ res
         
         eta_size = eta.size()[-1]
@@ -22,8 +22,8 @@ class FOCEInterObjectiveFunction(ObjectiveFunction) :
             omega = omega + tc.eye(eta_size, device=omega.device) * 1e-6
             inv_omega = omega.inverse()
             term3 = eta @ inv_omega @ eta
-            term4_sign, term4 = omega.slogdet()
-            term5_sign, term5 = (inv_omega + g.t() @ inv_v @ g).slogdet()
+            _, term4 = omega.slogdet()
+            _, term5 = (inv_omega + g.t() @ inv_v @ g).slogdet()
         else : 
             term3 = 0
             term4 = 0

@@ -1,22 +1,22 @@
-from copy import deepcopy
 from dataclasses import dataclass
 import enum
-from functools import cache
 import os
 import pickle
 import shelve
 from typing import List, Dict, Tuple, Union
 import typing
-from attr import asdict
 import torch as tc
-import numpy as np
 import sympy as sym
 import sympytorch as spt
 from torch import nn
 import json
 
+'''
+TODO
+time delay 기능 추가
+    ODE는 time delay 이전에는 투여가 일어나지 않는 상태로 하면 될듯    
+'''
 
-    
 @enum.unique
 class CompartmentDistributionMatrix(enum.Enum) :
     ONE_COMP_DIST   = True  # type: ignore
@@ -35,7 +35,7 @@ class ModelConfig:
 DB : Dict[ModelConfig, typing.Type[nn.Module]] = {}  # type: ignore
 def __init__() :
     twoCompartmentInfusionKey = ModelConfig(
-                    CompartmentDistributionMatrix.TWO_COMP_DIST.value,
+                    CompartmentDistributionMatrix.TWO_COMP_DIST.value,  # type: ignore
                     is_infusion = True)
     DB[twoCompartmentInfusionKey] = TwoCompartmentInfusion
 
@@ -147,10 +147,7 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         
         self.model = spt.SymPyModule(expressions=cs)
     
-    
-
     def _check_square_matrix(self, m : list[list[bool]], error_massage) :
-        
         length = len(m)
         for row in m :
             if len(row) != length :
@@ -230,13 +227,10 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
             else :
                 eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_linear', ics = initial_states)
 
-
             if isinstance(eqs, sym.Eq) :
                 eqs = [eqs]
             eqs = [eq.rhs for eq in eqs]
             self._put_eqs_to_db(dcdt_eqs, initial_states, eqs)
-
-        
         return eqs
     
     def _get_eqs_from_db(self, dcdt_eqs, ics) :
@@ -245,7 +239,7 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         key = json.dumps({'dcdt_eqs': str(dcdt_eqs), 'ics': str(ics)}, sort_keys=True)
         try :
             eqs_serialized = db[key]
-            return pickle.loads(eqs_serialized)
+            return pickle.loads(eqs_serialized)  # type: ignore
         except KeyError :
             return None
         finally :
