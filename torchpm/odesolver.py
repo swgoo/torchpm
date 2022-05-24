@@ -120,7 +120,7 @@ class NumericCompartmentModel(CompartmentModel) :
         else :
             return dcdt_matrix @ y
 
-
+#TODO implement timeout by asyncio
 class SymbolicCompartmentModel(CompartmentModel) :
     
     def __init__(self, model_config : ModelConfig) -> None:
