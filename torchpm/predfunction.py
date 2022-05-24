@@ -26,7 +26,8 @@ class PredictionFunction(tc.nn.Module):
 
     def __init__(self,
             dataset : data.CSVDataset,
-            output_column_names: List[str]):
+            output_column_names: List[str],
+            **kwargs):
 
         super(PredictionFunction, self).__init__()
         self.dataset = dataset
@@ -44,7 +45,8 @@ class PredictionFunction(tc.nn.Module):
         
         self._set_estimated_parameters()
         self._init_parameters()
-        
+
+    
     
     def _init_parameters(self):
         self._theta_names : Set[str] = set()
@@ -282,7 +284,8 @@ class PredictionFunction(tc.nn.Module):
     # def _calculate_error(self, y_pred: tc.Tensor, parameters: tc.Tensor) -> tuple[tc.Tensor, Dict[str, tc.Tensor]]:
         pass
     
-
+    
+    @abstractmethod
     def forward(self, dataset):
         pass
 
@@ -377,9 +380,9 @@ class PredictionFunctionByODE(PredictionFunction):
 
     atol : float = 1e-2
 
-    def __init__(self, dataset: data.CSVDataset, output_column_names: List[str]):
-        super().__init__(dataset, output_column_names)
-        self.parameter_values : Dict[str, tc.Tensor] = {}
+    # def __init__(self, dataset: data.CSVDataset, output_column_names: List[str]):
+    #     super().__init__(dataset, output_column_names)
+    #     self.parameter_values : Dict[str, tc.Tensor] = {}
 
 
     @abstractmethod
@@ -401,6 +404,8 @@ class PredictionFunctionByODE(PredictionFunction):
     def forward(self, dataset) :
 
         parameters = self._pre_forward(dataset)
+        if self.parameter_values is None:
+            self.parameter_values : Dict[str, tc.Tensor] = {}
         self.parameter_values = parameters
 
 
