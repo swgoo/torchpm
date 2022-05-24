@@ -34,7 +34,7 @@ def __init__() :
                     is_infusion = True)
     DB[twoCompartmentInfusionKey] = TwoCompartmentInfusion
 
-class CompartmentModelGenerator(nn.Module) :
+class CompartmentModel(nn.Module) :
     DB_FILE_NAME = "ode.db"
 
     def __init__(self, 
@@ -94,7 +94,7 @@ class CompartmentModelGenerator(nn.Module) :
             self._make_distribution_matrix()
         return self.distribution_matrix
 
-class NumericCompartmentModelGenerator(CompartmentModelGenerator) :
+class NumericCompartmentModel(CompartmentModel) :
     
     def forward(self, y, t, **variables : tc.Tensor) :
 
@@ -121,7 +121,7 @@ class NumericCompartmentModelGenerator(CompartmentModelGenerator) :
             return dcdt_matrix @ y
 
 
-class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
+class SymbolicCompartmentModel(CompartmentModel) :
     
     def __init__(self, model_config : ModelConfig) -> None:
         
@@ -129,7 +129,7 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
 
         if self.is_infusion :
             t_sym = sym.symbols('t', real=True, negative = False, finite = True)
-            r_sym, dose_sym = sym.symbols('r, d', real=True, positive = True, finite = True)
+            r_sym, dose_sym = sym.symbols('RATE, AMT', real=True, positive = True, finite = True)
             initial_states_infusion = self._get_initial_states(is_infusion=self.is_infusion)
             cs_infusion = self._solve_linode(initial_states_infusion, is_infusion=True)
 
@@ -165,7 +165,7 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         Returns:
             ics: initial states of compartments
         """
-        d = sym.symbols('d', real = True, Positve = True, finite = True) #dose
+        d = sym.symbols('AMT', real = True, Positve = True, finite = True) #dose
         result = {}
 
         funcs = self._get_functions()  
@@ -189,7 +189,7 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         comps_num = len(self.distribution_matrix)
 
         t = sym.symbols('t', negative = False, real=True, finite = True) #time
-        r = sym.symbols('r', positive = True, real=True, finite = True) #infusion rate
+        r = sym.symbols('RATE', positive = True, real=True, finite = True) #infusion rate
         
         funcs = [func(t) for func in self._get_functions()]  # type: ignore
         funcs_ = [func.diff(t) for func in funcs]
@@ -226,7 +226,7 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         
         if eqs is None :
             if is_infusion:
-                eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_homogeneous_coeff_best', ics = initial_states)
+                eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_linear', ics = initial_states)
             else :
                 eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_linear', ics = initial_states)
 
@@ -259,19 +259,20 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
 
     def forward(self, t, **variables):
         if self.is_infusion :
-            infusion_end_time = variables['d'] / variables['r']
+            infusion_end_time = variables['AMT'] / variables['RATE']
             
             infusion_t = tc.masked_select(t, t <= infusion_end_time)
-            elimination_t = tc.masked_select(t, t > infusion_end_time)
-
-            variables['t'] = infusion_t
+            # elimination_t = tc.masked_select(t, t > infusion_end_time)
+            variables['t'] = t
+            # variables['t'] = infusion_t
             infusion_amt = self.infusion_model(**variables).t()
 
-            variables['t'] = elimination_t
+            # variables['t'] = elimination_t
             amt = self.model(**variables).t()
 
-            variables['t'] = t
-            amts = tc.concat([infusion_amt, amt], dim = -1)
+            
+
+            amts = tc.concat([infusion_amt[:,:infusion_t.size()[0]], amt[:,infusion_t.size()[0]:]], dim = -1)
         elif self.is_delay_time and self.has_depot :
             delay_time = variables['delay_time']
             variables['t'] = (t - delay_time).clamp(min=0)
@@ -282,13 +283,14 @@ class SymbolicCompartmentModelGenerator(CompartmentModelGenerator) :
         return amts
 
 
-class PreparedCompartmentModel(CompartmentModelGenerator) :
+class PreparedCompartmentModel(CompartmentModel) :
     
     def __init__(self, model_config: ModelConfig) -> None:
         super().__init__(model_config)
-        
-        self.module = DB[self.model_config]()
-        
+        try :
+            self.module = DB[self.model_config]()
+        except KeyError :
+            raise KeyError('Model not found in DB')
     def forward(self, **variables):
         return self.module(**variables)
     
@@ -296,22 +298,24 @@ class TwoCompartmentInfusion(nn.Module) :
     def __init__(self) -> None:
         super().__init__()
     
-    def forward(self, t, k_00, k_01, k_10, r, d) :
+    def forward(self, t, k_00, k_01, k_10, RATE, AMT, **kwargs) -> tc.Tensor:
         beta = 1/2 * (k_01 + k_10 + k_00 - tc.sqrt((k_01 + k_10 + k_00)**2 - 4*k_10*k_00)) 
         alpha = k_10 * k_00 / beta
         a = (alpha - k_10) / (alpha - beta)
         b = (beta - k_10) / (beta - alpha)
-        infusion_time = d/r
+        infusion_time = AMT/RATE
 
         infusion_t = tc.masked_select(t, t <= infusion_time)
-        elimination_t = tc.masked_select(t, t > infusion_time)
+        # elimination_t = tc.masked_select(t, t > infusion_time)
 
 
-        amt_infusion = d/infusion_time * (a/alpha * (1 - tc.exp(-alpha*(infusion_t))) + b/beta * (1 - tc.exp(-beta*(infusion_t))))
-        amt_elimination = d/infusion_time * (a/alpha * (1 - tc.exp(-alpha*(infusion_time)))*tc.exp(-alpha*(elimination_t-infusion_time)) 
-                + b/beta * (1 - tc.exp(-beta*(infusion_time))))*tc.exp(-beta*(elimination_t-infusion_time))
+        amt_infusion = AMT/infusion_time * (a/alpha * (1 - tc.exp(-alpha*(t))) + b/beta * (1 - tc.exp(-beta*(t))))
+        amt_elimination = AMT/infusion_time * (a/alpha * (1 - tc.exp(-alpha*(infusion_time)))*tc.exp(-alpha*(t-infusion_time)) 
+                + b/beta * (1 - tc.exp(-beta*(infusion_time))))*tc.exp(-beta*(t-infusion_time))
+        
 
-        return tc.concat([amt_infusion, amt_elimination])
+
+        return tc.concat([amt_infusion[:infusion_t.size()[0]], amt_elimination[infusion_t.size()[0]:]], dim = -1).unsqueeze(0)
 
 __init__()
 

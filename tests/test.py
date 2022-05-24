@@ -141,7 +141,7 @@ class LinearODETest(unittest.TestCase) :
     
     def test_infusion(self):
         dist_mat = [[True]]
-        model = odesolver.SymbolicCompartmentModelGenerator(dist_mat, is_infusion=True)
+        model = odesolver.SymbolicCompartmentModel(dist_mat, is_infusion=True)
         d = tc.tensor(320.)
         t = tc.range(0,24,0.05)
         k_00 = tc.tensor(1.)
@@ -156,7 +156,7 @@ class LinearODETest(unittest.TestCase) :
         plt.show()
 
     def test_gut(self):
-        model = odesolver.SymbolicCompartmentModelGenerator([[True]], has_depot=True, transit = 3, is_infusion=False)
+        model = odesolver.SymbolicCompartmentModel([[True]], has_depot=True, transit = 3, is_infusion=False)
         dose = tc.tensor(320.)
         t = tc.arange(0., 24., step=0.1)
         k00 = tc.tensor(1.5)
@@ -235,9 +235,6 @@ class BasementModelFIM(predfunction.PredictionFunctionByTime) :
 
 
 class AnnModel(predfunction.PredictionFunctionByTime) :
-    '''
-        pass
-    '''
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0., 1.5, 10.)
         self.theta_1 = Theta(0., 30., 100.)
