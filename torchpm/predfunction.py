@@ -305,7 +305,7 @@ class PredictionFunction(tc.nn.Module):
 
 
 
-class PredictionFunctionByTime(PredictionFunction):
+class SymbolicPredictionFunction(PredictionFunction):
 
     @abstractmethod
     def _calculate_preds(self, t : tc.Tensor, parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
@@ -362,7 +362,7 @@ class PredictionFunctionByTime(PredictionFunction):
         return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
 
 
-class PredictionFunctionByODE(PredictionFunction):
+class NumericPredictionFunction(PredictionFunction):
 
     """
 

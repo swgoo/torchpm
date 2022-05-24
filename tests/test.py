@@ -172,7 +172,7 @@ class LinearODETest(unittest.TestCase) :
         ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
         plt.show()
 
-class BasementModel(predfunction.PredictionFunctionByTime) :
+class BasementModel(predfunction.SymbolicPredictionFunction) :
 
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0., 5., 10.)
@@ -203,7 +203,7 @@ class BasementModel(predfunction.PredictionFunctionByTime) :
         p['v_v'] = p['v'] 
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
-class BasementModelFIM(predfunction.PredictionFunctionByTime) :
+class BasementModelFIM(predfunction.SymbolicPredictionFunction) :
 
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0.01, 2., 10.)
@@ -234,7 +234,7 @@ class BasementModelFIM(predfunction.PredictionFunctionByTime) :
         return y_pred +  self.eps_0()
 
 
-class AnnModel(predfunction.PredictionFunctionByTime) :
+class AnnModel(predfunction.SymbolicPredictionFunction) :
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0., 1.5, 10.)
         self.theta_1 = Theta(0., 30., 100.)
@@ -275,7 +275,7 @@ class AnnModel(predfunction.PredictionFunctionByTime) :
 
 
 
-class AmtModel(predfunction.PredictionFunctionByTime) :
+class AmtModel(predfunction.SymbolicPredictionFunction) :
 
     def _set_estimated_parameters(self):
 
@@ -305,7 +305,7 @@ class AmtModel(predfunction.PredictionFunctionByTime) :
     def _calculate_error(self, y_pred, para) :
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
-class ODEModel(predfunction.PredictionFunctionByODE) :
+class ODEModel(predfunction.NumericPredictionFunction) :
     def _set_estimated_parameters(self):
         self.theta_0 = Theta(0., 1.5, 10)
         self.theta_1 = Theta(0, 30, 100)
