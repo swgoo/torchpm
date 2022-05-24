@@ -3,6 +3,7 @@ import enum
 import os
 import pickle
 import shelve
+import time
 from typing import List, Dict, Tuple, Union
 import typing
 import torch as tc
@@ -10,6 +11,7 @@ import sympy as sym
 import sympytorch as spt
 from torch import nn
 import json
+import asyncio
 
 @enum.unique
 class CompartmentDistributionMatrix(enum.Enum) :
@@ -179,7 +181,7 @@ class SymbolicCompartmentModel(CompartmentModel) :
 
         return result
 
-    def _solve_linode(self, initial_states, is_infusion : bool = False) -> List[sym.Eq]:
+    def _solve_linode(self, initial_states, is_infusion : bool = False, timeout : int = 10) -> List[sym.Eq]:
         """
         Returns:
             eqs: differential equations of compartments
@@ -225,7 +227,11 @@ class SymbolicCompartmentModel(CompartmentModel) :
                 funcs = funcs[0]
         
         if eqs is None :
-            eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_linear', ics = initial_states)
+            loop = asyncio.get_event_loop()
+            future = loop.run_in_executor(None, sym.solvers.ode.dsolve, dcdt_eqs, funcs, '1st_linear', True, initial_states)
+            result = asyncio.wait_for(future, timeout, loop=loop)
+
+            eqs = loop.run_until_complete(result)
 
             if isinstance(eqs, sym.Eq) :
                 eqs = [eqs]
