@@ -304,9 +304,6 @@ class PredictionFunction(tc.nn.Module):
 
 class PredictionFunctionByTime(PredictionFunction):
 
-    def __init__(self, dataset: data.CSVDataset, output_column_names: List[str]):
-        super().__init__(dataset, output_column_names)
-
     @abstractmethod
     def _calculate_preds(self, t : tc.Tensor, parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
@@ -386,7 +383,6 @@ class PredictionFunctionByODE(PredictionFunction):
 
 
     @abstractmethod
-
     def _calculate_preds(self, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
  
