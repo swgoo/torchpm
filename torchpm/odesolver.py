@@ -225,10 +225,7 @@ class SymbolicCompartmentModel(CompartmentModel) :
                 funcs = funcs[0]
         
         if eqs is None :
-            if is_infusion:
-                eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_linear', ics = initial_states)
-            else :
-                eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_linear', ics = initial_states)
+            eqs = sym.solvers.ode.dsolve(dcdt_eqs, funcs, hint='1st_linear', ics = initial_states)
 
             if isinstance(eqs, sym.Eq) :
                 eqs = [eqs]
