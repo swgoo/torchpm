@@ -1,2 +1,2 @@
-'{"dcdt_eqs": "Eq(Derivative(c_0(t), t), RATE - k_00*c_0(t))", "ics": "{c_0(0): 0}"}', (0, 771)
-'{"dcdt_eqs": "Eq(Derivative(c_0(t), t), -k_00*c_0(t))", "ics": "{c_0(0): (RATE*exp(AMT*k_00/RATE)/k_00 - RATE/k_00)*exp(-AMT*k_00/RATE)}"}', (1024, 928)
+'{"dcdt_eqs": "Eq(Derivative(c_0(t), t), RATE - k_00*c_0(t))", "ics": "{c_0(0): 0}"}', (0, 744)
+'{"dcdt_eqs": "Eq(Derivative(c_0(t), t), -k_00*c_0(t))", "ics": "{c_0(0): (RATE*exp(AMT*k_00/RATE)/k_00 - RATE/k_00)*exp(-AMT*k_00/RATE)}"}', (1024, 901)

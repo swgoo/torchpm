@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import enum
+import functools
 import os
 import pickle
 import shelve
@@ -227,11 +228,13 @@ class SymbolicCompartmentModel(CompartmentModel) :
                 funcs = funcs[0]
         
         if eqs is None :
-            loop = asyncio.get_event_loop()
-            future = loop.run_in_executor(None, sym.solvers.ode.dsolve, dcdt_eqs, funcs, '1st_linear', True, initial_states)
-            result = asyncio.wait_for(future, timeout, loop=loop)
-
-            eqs = loop.run_until_complete(result)
+            try :
+                loop = asyncio.get_event_loop()
+                future = loop.run_in_executor(None, functools.partial(sym.solvers.ode.dsolve, dcdt_eqs, funcs, hint = '1st_linear', ics = initial_states))
+                future = asyncio.wait_for(future, timeout, loop=loop)
+                eqs = loop.run_until_complete(future)
+            except asyncio.TimeoutError :
+                raise RuntimeError('TimeoutError')
 
             if isinstance(eqs, sym.Eq) :
                 eqs = [eqs]
