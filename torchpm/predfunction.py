@@ -25,10 +25,8 @@ class PredictionFunction(tc.nn.Module):
     ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
 
     def __init__(self,
-
-                dataset : data.CSVDataset,
-
-                output_column_names: List[str]):
+            dataset : data.CSVDataset,
+            output_column_names: List[str]):
 
         super(PredictionFunction, self).__init__()
         self.dataset = dataset
