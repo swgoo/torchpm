@@ -123,10 +123,9 @@ class NumericCompartmentModel(CompartmentModel) :
         else :
             return dcdt_matrix @ y
 
-#TODO implement timeout by asyncio
 class SymbolicCompartmentModel(CompartmentModel) :
     
-    def __init__(self, model_config : ModelConfig) -> None:
+    def __init__(self, model_config : ModelConfig, timeout = 30) -> None:
         
         super().__init__(model_config=model_config)
 
@@ -134,13 +133,13 @@ class SymbolicCompartmentModel(CompartmentModel) :
             t_sym = sym.symbols('t', real=True, negative = False, finite = True)
             r_sym, dose_sym = sym.symbols('RATE, AMT', real=True, positive = True, finite = True)
             initial_states_infusion = self._get_initial_states(is_infusion=self.is_infusion)
-            cs_infusion = self._solve_linode(initial_states_infusion, is_infusion=True)
+            cs_infusion = self._solve_linode(initial_states_infusion, is_infusion=True, timeout=timeout)
 
             funcs = self._get_functions()
             initial_states = self._get_initial_states(is_infusion=self.is_infusion)
             for i, func in enumerate(funcs) :
                 initial_states[func(0)] = cs_infusion[i].subs({t_sym: dose_sym/r_sym})
-            cs = self._solve_linode(initial_states, is_infusion=False)
+            cs = self._solve_linode(initial_states, is_infusion=False, timeout=timeout)
             
             for i in range(len(cs)) :
                 cs[i] = cs[i].subs({t_sym: t_sym - dose_sym/r_sym})
@@ -149,7 +148,7 @@ class SymbolicCompartmentModel(CompartmentModel) :
         
         else:
             initial_states = self._get_initial_states(is_infusion=self.is_infusion) 
-            cs = self._solve_linode(initial_states, is_infusion=self.is_infusion)
+            cs = self._solve_linode(initial_states, is_infusion=self.is_infusion, timeout=timeout)
         
         self.model = spt.SymPyModule(expressions=cs)
     
@@ -182,7 +181,7 @@ class SymbolicCompartmentModel(CompartmentModel) :
 
         return result
 
-    def _solve_linode(self, initial_states, is_infusion : bool = False, timeout : int = 10) -> List[sym.Eq]:
+    def _solve_linode(self, initial_states, is_infusion : bool = False, timeout : int = 30) -> List[sym.Eq]:
         """
         Returns:
             eqs: differential equations of compartments
@@ -230,11 +229,13 @@ class SymbolicCompartmentModel(CompartmentModel) :
         if eqs is None :
             try :
                 loop = asyncio.get_event_loop()
-                future = loop.run_in_executor(None, functools.partial(sym.solvers.ode.dsolve, dcdt_eqs, funcs, hint = '1st_linear', ics = initial_states))
+                future = loop.run_in_executor(
+                        None, 
+                        functools.partial(sym.solvers.ode.dsolve, dcdt_eqs, funcs, hint = '1st_linear', ics = initial_states))
                 future = asyncio.wait_for(future, timeout, loop=loop)
                 eqs = loop.run_until_complete(future)
             except asyncio.TimeoutError :
-                raise RuntimeError('TimeoutError')
+                raise TimeoutError()
 
             if isinstance(eqs, sym.Eq) :
                 eqs = [eqs]
