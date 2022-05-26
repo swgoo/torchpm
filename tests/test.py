@@ -155,23 +155,6 @@ class LinearODETest(unittest.TestCase) :
         ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
         plt.show()
 
-    def test_gut(self):
-        model = odesolver.SymbolicCompartmentModel([[True]], has_depot=True, transit = 3, is_infusion=False)
-        dose = tc.tensor(320.)
-        t = tc.arange(0., 24., step=0.1)
-        k00 = tc.tensor(1.5)
-        k12 = tc.tensor(0.6)
-        k23 = tc.tensor(0.7)
-        k34 = tc.tensor(0.8)
-        k_administrated = tc.tensor(0.2)
-        result = model(t=t, k_00= k00, k_12 = k12, k_23 = k23, k_34 = k34, k_40 = k_administrated, d=dose)
-        print(t)
-        print(result)
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-        ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
-        plt.show()
-
 class BasementModel(predfunction.SymbolicPredictionFunction) :
 
     def _set_estimated_parameters(self):

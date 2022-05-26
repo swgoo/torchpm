@@ -21,14 +21,17 @@ class CompartmentDistributionMatrix(enum.Enum) :
     THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))  # type: ignore
 
 @dataclass(frozen=True, eq=True)
-class ModelConfig:
-    distribution_matrix: Union[Tuple[Tuple[bool]], bool] 
-    has_depot: bool = False
-    transit: int = 0
-    observed_compartment_num : int = 0
-    administrated_compartment_num : int = 0
+class DosageFormConfig :
+    has_depot : bool = False
     is_infusion: bool = False
     is_delay_time: bool = False
+    transit: int = 0
+
+@dataclass(frozen=True, eq=True)
+class ModelConfig(DosageFormConfig):
+    distribution_matrix: Union[Tuple[Tuple[bool]], bool] = CompartmentDistributionMatrix.ONE_COMP_DIST.value
+    observed_compartment_num : int = 0
+    administrated_compartment_num : int = 0
 
 DB : Dict[ModelConfig, typing.Type[nn.Module]] = {}  # type: ignore
 def __init__() :
@@ -92,10 +95,10 @@ class CompartmentModel(nn.Module) :
                 self.transit_compartment_nums.append(i)
             self.distribution_matrix[-1][self.administrated_compartment_num] = True
     
-    def get_distribution_matrix(self) -> List[List[bool]]:
-        if self.distribution_matrix == [] :
-            self._make_distribution_matrix()
-        return self.distribution_matrix
+    # def get_distribution_matrix(self) -> List[List[bool]]:
+    #     if self.distribution_matrix == [] :
+    #         self._make_distribution_matrix()
+    #     return self.distribution_matrix
 
 class NumericCompartmentModel(CompartmentModel) :
     
@@ -125,7 +128,7 @@ class NumericCompartmentModel(CompartmentModel) :
 
 class SymbolicCompartmentModel(CompartmentModel) :
     
-    def __init__(self, model_config : ModelConfig, timeout = 30) -> None:
+    def __init__(self, model_config : ModelConfig, timeout = 60) -> None:
         
         super().__init__(model_config=model_config)
 
