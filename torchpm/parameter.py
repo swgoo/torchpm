@@ -10,14 +10,8 @@ from .misc import *
 class Theta(nn.Module):
     """
     Args:
-
-
         init_value: initial value of scala
-
-
         lower_boundary: lower boundary of scala
-
-
         upper_boundary: upper boundary of scala
     Attributes: .
     """
@@ -26,19 +20,15 @@ class Theta(nn.Module):
         super().__init__()
 
         self.fixed = fixed
-
         if len(init_value) > 3 :
             raise Exception('it must be len(init_value) < 3')
         self.is_scale = True
 
-
         self.lb : tc.Tensor = tc.tensor(1.e-6)
         iv = tc.tensor(0)
         self.ub : tc.Tensor = tc.tensor(1.e6)
-        
 
         if len(init_value) == 1 :
-            
             iv = tc.tensor(init_value[0])
 
             if self.lb > init_value[0] :
@@ -81,8 +71,6 @@ class Theta(nn.Module):
                 self.scaled_parameter_for_save = self.parameter_value.data.clone()
                 self.parameter_value.data = self.forward()
                 self.is_scale = False
-    
-
 
     def scale(self) :
         if not self.is_scale and self.scaled_parameter_for_save is not None :
@@ -91,21 +79,13 @@ class Theta(nn.Module):
                 self.scaled_parameter_for_save = None
                 self.is_scale = True
 
-
     def forward(self) :
-
-
         if self.is_scale :
             para = self.parameter_value.clamp(-10, 10)
             theta = tc.exp(para - self.alpha)/(tc.exp(para - self.alpha) + 1)*(self.ub - self.lb) + self.lb
-            
             return theta
-
-
         else :
             return self.parameter_value
-
-
 
 class Eta(nn.Module) :
 
@@ -149,17 +129,6 @@ class CovarianceMatrix(nn.Module) :
         
         for vector in lower_triangular_vectors_init :
             lower_triangular_vectors_init_tensors.append(tc.tensor(vector))
-
-        # if lower_triangular_vectors_init_tensor.dim() == 1 :
-        #     lower_triangular_vectors_init_tensor = lower_triangular_vectors_init_tensor.unsqueeze(0)
-
-        # if type(diagonals) is List[bool] \
-        #     and len(lower_triangular_vectors_init_tensor) != len(diagonals) :
-        #     raise RuntimeError('The lengths of lower_triangular_vectors_init and diagonals must match.')
-
-        # if isinstance(requires_grads, Iterable) and len(lower_triangular_vectors_init_tensor) != len(requires_grads) :
-        #     raise RuntimeError('The lengths of lower_triangular_vectors_init and requires_grads must match.')
-
 
         self.scaled_parameter_for_save : Optional[List[nn.Parameter]] = None # type: ignore
         self.is_scale = True
@@ -215,7 +184,6 @@ class CovarianceMatrix(nn.Module) :
         return maT @ maT.t()
     
     def _get_scaled_matrix(self, descaled_matrix, scale) :
-
         maT = tc.linalg.cholesky(descaled_matrix)
         # maT = scaled_matrix * scale - (scaled_matrix * scale).diag().diag() + (scaled_matrix.diag().exp() * scale.diag()).diag()
         scale_matrix = (maT - maT.diag().diag())/scale + (maT/scale).log().diag().diag()
@@ -239,7 +207,6 @@ class CovarianceMatrix(nn.Module) :
                         para.data = tc.diag(matrix, 0)
                     else :
                         para.data = matrix_to_lower_triangular_vector(matrix)
-
             self.is_scale = False
 
     def scale(self) :
@@ -248,15 +215,10 @@ class CovarianceMatrix(nn.Module) :
                 for parameter, data in zip(self.parameter_values, self.scaled_parameter_for_save):
                     parameter.data = data  
             self.scaled_parameter_for_save : Optional[List[nn.Parameter]] = None # type: ignore
-
             self.is_scale = True
-
-
 
     def forward(self):
         m = []
-
-
         if self.is_scale :
             for tensor, scale, diagonal in zip(self.parameter_values, self.scales, self.diagonals) :
                 mat = lower_triangular_vector_to_covariance_matrix(tensor, diagonal)
@@ -269,10 +231,17 @@ class CovarianceMatrix(nn.Module) :
         return tc.block_diag(*m)
 
 class Omega(CovarianceMatrix):
-    def __init__(self, lower_triangular_vectors_init: Union[List[List[float]], List[float]], diagonals: Union[List[bool], bool], fixed: Union[List[bool], bool] = False, requires_grads: Union[List[bool], bool] = True):
+    def __init__(self, 
+            lower_triangular_vectors_init: Union[List[List[float]], List[float]], 
+            diagonals: Union[List[bool], bool], 
+            fixed: Union[List[bool], bool] = False, 
+            requires_grads: Union[List[bool], bool] = True):
         super().__init__(lower_triangular_vectors_init, diagonals, fixed, requires_grads)
     
 class Sigma(CovarianceMatrix) :
-    
-    def __init__(self, lower_triangular_vectors_init: Union[List[List[float]], List[float]], diagonals: Union[List[bool], bool], fixed: Union[List[bool], bool] = False, requires_grads: Union[List[bool], bool] = True):
+    def __init__(self, 
+            lower_triangular_vectors_init: Union[List[List[float]], 
+            List[float]], diagonals: Union[List[bool], bool], 
+            fixed: Union[List[bool], bool] = False, 
+            requires_grads: Union[List[bool], bool] = True):
         super().__init__(lower_triangular_vectors_init, diagonals, fixed, requires_grads)

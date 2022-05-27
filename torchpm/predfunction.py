@@ -1,23 +1,15 @@
 from abc import abstractmethod
-
-from typing import Any, Dict, Iterable, Set
+from collections import ChainMap
+from typing import Any, Dict, Set
 
 import torch as tc
-
 import torch.nn as nn
-
 from torchdiffeq import odeint
-
-
-from collections import ChainMap
-
 
 from torchpm import data
 
-
-from .parameter import *
-
 from .misc import *
+from .parameter import *
 
 
 class PredictionFunction(tc.nn.Module):
