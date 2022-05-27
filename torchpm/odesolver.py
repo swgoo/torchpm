@@ -5,8 +5,9 @@ import os
 import pickle
 import shelve
 import time
-from typing import List, Dict, Tuple, Union
+from typing import Iterable, List, Dict, Literal, Tuple, Union
 import typing
+from xmlrpc.client import Boolean
 import torch as tc
 import sympy as sym
 import sympytorch as spt
@@ -15,10 +16,12 @@ import json
 import asyncio
 
 @enum.unique
-class CompartmentDistributionMatrix(enum.Enum) :
-    ONE_COMP_DIST   = True  # type: ignore
-    TWO_COMP_DIST   = ((True, True), (True, False))  # type: ignore
-    THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))  # type: ignore
+class CompartmentDistributionMatrix(Tuple[Tuple[bool, ...], ...], enum.Enum) :
+    ONE_COMP_DIST   = ((True,),)
+    TWO_COMP_DIST   = ((True, True), (True, False))
+    THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))
+
+COMPARTMENT_DISTRIBUTION_MATRIX = {}
 
 @dataclass(frozen=True, eq=True)
 class DosageFormConfig :
@@ -29,14 +32,14 @@ class DosageFormConfig :
 
 @dataclass(frozen=True, eq=True)
 class ModelConfig(DosageFormConfig):
-    distribution_matrix: Union[Tuple[Tuple[bool]], bool] = CompartmentDistributionMatrix.ONE_COMP_DIST.value
+    distribution_matrix: Tuple[Tuple[bool, ...], ...] = CompartmentDistributionMatrix.ONE_COMP_DIST.value
     observed_compartment_num : int = 0
     administrated_compartment_num : int = 0
 
 DB : Dict[ModelConfig, typing.Type[nn.Module]] = {}  # type: ignore
 def __init__() :
     twoCompartmentInfusionKey = ModelConfig(
-                    CompartmentDistributionMatrix.TWO_COMP_DIST.value,  # type: ignore
+                    distribution_matrix = CompartmentDistributionMatrix.TWO_COMP_DIST.value,
                     is_infusion = True)
     DB[twoCompartmentInfusionKey] = TwoCompartmentInfusion
 
@@ -49,11 +52,8 @@ class CompartmentModel(nn.Module) :
         self.model_config = model_config
 
         self.distribution_matrix = []
-        if isinstance(model_config.distribution_matrix, bool) :
-            self.distribution_matrix = [[model_config.distribution_matrix]]
-        elif isinstance(model_config.distribution_matrix, Tuple) :
-            for row in list(model_config.distribution_matrix) :
-                self.distribution_matrix.append(list(row))
+        for row in list(model_config.distribution_matrix) :
+            self.distribution_matrix.append(list(row))
 
         self.is_infusion = model_config.is_infusion
         self.observed_compartment_num = model_config.observed_compartment_num
