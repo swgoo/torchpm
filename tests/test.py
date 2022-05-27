@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, odesolver, predfunction, models, loss
+from torchpm import covariate, models, odesolver, predfunction, loss
 from torchpm import data
 from torchpm.data import CSVDataset
 from torchpm.parameter import *
@@ -378,7 +378,7 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205], False, requires_grads=False)
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
-        model = models.FOCEInter(dataset = dataset,
+        model = model.FOCEInter(dataset = dataset,
                                 output_column_names= output_column_names,
                                 pred_function = AnnModel, 
                                 theta_names=['theta_0', 'theta_1', 'theta_2'],
@@ -406,7 +406,7 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
         sigma = Sigma([0.0177, 0.0762], [True])
 
-        model = models.FOCEInter(dataset=dataset,
+        model = model.FOCEInter(dataset=dataset,
                                 output_column_names=output_column_names,
                                 pred_function = AmtModel, 
                                 theta_names=['theta_0'],
@@ -445,7 +445,7 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
         sigma = Sigma([[0.0177, 0.0762]], [True])
 
-        model = models.FOCEInter(dataset=dataset,
+        model = model.FOCEInter(dataset=dataset,
                                 output_column_names=output_column_names,
                                 pred_function = ODEModel, 
                                 theta_names = ['theta_0', 'theta_1', 'theta_2'],
@@ -491,7 +491,7 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205], False, requires_grads=True)
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
 
-        model = models.FOCEInter(dataset=dataset,
+        model = model.FOCEInter(dataset=dataset,
                                 output_column_names=output_column_names,
                                 pred_function=CovModel, 
                                 theta_names=['theta_0', 'v_theta', 'theta_2'],
