@@ -433,7 +433,7 @@ class FOCEInter(tc.nn.Module) :
             for name, value in parameters.items() :
                 if name not in result_cur_id.keys() :
                     result_cur_id[name] = []
-                result_cur_id[name].append(value)
+                result_cur_id[name].append(value)  # type: ignore
 
         loss = self.design_optimal_function(fisher_information_matrix_total)
         return result, loss
@@ -478,7 +478,7 @@ class FOCEInter(tc.nn.Module) :
             for name, value in parameters.items() :
                 if name not in result_cur_id.keys() :
                     result_cur_id[name] = []
-                result_cur_id[name].append(value)
+                result_cur_id[name].append(value)  # type: ignore
             
         self.load_state_dict(state, strict=False)
         
@@ -645,12 +645,13 @@ class FOCEInter(tc.nn.Module) :
         eta_parameter_values = self.pred_function.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)
         mvn_eta = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eta_size, device=dataset.device), omega)
-        etas = mvn_eta.rsample(tc.tensor((len(dataset), repeat), device=dataset.device))
+        etas = mvn_eta.rsample(tc.Size((len(dataset), repeat)))
+        
 
         eps_parameter_values = self.pred_function.get_eps_parameter_values()
         eps_size = len(eps_parameter_values)
         mvn_eps = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eps_size, device=dataset.device), sigma)
-        epss = mvn_eps.rsample(tc.tensor([len(dataset), repeat, self.pred_function._max_record_length], device=dataset.device))
+        epss = mvn_eps.rsample(tc.Size([len(dataset), repeat, self.pred_function._max_record_length]))
 
         dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
 
@@ -677,10 +678,10 @@ class FOCEInter(tc.nn.Module) :
                     eps_value = epss_cur[repeat_iter]
 
                     for eta_i, name in enumerate(self.eta_names) :
-                        eta_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eta_value[eta_i])})
+                        eta_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eta_value[eta_i])}) # type: ignore
 
                     for eps_i, name in enumerate(self.eps_names) :
-                        eps_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eps_value[:data.size()[0],eps_i])})
+                        eps_parameter_values[name].update({str(int(id)): tc.nn.Parameter(eps_value[:data.size()[0],eps_i])}) # type: ignore
 
                     r  = self.pred_function(data)
                     y_pred = r['y_pred']
@@ -689,5 +690,5 @@ class FOCEInter(tc.nn.Module) :
                     for name, value in r['output_columns'].items() :
                         if name not in result_cur_id.keys() :
                             result_cur_id[name] = []
-                        result_cur_id[name].append(value)
+                        result_cur_id[name].append(value) # type: ignore
         return result
