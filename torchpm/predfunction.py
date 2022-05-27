@@ -92,13 +92,13 @@ class PredictionFunction(tc.nn.Module):
         return self._get_estimated_parameters(self._eps_names)
     
     def _get_estimated_parameter_values(self, names) -> Dict[str, Any]:
-        dictionary : Dict[str, tc.Tensor] = {}
+        dictionary : Dict[str, Any] = {}
         for name in names :
             att = getattr(self, name)
             parameter_att_list = dir(att)
-            if 'parameter_value' in parameter_att_list:
+            if isinstance(att, Theta) and 'parameter_value' in parameter_att_list:  # type: ignore
                 dictionary[name] = att.parameter_value
-            elif 'parameter_values' in parameter_att_list:
+            elif isinstance(att, (Eta, Eps, Omega, Sigma)) and 'parameter_values' in parameter_att_list:  # type: ignore
                 dictionary[name] = att.parameter_values
         return dictionary
         
@@ -107,35 +107,27 @@ class PredictionFunction(tc.nn.Module):
         for name in names :
             att = getattr(self, name)
             parameter_att_list = dir(att)
-            if isinstance(att, Theta) and att.parameter_value.__name__ in parameter_att_list:  # type: ignore
+            if isinstance(att, Theta) and 'parameter_value' in parameter_att_list:  # type: ignore
                 dictionary[name] = att
-            elif isinstance(att, (Eta, Eps, Omega, Sigma)) and att.parameter_values.__name__ in parameter_att_list:  # type: ignore
+            elif isinstance(att, (Eta, Eps, Omega, Sigma)) and 'parameter_values' in parameter_att_list:  # type: ignore
                 dictionary[name] = att
-
         return dictionary
 
     def get_theta_values(self) -> Dict[str, Theta]:
         return self._get_estimated_values(self._theta_names)
 
     def get_theta_parameter_values(self) :
-
         return self._get_estimated_parameter_values(self._theta_names)
     
-
     def get_eta_parameter_values(self) -> Dict[str, nn.ParameterDict]:  # type: ignore
-
         return self._get_estimated_parameter_values(self._eta_names)
     
-
     def get_eps_parameter_values(self) -> Dict[str, Dict[str, nn.Parameter]]:  # type: ignore
-
         return self._get_estimated_parameter_values(self._eps_names)
 
 
     def reset_epss(self) :
-
         attributes = dir(self)
-
         for att_name in attributes:
 
             att = getattr(self, att_name)

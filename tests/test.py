@@ -127,34 +127,6 @@ class FisherInformationMatrixTest(unittest.TestCase):
                 ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
         plt.show()
 
-"""
-    Args:.
-    Attributes: .
-"""
-class LinearODETest(unittest.TestCase) :
-    def setUp(self):
-        pass
-    
-    def tearDown(self):
-        pass
-
-    
-    def test_infusion(self):
-        dist_mat = [[True]]
-        model = odesolver.SymbolicCompartmentModel(dist_mat, is_infusion=True)
-        d = tc.tensor(320.)
-        t = tc.range(0,24,0.05)
-        k_00 = tc.tensor(1.)
-        r = tc.tensor(160.)
-        result = model(t=t, k_00=k_00, d=d, r=r)
-        print(t)
-        print(result)
-        print('time-pred')
-        fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-        ax.plot(t.to('cpu'), result[0].detach().to('cpu').numpy())
-        plt.show()
-
 class BasementModel(predfunction.SymbolicPredictionFunction) :
 
     def _set_estimated_parameters(self):
