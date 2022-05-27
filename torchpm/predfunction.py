@@ -152,6 +152,15 @@ class PredictionFunction(tc.nn.Module):
                 if type(att) is Theta :
                     att.descale()
         return self
+    
+    def scale(self):
+        with tc.no_grad() :
+            attribute_names = dir(self)
+            for att_name in attribute_names:
+                att = getattr(self, att_name)
+                if type(att) is Theta :
+                    att.scale()
+        return self
 
 
     def _pre_forward(self, dataset):

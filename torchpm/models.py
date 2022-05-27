@@ -3,6 +3,7 @@ from typing import Callable, List, Dict, Optional
 import typing
 import torch as tc
 import torch.distributed as dist
+from torch.utils.data import DataLoader
 
 from .parameter import *
 from .data import CSVDataset
@@ -37,8 +38,7 @@ class FOCEInter(tc.nn.Module) :
         self.omega = omega
         self.sigma = sigma
         self.objective_function = objective_function if objective_function is not None else loss.FOCEInterObjectiveFunction()
-        # TODO 기본 optimality 결정
-        self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.DOptimality()
+        self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.AOptimality()
         self.dataloader = None
     
     def get_unfixed_parameter_values(self) -> List[nn.Parameter]:  # type: ignore
@@ -65,8 +65,6 @@ class FOCEInter(tc.nn.Module) :
             unfixed_parameter_values.extend(list(p.parameter_values.values()))
         
         return unfixed_parameter_values
-
-
         
     def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :
         
@@ -123,7 +121,7 @@ class FOCEInter(tc.nn.Module) :
         """
         start_time = time.time()
 
-        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  
 
         def fit() :
             optimizer.zero_grad()
@@ -163,7 +161,7 @@ class FOCEInter(tc.nn.Module) :
         """
         start_time = time.time()
 
-        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  # type: ignore
+        dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  
 
         def fit() :
             optimizer.zero_grad()
@@ -244,7 +242,7 @@ class FOCEInter(tc.nn.Module) :
         start_time = time.time()
         
         if self.dataloader is None :
-            self.dataloader = tc.utils.data.DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
+            self.dataloader = DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)  
 
         optimizer.zero_grad()
         
@@ -324,7 +322,7 @@ class FOCEInter(tc.nn.Module) :
         """
         start_time = time.time()
 
-        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  
         def fit() :
             optimizer.zero_grad()
             total_loss = tc.zeros([], device = self.pred_function.dataset.device)
@@ -363,7 +361,7 @@ class FOCEInter(tc.nn.Module) :
         return fit
 
     def evaluate_FIM(self) :
-        dataloader = tc.utils.data.DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
 
         
         theta_dict = self.pred_function.get_theta_parameter_values()
@@ -442,7 +440,7 @@ class FOCEInter(tc.nn.Module) :
 
     def evaluate(self):
 
-        dataloader = tc.utils.data.DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
 
         state = self.state_dict()
         
@@ -487,33 +485,38 @@ class FOCEInter(tc.nn.Module) :
         return result
     
     def descale(self) :
-        self.pred_function.descale()
+        self.pred_function.scale()
         self.omega.descale()
         self.sigma.descale()
         return self
     
+    def scale(self) :
+        self.pred_function.scale()
+        self.omega.scale()
+        self.sigma.scale()
+        return self
+    
     def parameters_for_individual(self) :
         parameters = []
-
         for k, p in self.pred_function.get_etas().items() :
             parameters.append(p)
-        
         for k, p in self.pred_function.get_epss().items() :
             parameters.append(p)
-        
         return parameters
 
     def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-5, tolerance_change = 1e-5, max_iteration = 9999,):
         max_iter = max_iteration
-        parameters = self.parameters()
+        parameters = self.get_unfixed_parameter_values()
         self.pred_function.reset_epss()
-        optimizer = tc.optim.LBFGS(parameters, 
-                                   max_iter = max_iter, 
-                                   lr = learning_rate, 
-                                   tolerance_grad = tolerance_grad, 
-                                   tolerance_change = tolerance_change,
-                                   line_search_fn = 'strong_wolfe')
-        opt_fn = self.optimization_function_closure(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
+        optimizer = tc.optim.LBFGS(
+                parameters, 
+                max_iter = max_iter, 
+                lr = learning_rate, 
+                tolerance_grad = tolerance_grad, 
+                tolerance_change = tolerance_change,
+                line_search_fn = 'strong_wolfe')
+        opt_fn = self.optimization_function_closure(
+                    self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
         return self
     
@@ -528,10 +531,9 @@ class FOCEInter(tc.nn.Module) :
                                    line_search_fn = 'strong_wolfe')
         opt_fn = self.optimization_function_closure(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
-    # TODO learning_rate 0.5
+
     def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.6, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
         max_iter = max_iteration
-        # parameters = self.parameters()
         self.pred_function.reset_epss()
         optimizer = tc.optim.LBFGS(parameters, 
                                    max_iter = max_iter, 
@@ -545,7 +547,6 @@ class FOCEInter(tc.nn.Module) :
     def fit_population_FIM_by_adam(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.05, tolerance_change = 1e-3, max_iteration = 9999,):
         optimizer = tc.optim.Adam(parameters, lr = learning_rate)
         # scheduler = tc.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999)
-
         loss_prev = float("inf")
         loss_best = float("inf")
         for epoch in range(max_iteration) :
@@ -560,9 +561,7 @@ class FOCEInter(tc.nn.Module) :
         return self
    
     def covariance_step(self) :
-
         dataset = self.pred_function.dataset
-
         theta_dict = self.pred_function.get_theta_parameter_values()
 
         cov_mat_dim =  len(theta_dict)
@@ -583,10 +582,8 @@ class FOCEInter(tc.nn.Module) :
             para.requires_grad = True
  
         r_mat = tc.zeros(cov_mat_dim, cov_mat_dim, device=dataset.device)
- 
         s_mat = tc.zeros(cov_mat_dim, cov_mat_dim, device=dataset.device)
-
-        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  # type: ignore
+        dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)  
  
         for data, y_true in dataloader:
             
@@ -622,15 +619,9 @@ class FOCEInter(tc.nn.Module) :
                     r_mat[i,j] = r_mat[i,j] + hs_elem.detach()/2
 
         invR = r_mat.inverse()
-        
         cov = invR @ s_mat @ invR
-        
         se = cov.diag().sqrt()
-        
         correl = covariance_to_correlation(cov)
-        
-        # ei_values, ei_vectors = correl.symeig(eigenvectors=False)
-
         ei_values, ei_vectors = tc.linalg.eigh(correl)
 
         ei_values_sorted, _ = ei_values.sort()
@@ -641,7 +632,6 @@ class FOCEInter(tc.nn.Module) :
         
         return {'cov': cov, 'se': se, 'cor': correl, 'ei_values': ei_values_sorted , 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
 
-    #TODO 경고, simulation 사용하면 안에 들어있던 eta데이터 덮어 씌움
     def simulate(self, dataset : CSVDataset, repeat : int) :
         """
         simulationg
@@ -651,7 +641,6 @@ class FOCEInter(tc.nn.Module) :
         """
         omega = self.omega()
         sigma = self.sigma()
-
 
         eta_parameter_values = self.pred_function.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)
@@ -663,7 +652,7 @@ class FOCEInter(tc.nn.Module) :
         mvn_eps = tc.distributions.multivariate_normal.MultivariateNormal(tc.zeros(eps_size, device=dataset.device), sigma)
         epss = mvn_eps.rsample(tc.tensor([len(dataset), repeat, self.pred_function._max_record_length], device=dataset.device))
 
-        dataloader = tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
+        dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
 
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]] = {}
         for i, (data, _) in enumerate(dataloader):
