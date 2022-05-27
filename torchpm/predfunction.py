@@ -45,8 +45,6 @@ class PredictionFunction(tc.nn.Module):
         
         self._set_estimated_parameters()
         self._init_parameters()
-
-    
     
     def _init_parameters(self):
         self._theta_names : Set[str] = set()
@@ -77,23 +75,15 @@ class PredictionFunction(tc.nn.Module):
                         eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
                         att.parameter_values[str(int(id))] = eps_value
 
-
     def _get_estimated_parameters(self, names) :
-
         dictionary : Dict[str, Any] = {}
-
         for name in names :
-
             att = getattr(self, name)
-
             dictionary[name] = att
-
         return dictionary
-
 
     def get_thetas(self) -> Dict[str, Theta]:
         return self._get_estimated_parameters(self._theta_names)
-    
 
     def get_etas(self) -> Dict[str, Eta]:
         return self._get_estimated_parameters(self._eta_names)
@@ -101,42 +91,30 @@ class PredictionFunction(tc.nn.Module):
     def get_epss(self) -> Dict[str, Eps]:
         return self._get_estimated_parameters(self._eps_names)
     
-
     def _get_estimated_parameter_values(self, names) -> Dict[str, Any]:
         dictionary : Dict[str, tc.Tensor] = {}
-
         for name in names :
             att = getattr(self, name)
             parameter_att_list = dir(att)
-
             if 'parameter_value' in parameter_att_list:
                 dictionary[name] = att.parameter_value
-
             elif 'parameter_values' in parameter_att_list:
                 dictionary[name] = att.parameter_values
-
         return dictionary
         
     def _get_estimated_values(self, names) -> Dict[str, Any]:
-
-        dictionary : Dict[str, tc.Tensor] = {}
-
+        dictionary : Dict[str, Any] = {}
         for name in names :
-
             att = getattr(self, name)
             parameter_att_list = dir(att)
-
-            if 'parameter_value' in parameter_att_list:
-
+            if isinstance(att, Theta) and att.parameter_value.__name__ in parameter_att_list:  # type: ignore
                 dictionary[name] = att
-
-            elif 'parameter_values' in parameter_att_list:
-
+            elif isinstance(att, (Eta, Eps, Omega, Sigma)) and att.parameter_values.__name__ in parameter_att_list:  # type: ignore
                 dictionary[name] = att
 
         return dictionary
 
-    def get_theta_values(self) :
+    def get_theta_values(self) -> Dict[str, Theta]:
         return self._get_estimated_values(self._theta_names)
 
     def get_theta_parameter_values(self) :
@@ -274,33 +252,23 @@ class PredictionFunction(tc.nn.Module):
     def _set_estimated_parameters(self):
         pass
     
-
     @abstractmethod
     def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
         pass
     
     @abstractmethod
     def _calculate_error(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
-    # def _calculate_error(self, y_pred: tc.Tensor, parameters: tc.Tensor) -> tuple[tc.Tensor, Dict[str, tc.Tensor]]:
         pass
-    
     
     @abstractmethod
     def forward(self, dataset):
         pass
 
-
     def _get_input_columns(self, dataset) :
         dataset = dataset.t()
-        
-
         input_columns = {}
-
         for i, name in enumerate(self._column_names) :
-
             input_columns[name] = dataset[i]
-        
-
         return input_columns
 
 

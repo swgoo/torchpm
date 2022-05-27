@@ -1,13 +1,10 @@
-from copy import deepcopy
-from typing import List, Optional, Dict, Iterable, Union
-from numpy import diag
+from typing import Dict, Iterable, List, Optional, Union
 
 import torch as tc
-
+from numpy import diag
 from torch import nn
 
 from .misc import *
-
 
 
 class Theta(nn.Module):
@@ -76,7 +73,7 @@ class Theta(nn.Module):
         ub = self.ub
 
         self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
-        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad)
+        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad) # type: ignore
 
     def descale(self) :
         if self.is_scale:
@@ -125,7 +122,7 @@ class Eps(nn.Module):
 
     def __init__(self) -> None:
         super().__init__()
-        self.parameter_values : Dict[str, nn.Parameter] = {}
+        self.parameter_values : Dict[str, nn.Parameter] = {} # type: ignore
 
     def forward(self):
         return self.parameter_values[str(self.id)]
@@ -164,7 +161,7 @@ class CovarianceMatrix(nn.Module) :
         #     raise RuntimeError('The lengths of lower_triangular_vectors_init and requires_grads must match.')
 
 
-        self.scaled_parameter_for_save : Optional[List[nn.Parameter]] = None
+        self.scaled_parameter_for_save : Optional[List[nn.Parameter]] = None # type: ignore
         self.is_scale = True
 
         self.lower_triangular_vector_lengthes = []
@@ -176,7 +173,7 @@ class CovarianceMatrix(nn.Module) :
         if type(requires_grads) is bool :
             for length in self.lower_triangular_vector_lengthes:    
                 self.parameter_values.append(
-                    nn.Parameter( 
+                    nn.Parameter( # type: ignore
                         tc.tensor([0.1]*length,  
                                 device=lower_triangular_vectors_init_tensors[0].device),
                                 requires_grad=requires_grads,))
@@ -184,7 +181,7 @@ class CovarianceMatrix(nn.Module) :
         elif isinstance(requires_grads, Iterable)  :
             for length, requires_grad in zip(self.lower_triangular_vector_lengthes, requires_grads) :
                 self.parameter_values.append(
-                    nn.Parameter(
+                    nn.Parameter( # type: ignore
                         tc.tensor([0.1]*length,  
                             device=lower_triangular_vectors_init_tensors[0].device),
                             requires_grad=requires_grad))
@@ -250,7 +247,7 @@ class CovarianceMatrix(nn.Module) :
             with tc.no_grad() :
                 for parameter, data in zip(self.parameter_values, self.scaled_parameter_for_save):
                     parameter.data = data  
-            self.scaled_parameter_for_save : Optional[List[nn.Parameter]] = None
+            self.scaled_parameter_for_save : Optional[List[nn.Parameter]] = None # type: ignore
 
             self.is_scale = True
 
