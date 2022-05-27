@@ -5,7 +5,7 @@ import os
 import pickle
 import shelve
 import time
-from typing import Iterable, List, Dict, Literal, Tuple, Union
+from typing import List, Dict, Tuple
 import typing
 from xmlrpc.client import Boolean
 import torch as tc
@@ -15,8 +15,10 @@ from torch import nn
 import json
 import asyncio
 
+DistrubutionMatrix = Tuple[Tuple[bool, ...], ...]
+
 @enum.unique
-class CompartmentDistributionMatrix(Tuple[Tuple[bool, ...], ...], enum.Enum) :
+class DistributionMatrixes(DistrubutionMatrix, enum.Enum) :
     ONE_COMP_DIST   = ((True,),)
     TWO_COMP_DIST   = ((True, True), (True, False))
     THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))
@@ -32,14 +34,14 @@ class DosageFormConfig :
 
 @dataclass(frozen=True, eq=True)
 class ModelConfig(DosageFormConfig):
-    distribution_matrix: Tuple[Tuple[bool, ...], ...] = CompartmentDistributionMatrix.ONE_COMP_DIST.value
+    distribution_matrix: DistrubutionMatrix = DistributionMatrixes.ONE_COMP_DIST.value
     observed_compartment_num : int = 0
     administrated_compartment_num : int = 0
 
 DB : Dict[ModelConfig, typing.Type[nn.Module]] = {}  # type: ignore
 def __init__() :
     twoCompartmentInfusionKey = ModelConfig(
-                    distribution_matrix = CompartmentDistributionMatrix.TWO_COMP_DIST.value,
+                    distribution_matrix = DistributionMatrixes.TWO_COMP_DIST.value,
                     is_infusion = True)
     DB[twoCompartmentInfusionKey] = TwoCompartmentInfusion
 
@@ -71,7 +73,6 @@ class CompartmentModel(nn.Module) :
             for row in self.distribution_matrix :
                 row.append(False)
             self.distribution_matrix[-1][self.administrated_compartment_num] = True
-        
             self.depot_compartment_num = len(self.distribution_matrix) - 1
 
         self.transit_compartment_nums = []
@@ -86,7 +87,6 @@ class CompartmentModel(nn.Module) :
                     row.append(False)
             
             #depot to transit 0
-            
             self.distribution_matrix[self.depot_compartment_num][self.depot_compartment_num+1] = True
             self.transit_compartment_nums.append(self.depot_compartment_num+1)
             transit_start = self.depot_compartment_num + 1 
