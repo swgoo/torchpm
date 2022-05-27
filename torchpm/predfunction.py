@@ -404,7 +404,7 @@ class NumericPredictionFunction(PredictionFunction):
     def forward(self, dataset) :
 
         parameters = self._pre_forward(dataset)
-        if self.parameter_values is None:
+        if not hasattr(self, 'parameter_values'):
             self.parameter_values : Dict[str, tc.Tensor] = {}
         self.parameter_values = parameters
 
@@ -459,14 +459,14 @@ class NumericPredictionFunction(PredictionFunction):
 
                 rate_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
 
-                rate_vector[cmt[0]] = rate
+                rate_vector[cmt[0].to(tc.int64)] = rate
 
                 self.infusion_rate = self.infusion_rate * mask + rate_vector
  
 
                 infusion_end_time_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
 
-                infusion_end_time_vector[cmt[0]] = time + amt / rate
+                infusion_end_time_vector[cmt[0].to(tc.int64)] = time + amt / rate
 
                 self.infusion_end_time = self.infusion_end_time * mask + infusion_end_time_vector
                 

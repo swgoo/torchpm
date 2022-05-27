@@ -94,11 +94,6 @@ class CompartmentModel(nn.Module) :
                 self.distribution_matrix[i][i+1] = True
                 self.transit_compartment_nums.append(i)
             self.distribution_matrix[-1][self.administrated_compartment_num] = True
-    
-    # def get_distribution_matrix(self) -> List[List[bool]]:
-    #     if self.distribution_matrix == [] :
-    #         self._make_distribution_matrix()
-    #     return self.distribution_matrix
 
 class NumericCompartmentModel(CompartmentModel) :
     
@@ -124,7 +119,7 @@ class NumericCompartmentModel(CompartmentModel) :
         if self.is_delay_time and variables['delay_time'] > t :
             return tc.zeros_like(y)
         else :
-            return dcdt_matrix @ y
+            return dcdt_matrix.to(y.device) @ y
 
 class SymbolicCompartmentModel(CompartmentModel) :
     
