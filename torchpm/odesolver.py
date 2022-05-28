@@ -21,7 +21,7 @@ DistrubutionMatrix = Tuple[Tuple[bool, ...], ...]
 class DistributionMatrixes(DistrubutionMatrix, enum.Enum) :
     ONE_COMP_DIST   = ((True,),)
     TWO_COMP_DIST   = ((True, True), (True, False))
-    THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))
+    # THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))
 
 COMPARTMENT_DISTRIBUTION_MATRIX = {}
 
