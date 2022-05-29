@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, models, odesolver, predfunction, loss
+from torchpm import covariate, models, ode, predfunction, loss
 from torchpm import data
 from torchpm.data import CSVDataset
 from torchpm.parameter import *

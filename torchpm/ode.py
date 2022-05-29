@@ -1,19 +1,18 @@
-from dataclasses import dataclass
+import asyncio
 import enum
 import functools
+import json
 import os
 import pickle
 import shelve
-import time
-from typing import List, Dict, Tuple
 import typing
-from xmlrpc.client import Boolean
-import torch as tc
+from dataclasses import dataclass
+from typing import Dict, List, Tuple
+
 import sympy as sym
 import sympytorch as spt
+import torch as tc
 from torch import nn
-import json
-import asyncio
 
 DistrubutionMatrix = Tuple[Tuple[bool, ...], ...]
 
@@ -38,7 +37,7 @@ class EquationConfig(DosageFormConfig):
     observed_compartment_num : int = 0
     administrated_compartment_num : int = 0
 
-DB : Dict[EquationConfig, typing.Type[nn.Module]] = {}  # type: ignore
+DB : Dict[EquationConfig, typing.Type[nn.Module]] = {}
 def __init__() :
     twoCompartmentInfusionKey = EquationConfig(
                     distribution_matrix = DistributionMatrixes.TWO_COMP_DIST.value,
