@@ -47,15 +47,17 @@ class FisherInformationMatrixTest(unittest.TestCase):
 
 
         print('=================================== A Optimal ===================================')
-        model = models.FOCEInter(dataset = dataset,
-                                output_column_names= output_column_names,
-                                pred_function = BasementModelFIM, 
-                                theta_names=['theta_0', 'theta_1', 'theta_2'],
-                                eta_names= ['eta_0', 'eta_1','eta_2'], 
-                                eps_names= ['eps_0'], 
-                                omega=omega, 
-                                sigma=sigma,
-                                optimal_design_creterion=loss.AOptimality()).to(device)
+        model_config = models.ModelConfig(
+                dataset = dataset,
+                output_column_names= output_column_names,
+                pred_function = BasementModelFIM, 
+                theta_names=['theta_0', 'theta_1', 'theta_2'],
+                eta_names= ['eta_0', 'eta_1','eta_2'], 
+                eps_names= ['eps_0'], 
+                omega=omega, 
+                sigma=sigma,
+                optimal_design_creterion=loss.AOptimality())
+        model = models.FOCEInter(model_config).to(device)
 
         model.fit_population_FIM(model.parameters())
 
@@ -311,14 +313,18 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205], False, requires_grads=False)
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
-        model = models.FOCEInter(dataset = dataset,
-                                output_column_names= output_column_names,
-                                pred_function = BasementModel, 
-                                theta_names=['theta_0', 'theta_1', 'theta_2'],
-                                eta_names= ['eta_0', 'eta_1','eta_2'], 
-                                eps_names= ['eps_0','eps_1'], 
-                                omega=omega, 
-                                sigma=sigma)
+
+        model_config = models.ModelConfig(
+                dataset = dataset,
+                output_column_names= output_column_names,
+                pred_function = BasementModel, 
+                theta_names=['theta_0', 'theta_1', 'theta_2'],
+                eta_names= ['eta_0', 'eta_1','eta_2'], 
+                eps_names= ['eps_0','eps_1'], 
+                omega=omega, 
+                sigma=sigma)
+
+        model = models.FOCEInter(model_config)
                                 
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
@@ -378,14 +384,18 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205], False, requires_grads=False)
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
-        model = model.FOCEInter(dataset = dataset,
-                                output_column_names= output_column_names,
-                                pred_function = AnnModel, 
-                                theta_names=['theta_0', 'theta_1', 'theta_2'],
-                                eta_names= ['eta_0', 'eta_1','eta_2'], 
-                                eps_names= ['eps_0','eps_1'], 
-                                omega=omega, 
-                                sigma=sigma)
+        model_config = models.ModelConfig(
+                dataset = dataset,
+                output_column_names= output_column_names,
+                pred_function = AnnModel, 
+                theta_names=['theta_0', 'theta_1', 'theta_2'],
+                eta_names= ['eta_0', 'eta_1','eta_2'], 
+                eps_names= ['eps_0','eps_1'], 
+                omega=omega, 
+                sigma=sigma
+        )
+
+        model = models.FOCEInter(model_config)
                                 
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)
@@ -406,14 +416,17 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
         sigma = Sigma([0.0177, 0.0762], [True])
 
-        model = model.FOCEInter(dataset=dataset,
-                                output_column_names=output_column_names,
-                                pred_function = AmtModel, 
-                                theta_names=['theta_0'],
-                                eta_names=['eta_0', 'eta_1','eta_2'], 
-                                eps_names= ['eps_0','eps_1'], 
-                                omega=omega, 
-                                sigma=sigma)
+        model_config = models.ModelConfig(
+                dataset=dataset,
+                output_column_names=output_column_names,
+                pred_function = AmtModel, 
+                theta_names=['theta_0'],
+                eta_names=['eta_0', 'eta_1','eta_2'], 
+                eps_names= ['eps_0','eps_1'], 
+                omega=omega, 
+                sigma=sigma)
+
+        model = models.FOCEInter(model_config)
         
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-3, tolerance_change= 1e-3)
@@ -445,14 +458,16 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
         sigma = Sigma([[0.0177, 0.0762]], [True])
 
-        model = model.FOCEInter(dataset=dataset,
-                                output_column_names=output_column_names,
-                                pred_function = ODEModel, 
-                                theta_names = ['theta_0', 'theta_1', 'theta_2'],
-                                eta_names=['eta_0', 'eta_1','eta_2'], 
-                                eps_names= ['eps_0','eps_1'], 
-                                omega=omega, 
-                                sigma=sigma)
+        model_config = models.ModelConfig(
+                dataset=dataset,
+                output_column_names=output_column_names,
+                pred_function = ODEModel, 
+                theta_names = ['theta_0', 'theta_1', 'theta_2'],
+                eta_names=['eta_0', 'eta_1','eta_2'], 
+                eps_names= ['eps_0','eps_1'], 
+                omega=omega, 
+                sigma=sigma)
+        model = models.FOCEInter(model_config)
         
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-1, tolerance_change= 1e-2)
@@ -491,14 +506,17 @@ class TotalTest(unittest.TestCase) :
                         -0.0069,  0.0116,  0.0205], False, requires_grads=True)
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
 
-        model = model.FOCEInter(dataset=dataset,
-                                output_column_names=output_column_names,
-                                pred_function=CovModel, 
-                                theta_names=['theta_0', 'v_theta', 'theta_2'],
-                                eta_names= ['eta_0', 'v_eta','eta_2'], 
-                                eps_names= ['eps_0','eps_1'], 
-                                omega=omega, 
-                                sigma=sigma)
+        model_config = models.ModelConfig(
+                dataset=dataset,
+                output_column_names=output_column_names,
+                pred_function=CovModel, 
+                theta_names=['theta_0', 'v_theta', 'theta_2'],
+                eta_names= ['eta_0', 'v_eta','eta_2'], 
+                eps_names= ['eps_0','eps_1'], 
+                omega=omega, 
+                sigma=sigma)
+
+        model = models.FOCEInter(model_config)
                                 
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-2, tolerance_change= 1e-3)

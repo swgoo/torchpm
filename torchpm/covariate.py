@@ -1,11 +1,12 @@
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, OrderedDict
+import typing
 from torch import nn
 import torch as tc
 
 from .data import CSVDataset
-from .models import FOCEInter
+from .models import FOCEInter, ModelConfig
 from .parameter import *
 from . import predfunction
 
@@ -66,7 +67,7 @@ class CovariateModelDecorator :
 @dataclass
 class DeepCovariateSearching:
     dataset : CSVDataset
-    BaseModel : predfunction.PredictionFunction
+    BaseModel : typing.Type[predfunction.PredictionFunction]
     dependent_parameter_names : List[str]
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
@@ -77,16 +78,16 @@ class DeepCovariateSearching:
     def __post_init(self) :
         pass
     
-    def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names) -> nn.Module:
+    def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names) -> nn.Module:  # type: ignore
         idp_para_names_length = len(independent_parameter_names)
         dp_para_names_length = len(dependent_parameter_names)
-        class CovariateRelationshipFunction(nn.Module):
+        class CovariateRelationshipFunction(nn.Module):  # type: ignore
             def __init__(self) -> None:
                 super().__init__()
-                self.lin = nn.Sequential(
-                            nn.Linear(idp_para_names_length, dp_para_names_length),
-                            nn.Sigmoid(),
-                            nn.Linear(dp_para_names_length, dp_para_names_length))
+                self.lin = nn.Sequential(  # type: ignore
+                            nn.Linear(idp_para_names_length, dp_para_names_length),  # type: ignore
+                            nn.Sigmoid(),  # type: ignore
+                            nn.Linear(dp_para_names_length, dp_para_names_length))  # type: ignore
 
             def forward(self, para_dict : Dict[str, Any]) -> Dict[str, tc.Tensor] :
                 idp_para_tensor = tc.stack([para_dict[name] for name in independent_parameter_names]).t()
@@ -111,14 +112,17 @@ class DeepCovariateSearching:
         theta_names = [name + '_theta' for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
 
-        model = FOCEInter(dataset=self.dataset,
-                        output_column_names=[],
-                        pred_function=CovModel, 
-                        theta_names= theta_names,
-                        eta_names= eta_names, 
-                        eps_names= self.eps_names,
-                        omega=deepcopy(self.omega),
-                        sigma=deepcopy(self.sigma))
+        model_config = ModelConfig(
+                dataset=self.dataset,
+                output_column_names=[],
+                pred_function=CovModel, 
+                theta_names= theta_names,
+                eta_names= eta_names, 
+                eps_names= self.eps_names,
+                omega=deepcopy(self.omega),
+                sigma=deepcopy(self.sigma))
+
+        model = FOCEInter(model_config)
         return model.to(self.dataset.device)
 
     def run(self, learning_rate : float = 1,

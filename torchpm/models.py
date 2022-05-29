@@ -16,45 +16,36 @@ from .misc import *
 
 @dataclass
 class ModelConfig :
-    dataset : CSVDataset
-    output_column_names: List[str]
-    pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction]
-    theta_names : List[str]
-    eta_names : List[str]
-    eps_names : List[str]
-    omega : Omega
-    sigma : Sigma
+    dataset : CSVDataset = None
+    output_column_names: List[str] = None
+    pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction] = None
+    theta_names : List[str] = None
+    eta_names : List[str] = None
+    eps_names : List[str] = None
+    omega : Omega = None
+    sigma : Sigma = None
     objective_function : Optional[loss.ObjectiveFunction] = None
     optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None
 
 class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
-                 dataset : CSVDataset,
-                 pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction],
-                 theta_names : List[str],
-                 eta_names : List[str],
-                 eps_names : List[str],
-                 omega : Omega,
-                 sigma : Sigma,
-                 output_column_names: List[str],
-                objective_function : Optional[loss.ObjectiveFunction] = None,
-                optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None):
+            model_config : ModelConfig):
 
         super(FOCEInter, self).__init__()
-        pred_function_module_type = type(pred_function)
+        pred_function_module_type = type(model_config.pred_function)
         if pred_function_module_type is type :
-            self.pred_function = pred_function(dataset, output_column_names)
-        elif isinstance(pred_function, predfunction.PredictionFunction) :
-            self.pred_function = pred_function
+            self.pred_function = model_config.pred_function(model_config.dataset, model_config.output_column_names)
+        elif isinstance(model_config.pred_function, predfunction.PredictionFunction) :
+            self.pred_function = model_config.pred_function
         
-        self.theta_names = theta_names
-        self.eta_names = eta_names
-        self.eps_names = eps_names
-        self.omega = omega
-        self.sigma = sigma
-        self.objective_function = objective_function if objective_function is not None else loss.FOCEInterObjectiveFunction()
-        self.design_optimal_function = optimal_design_creterion if optimal_design_creterion is not None else loss.DOptimality()
+        self.theta_names = model_config.theta_names
+        self.eta_names = model_config.eta_names
+        self.eps_names = model_config.eps_names
+        self.omega = model_config.omega
+        self.sigma = model_config.sigma
+        self.objective_function = model_config.objective_function if model_config.objective_function is not None else loss.FOCEInterObjectiveFunction()
+        self.design_optimal_function = model_config.optimal_design_creterion if model_config.optimal_design_creterion is not None else loss.DOptimality()
         self.dataloader = None
     
     def get_unfixed_parameter_values(self) -> List[nn.Parameter]:  # type: ignore
