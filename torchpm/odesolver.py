@@ -33,23 +33,23 @@ class DosageFormConfig :
     transit: int = 0
 
 @dataclass(frozen=True, eq=True)
-class ModelConfig(DosageFormConfig):
+class EquationConfig(DosageFormConfig):
     distribution_matrix: DistrubutionMatrix = DistributionMatrixes.ONE_COMP_DIST.value
     observed_compartment_num : int = 0
     administrated_compartment_num : int = 0
 
-DB : Dict[ModelConfig, typing.Type[nn.Module]] = {}  # type: ignore
+DB : Dict[EquationConfig, typing.Type[nn.Module]] = {}  # type: ignore
 def __init__() :
-    twoCompartmentInfusionKey = ModelConfig(
+    twoCompartmentInfusionKey = EquationConfig(
                     distribution_matrix = DistributionMatrixes.TWO_COMP_DIST.value,
                     is_infusion = True)
     DB[twoCompartmentInfusionKey] = TwoCompartmentInfusion
 
-class CompartmentModel(nn.Module) :
+class CompartmentEquation(nn.Module) :
     DB_FILE_NAME = "ode.db"
 
     def __init__(self, 
-            model_config: ModelConfig) -> None:
+            model_config: EquationConfig) -> None:
         super().__init__()
         self.model_config = model_config
 
@@ -95,7 +95,7 @@ class CompartmentModel(nn.Module) :
                 self.transit_compartment_nums.append(i)
             self.distribution_matrix[-1][self.administrated_compartment_num] = True
 
-class NumericCompartmentModel(CompartmentModel) :
+class NumericCompartmentEquation(CompartmentEquation) :
     
     def forward(self, y, t, **variables : tc.Tensor) :
 
@@ -121,9 +121,9 @@ class NumericCompartmentModel(CompartmentModel) :
         else :
             return dcdt_matrix.to(y.device) @ y
 
-class SymbolicCompartmentModel(CompartmentModel) :
+class SymbolicCompartmentEquation(CompartmentEquation) :
     
-    def __init__(self, model_config : ModelConfig, timeout = 60) -> None:
+    def __init__(self, model_config : EquationConfig, timeout = 60) -> None:
         
         super().__init__(model_config=model_config)
 
@@ -288,9 +288,9 @@ class SymbolicCompartmentModel(CompartmentModel) :
         return amts
 
 
-class PreparedCompartmentModel(CompartmentModel) :
+class PreparedCompartmentModel(CompartmentEquation) :
     
-    def __init__(self, model_config: ModelConfig) -> None:
+    def __init__(self, model_config: EquationConfig) -> None:
         super().__init__(model_config)
         try :
             self.module = DB[self.model_config]()

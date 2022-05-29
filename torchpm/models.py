@@ -1,3 +1,5 @@
+
+from dataclasses import dataclass
 import time
 from typing import Callable, List, Dict, Optional
 import typing
@@ -10,6 +12,20 @@ from .data import CSVDataset
 from . import predfunction
 from . import loss
 from .misc import *
+
+
+@dataclass
+class ModelConfig :
+    dataset : CSVDataset
+    output_column_names: List[str]
+    pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction]
+    theta_names : List[str]
+    eta_names : List[str]
+    eps_names : List[str]
+    omega : Omega
+    sigma : Sigma
+    objective_function : Optional[loss.ObjectiveFunction] = None
+    optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None
 
 class FOCEInter(tc.nn.Module) :
 
