@@ -16,14 +16,14 @@ from .misc import *
 
 @dataclass
 class ModelConfig :
-    dataset : CSVDataset = None
-    output_column_names: List[str] = None
-    pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction] = None
-    theta_names : List[str] = None
-    eta_names : List[str] = None
-    eps_names : List[str] = None
-    omega : Omega = None
-    sigma : Sigma = None
+    dataset : CSVDataset
+    output_column_names: List[str]
+    pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction]
+    theta_names : List[str]
+    eta_names : List[str]
+    eps_names : List[str]
+    omega : Omega
+    sigma : Sigma
     objective_function : Optional[loss.ObjectiveFunction] = None
     optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None
 
@@ -488,11 +488,13 @@ class FOCEInter(tc.nn.Module) :
                 result_cur_id[name].append(value)  # type: ignore
             
         self.load_state_dict(state, strict=False)
+
+        #TODO Implement AIC
         
         return result
     
     def descale(self) :
-        self.pred_function.scale()
+        self.pred_function.descale()
         self.omega.descale()
         self.sigma.descale()
         return self
