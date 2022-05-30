@@ -27,6 +27,11 @@ class ModelConfig :
     objective_function : Optional[loss.ObjectiveFunction] = None
     optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None
 
+#TODO
+@dataclass
+class OptimizationResult :
+    pass
+
 class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
