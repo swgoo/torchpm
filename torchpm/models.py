@@ -313,9 +313,15 @@ class FOCEInter(tc.nn.Module) :
         print('running_time : ', time.time() - start_time, '\t total_loss:', loss)
 
         return loss
-        
-
-
+    
+    def count_number_of_parameters(self):
+        count = 0
+        count += len(self.pred_function.get_thetas())
+        count += len(self.pred_function.get_etas())
+        count += len(self.pred_function.get_epss())
+        for tensor in self.omega.parameter_values : count += len(tensor)
+        for tensor in self.sigma.parameter_values : count += len(tensor)
+        return count
 
     
     def optimization_function_for_multiprocessing(self, rank, dataset, optimizer, checkpoint_file_path : Optional[str] = None):
@@ -398,8 +404,6 @@ class FOCEInter(tc.nn.Module) :
             eps_size = h.size()[-1]
             if eps_size > 0:
                 h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
-
-            
             
             gr_theta = []
             for y_elem in y_pred_masked:
@@ -430,9 +434,6 @@ class FOCEInter(tc.nn.Module) :
 
             fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
             
-            
-            
-
             result_cur_id['pred'] = y_pred
             result_cur_id['time'] = data[:,self.pred_function._column_names.index('TIME')]
             result_cur_id['mdv_mask'] = mdv_mask
@@ -450,8 +451,6 @@ class FOCEInter(tc.nn.Module) :
         dataloader = DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
 
         state = self.state_dict()
-        
-        total_loss = tc.tensor(0., device = self.pred_function.dataset.device)
         # self.pred_function_module.reset_epss()
 
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]]= {}
@@ -488,10 +487,17 @@ class FOCEInter(tc.nn.Module) :
                 result_cur_id[name].append(value)  # type: ignore
             
         self.load_state_dict(state, strict=False)
-
-        #TODO Implement AIC
-        
         return result
+    
+    def get_AIC(self) :
+        total_loss = tc.tensor(0.).to(self.pred_function.dataset.device)
+        result = self.evaluate()
+        for _, values in result.items() :
+            for key, value in values.items() :
+                if key == 'loss' :
+                    total_loss += value
+        k = self.count_number_of_parameters()
+        return 2 * k + total_loss
     
     def descale(self) :
         self.pred_function.descale()

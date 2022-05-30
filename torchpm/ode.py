@@ -14,10 +14,10 @@ import sympytorch as spt
 import torch as tc
 from torch import nn
 
-DistrubutionMatrix = Tuple[Tuple[bool, ...], ...]
+DistributionMatrix = Tuple[Tuple[bool, ...], ...]
 
 @enum.unique
-class DistributionMatrixes(DistrubutionMatrix, enum.Enum) :
+class DistributionMatrixes(DistributionMatrix, enum.Enum) :
     ONE_COMP_DIST   = ((True,),)
     TWO_COMP_DIST   = ((True, True), (True, False))
     # THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))
@@ -33,7 +33,7 @@ class DosageFormConfig :
 
 @dataclass(frozen=True, eq=True)
 class EquationConfig(DosageFormConfig):
-    distribution_matrix: DistrubutionMatrix = DistributionMatrixes.ONE_COMP_DIST.value
+    distribution_matrix: DistributionMatrix = DistributionMatrixes.ONE_COMP_DIST.value
     observed_compartment_num : int = 0
     administrated_compartment_num : int = 0
 
