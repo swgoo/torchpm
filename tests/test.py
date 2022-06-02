@@ -534,7 +534,7 @@ class TotalTest(unittest.TestCase) :
         independent_parameter_names = ['BWT', 'fixed', 'rand-1+1', 'norm(0,1)', 'BWT-0.5+0.5']
 
         searcher = covariate.DeepCovariateSearching(dataset=dataset,
-                                        BaseModel=BasementModel,
+                                        base_function=BasementModel,
                                         dependent_parameter_names=dependent_parameter_names,
                                         independent_parameter_names=independent_parameter_names,
                                         dependent_parameter_initial_values=dependent_parameter_initial_values,

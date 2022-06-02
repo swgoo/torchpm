@@ -16,9 +16,6 @@ class Covariate:
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
     covariate_relationship_function : Callable[..., Dict[str,tc.Tensor]]
-    
-    def __post_init__(self) :
-        pass
 
 #사용자가 만든 Predfunction module을 받아서 covariate_model 클래스를 생성한다.
 class CovariatePredictionFunctionDecorator :
@@ -67,7 +64,7 @@ class CovariatePredictionFunctionDecorator :
 @dataclass
 class DeepCovariateSearching:
     dataset : CSVDataset
-    BaseModel : typing.Type[predfunction.PredictionFunction]
+    base_function : typing.Type[predfunction.PredictionFunction]
     dependent_parameter_names : List[str]
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
@@ -107,7 +104,7 @@ class DeepCovariateSearching:
                         self._get_covariate_relationship_function(dependent_parameter_names,
                                                                 independent_parameter_names)())
         cov_model_decorator = CovariatePredictionFunctionDecorator([cov])
-        CovPredFunc = cov_model_decorator(self.BaseModel)
+        CovPredFunc = cov_model_decorator(self.base_function)
 
         theta_names = [name + '_theta' for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
