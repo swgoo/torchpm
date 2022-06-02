@@ -502,7 +502,7 @@ class FOCEInter(tc.nn.Module) :
                 total_loss += values.loss
         k = self.count_number_of_parameters()
         return 2 * k + total_loss
-    
+        
     def descale(self) :
         self.pred_function.descale()
         self.omega.descale()
