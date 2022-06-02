@@ -21,7 +21,7 @@ class Covariate:
         pass
 
 #사용자가 만든 Predfunction module을 받아서 covariate_model 클래스를 생성한다.
-class CovariateModelDecorator :
+class CovariatePredictionFunctionDecorator :
     def __init__(self, covariates : List[Covariate]):
         self.covariates = covariates            
     
@@ -106,8 +106,8 @@ class DeepCovariateSearching:
                         independent_parameter_names,
                         self._get_covariate_relationship_function(dependent_parameter_names,
                                                                 independent_parameter_names)())
-        cov_model_decorator = CovariateModelDecorator([cov])
-        CovModel = cov_model_decorator(self.BaseModel)
+        cov_model_decorator = CovariatePredictionFunctionDecorator([cov])
+        CovPredFunc = cov_model_decorator(self.BaseModel)
 
         theta_names = [name + '_theta' for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
@@ -115,7 +115,7 @@ class DeepCovariateSearching:
         model_config = ModelConfig(
                 dataset=self.dataset,
                 output_column_names=[],
-                pred_function=CovModel, 
+                pred_function=CovPredFunc, 
                 theta_names= theta_names,
                 eta_names= eta_names, 
                 eps_names= self.eps_names,

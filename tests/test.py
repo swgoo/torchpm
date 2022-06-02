@@ -490,7 +490,7 @@ class TotalTest(unittest.TestCase) :
             return {'v': value}
         cov = covariate.Covariate(['v'],[[0,32,50]],['BWT'],function)
 
-        cov_model_decorator = covariate.CovariateModelDecorator([cov])
+        cov_model_decorator = covariate.CovariatePredictionFunctionDecorator([cov])
         CovModel = cov_model_decorator(BasementModel)
         
         dataset_file_path = './examples/THEO.csv'
