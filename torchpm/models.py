@@ -27,10 +27,14 @@ class ModelConfig :
     objective_function : Optional[loss.ObjectiveFunction] = None
     optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None
 
-#TODO
 @dataclass
 class OptimizationResult :
-    pass
+    loss : Optional[tc.Tensor] = None
+    cwres_values : Optional[tc.Tensor] = None
+    pred : Optional[tc.Tensor] = None
+    time : Optional[tc.Tensor] = None
+    mdv_mask : Optional[tc.Tensor] = None
+    output_columns : Optional[Dict[str, tc.Tensor]] = None
 
 class FOCEInter(tc.nn.Module) :
 
@@ -458,13 +462,13 @@ class FOCEInter(tc.nn.Module) :
         state = self.state_dict()
         # self.pred_function_module.reset_epss()
 
-        result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]]= {}
+        result : Dict[str, OptimizationResult]= {}
         for data, y_true in dataloader:
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
             id = str(int(data[:,self.pred_function._column_names.index('ID')][0]))
 
-            result[id] = {}
-            result_cur_id : Dict[str, Union[tc.Tensor, List[tc.Tensor]]] = result[id]
+            result[id] = OptimizationResult()
+            result_cur_id = result[id]
 
 
             y_pred_masked = y_pred.masked_select(mdv_mask)
@@ -479,17 +483,14 @@ class FOCEInter(tc.nn.Module) :
             y_true_masked = y_true.masked_select(mdv_mask)
             loss = self.objective_function(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
 
-            result_cur_id['loss'] = loss
+            result_cur_id.loss = loss
             
-            result_cur_id['cwres'] = cwres(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
-            result_cur_id['pred'] = y_pred
-            result_cur_id['time'] = data[:,self.pred_function._column_names.index('TIME')]
-            result_cur_id['mdv_mask'] = mdv_mask
+            result_cur_id.cwres_values = cwres(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
+            result_cur_id.pred = y_pred_masked
+            result_cur_id.time = data[:,self.pred_function._column_names.index('TIME')].masked_select(mdv_mask)
+            result_cur_id.mdv_mask = mdv_mask
 
-            for name, value in parameters.items() :
-                if name not in result_cur_id.keys() :
-                    result_cur_id[name] = []
-                result_cur_id[name].append(value)  # type: ignore
+            result_cur_id.output_columns = parameters
             
         self.load_state_dict(state, strict=False)
         return result
@@ -498,9 +499,7 @@ class FOCEInter(tc.nn.Module) :
         total_loss = tc.tensor(0.).to(self.pred_function.dataset.device)
         result = self.evaluate()
         for _, values in result.items() :
-            for key, value in values.items() :
-                if key == 'loss' :
-                    total_loss += value
+                total_loss += values.loss
         k = self.count_number_of_parameters()
         return 2 * k + total_loss
     
