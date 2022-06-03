@@ -10,50 +10,44 @@ from .models import FOCEInter, ModelConfig
 from .parameter import *
 from . import predfunction
 
-
-
-
 @dataclass
 class Covariate:
     dependent_parameter_names : List[str]
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
     covariate_relationship_function : Callable[..., Dict[str,tc.Tensor]]
-
-
-def _set_estimated_parameters(obj, covariates : List[Covariate],):
-    def _set_estimated_parameters():
-        obj._set_estimated_parameters()
-        obj.covariate_relationship_function = []    
+def _set_estimated_parameters(covariates):
+    def _set_estimated_parameters(self):
+        self._set_estimated_parameters()
+        self.covariate_relationship_function = []    
         for i, cov in enumerate(covariates):
             function_name = ''
             for ip_name, init_value in zip(cov.dependent_parameter_names, cov.dependent_parameter_initial_values) :
-                setattr(obj, ip_name + '_theta', Theta(*init_value))
-                setattr(obj, ip_name + '_eta', Eta())
-            setattr(obj, '_covariate_relationship_function_' + str(i), cov.covariate_relationship_function)
+                setattr(self, ip_name + '_theta', Theta(*init_value))
+                setattr(self, ip_name + '_eta', Eta())
+            setattr(self, '_covariate_relationship_function_' + str(i), cov.covariate_relationship_function)
             # self.covariate_relationship_function.append(cov.covariate_relationship_function)
     return _set_estimated_parameters
 
-def _calculate_parameters(obj):
-    def _calculate_parameters(parameters, covariates):
-        obj._calculate_parameters(parameters)
-        for i, cov in enumerate(covariates):
+def _calculate_parameters(self, parameters, covariates):
+    self._calculate_parameters(parameters)
+    for i, cov in enumerate(covariates):
 
-            para_dict = {}
-            for name in cov.independent_parameter_names :
-                para_dict[name] = parameters[name]
-            
-            for name in  cov.dependent_parameter_names :
-                pop_para_name = name + '_theta'
-                para_dict[pop_para_name] = getattr(obj, pop_para_name)
-                ind_para_name = name + '_eta'
-                para_dict[ind_para_name] = getattr(obj, ind_para_name)
-            
-            function = getattr(obj, '_covariate_relationship_function_' + str(i))
-            
-            result_dict = function(para_dict)
-            for name, value in result_dict.items() :
-                parameters[name] = value
+        para_dict = {}
+        for name in cov.independent_parameter_names :
+            para_dict[name] = parameters[name]
+        
+        for name in  cov.dependent_parameter_names :
+            pop_para_name = name + '_theta'
+            para_dict[pop_para_name] = getattr(self, pop_para_name)
+            ind_para_name = name + '_eta'
+            para_dict[ind_para_name] = getattr(self, ind_para_name)
+        
+        function = getattr(self, '_covariate_relationship_function_' + str(i))
+        
+        result_dict = function(para_dict)
+        for name, value in result_dict.items() :
+            parameters[name] = value
 
 
 
