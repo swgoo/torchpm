@@ -16,7 +16,7 @@ class Covariate:
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
     covariate_relationship_function : Callable[..., Dict[str,tc.Tensor]]
-    
+
 def _set_estimated_parameters(covariates):
     def _set_estimated_parameters(self):
         self.covariate_relationship_function = []    
@@ -45,7 +45,7 @@ def _calculate_parameters(covariates):
             
             function = getattr(self, '_covariate_relationship_function_' + str(i))
             
-            result_dict = function(para_dict)
+            result_dict = function(**para_dict)
             for name, value in result_dict.items() :
                 parameters[name] = value
     return _calculate_parameters
@@ -95,7 +95,7 @@ class DeepCovariateSearching:
                             nn.Sigmoid(),  # type: ignore
                             nn.Linear(dp_para_names_length, dp_para_names_length))  # type: ignore
 
-            def forward(self, para_dict : Dict[str, Any]) -> Dict[str, tc.Tensor] :
+            def forward(self, **para_dict : Any) -> Dict[str, tc.Tensor] :
                 idp_para_tensor = tc.stack([para_dict[name] for name in independent_parameter_names]).t()
 
                 lin_r = self.lin(idp_para_tensor).t()
