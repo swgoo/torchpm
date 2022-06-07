@@ -209,6 +209,7 @@ class PredictionFunction(tc.nn.Module):
                 output_columns[cov_name] = parameters[cov_name]
         return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
 
+    #TODO Remove this method
     @abstractmethod
     def _set_estimated_parameters(self):
         pass
