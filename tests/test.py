@@ -283,8 +283,6 @@ class ODEModel(predfunction.NumericPredictionFunction) :
 
         self.eps_0 = Eps()
         self.eps_1 = Eps()
-
-        
     
     def _calculate_parameters(self, p):
         p['k_a'] = self.theta_0()*tc.exp(self.eta_0())

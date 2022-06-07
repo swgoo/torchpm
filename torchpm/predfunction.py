@@ -14,28 +14,6 @@ from .parameter import *
 
 class PredictionFunction(tc.nn.Module):
 
-    ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
-
-    # def __new__(cls, 
-    #         dataset, 
-    #         output_column_names, 
-    #         **kwargs):
-    #     self = super().__new__(cls)
-    #     self.dataset = dataset
-    #     self._column_names = dataset.column_names
-    #     self._output_column_names = output_column_names
-    #     self._ids = set()
-    #     self._record_lengths : Dict[str, int] = {}
-    #     self._max_record_length = 0
-
-    #     for data in tc.utils.data.DataLoader(self.dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
-    #         id = data[0][:, self._column_names.index('ID')][0]
-    #         self._ids.add(int(id))
-    #         self._record_lengths[str(int(id))] = data[0].size()[0]
-    #         self._max_record_length = max(data[0].size()[0], self._max_record_length)
-        
-    #     return self
-
     def __init__(self,
             dataset : data.CSVDataset,
             output_column_names: List[str],
@@ -212,11 +190,6 @@ class PredictionFunction(tc.nn.Module):
             else :
                 output_columns[cov_name] = parameters[cov_name]
         return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
-
-    #TODO Remove this method
-    # @abstractmethod
-    # def _set_estimated_parameters(self):
-    #     pass
     
     @abstractmethod
     def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
@@ -284,28 +257,19 @@ class NumericPredictionFunction(PredictionFunction):
     rtol : float = 1e-2
     atol : float = 1e-2
 
-    
-
     @abstractmethod
     def _calculate_preds(self, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
-    def ode_function(self, t, y):
+    def _ode_function(self, t, y):
         index = (self.t < t).sum() - 1
         parameters_sliced = {k: v[index] for k, v in self.parameter_values.items()}
         return self._calculate_preds(t, y, parameters_sliced) + \
             self.infusion_rate * (self.infusion_end_time > t)
 
-    def __new__(cls, dataset, output_column_names, **kwargs):
-        obj = super().__new__(dataset, output_column_names, **kwargs)
-        obj.parameter_values : Dict[str, tc.Tensor] = {}
-        return obj 
-    
-    def __init__(self, dataset: data.CSVDataset, output_column_names: List[str], **kwargs):
-        super().__init__(dataset, output_column_names, **kwargs)
-        
-
     def forward(self, dataset) :
+        if not hasattr(self, 'parameter_values'):
+            self.parameter_values : Dict[str, tc.Tensor] = {}
         parameters = self._pre_forward(dataset)
         self.parameter_values = parameters
 
@@ -343,7 +307,7 @@ class NumericPredictionFunction(PredictionFunction):
                 self.infusion_end_time = self.infusion_end_time * mask + infusion_end_time_vector
                 
             self.t = times
-            result = odeint(self.ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
+            result = odeint(self._ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
             y_integrated = result
             y_init = result[-1]
 

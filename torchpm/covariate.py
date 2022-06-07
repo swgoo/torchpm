@@ -16,28 +16,24 @@ class Covariate:
     independent_parameter_names : List[str]
     covariate_relationship_function : Callable[..., Dict[str,tc.Tensor]]
 
-def _set_estimated_parameters(covariates : List[Covariate]):
-    def _set_estimated_parameters(self):
-        for i, cov in enumerate(covariates):
-            setattr(self, '_covariate_relationship_function_' + str(i), cov.covariate_relationship_function)
-    return _set_estimated_parameters
+def set_estimated_parameters(obj, covariates):
+    for i, cov in enumerate(covariates):
+        setattr(obj, '_covariate_relationship_function_' + str(i), cov.covariate_relationship_function)
 
-def _calculate_parameters(covariates : List[Covariate]):
-    def _calculate_parameters(self, parameters):
-        for i, cov in enumerate(covariates):
-            para_dict = {}
-            for name in cov.independent_parameter_names :
-                para_dict[name] = parameters[name]
-            
-            for name in  cov.dependent_parameter_names :
-                para_dict[name] = getattr(self, name)
-            
-            function : Callable[..., Dict[str, tc.Tensor]] = getattr(self, '_covariate_relationship_function_' + str(i))
-            
-            result_dict = function(**para_dict)
-            for name, value in result_dict.items() :
-                parameters[name] = value
-    return _calculate_parameters
+def calculate_parameters(obj, covariates, parameters):
+    for i, cov in enumerate(covariates):
+        para_dict = {}
+        for name in cov.independent_parameter_names :
+            para_dict[name] = parameters[name]
+        
+        for name in  cov.dependent_parameter_names :
+            para_dict[name] = getattr(obj, name)
+        
+        function : Callable[..., Dict[str, tc.Tensor]] = getattr(obj, '_covariate_relationship_function_' + str(i))
+        
+        result_dict = function(**para_dict)
+        for name, value in result_dict.items() :
+            parameters[name] = value
 
 def _get_covariate_ann_function(independent_parameter_names, dependent_parameter_names) -> nn.Module:  # type: ignore
     idp_para_names_length = len(independent_parameter_names)
@@ -76,13 +72,13 @@ class CovariatePredictionFunctionDecorator :
         meta_self = self
         class CovariateFunction(cls):
 
-            def _set_estimated_parameters(self):
-                super()._set_estimated_parameters()
+            def __init__(self, dataset, output_column_names, **kwargs):
+                super().__init__(dataset, output_column_names, **kwargs)
                 for i, cov in enumerate(meta_self.covariates):
                     for dp_name, init_value in zip(cov.dependent_parameter_names, meta_self.dependent_parameter_initial_values[i]) :
                         setattr(self, dp_name, Theta(*init_value))
                         setattr(self, dp_name + '_eta', Eta())
-                _set_estimated_parameters(meta_self.covariates)(self)
+                set_estimated_parameters(self, meta_self.covariates)
                 
             def _calculate_parameters(self, parameters):
                 super()._calculate_parameters(parameters)
@@ -91,7 +87,7 @@ class CovariatePredictionFunctionDecorator :
                         theta = getattr(self, dp_name)
                         eta = getattr(self, dp_name + '_eta')
                         parameters[dp_name] = theta().exp(eta())
-                _calculate_parameters(meta_self.covariates)(self, parameters)
+                calculate_parameters(self, meta_self.covariates, parameters)
         
         return CovariateFunction
 
