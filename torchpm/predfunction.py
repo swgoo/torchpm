@@ -39,9 +39,9 @@ class PredictionFunction(tc.nn.Module):
         
         
         self._set_estimated_parameters()
-        self._init_parameters()
+        self.init_parameters()
     
-    def _init_parameters(self):
+    def init_parameters(self):
 
         for data in tc.utils.data.DataLoader(self.dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
             id = data[0][:, self._column_names.index('ID')][0]
