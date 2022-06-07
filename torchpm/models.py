@@ -9,16 +9,14 @@ from torch.utils.data import DataLoader
 
 from .parameter import *
 from .data import CSVDataset
-from . import predfunction
+from . import predfunc
 from . import loss
 from .misc import *
 
 
 @dataclass
 class ModelConfig :
-    dataset : CSVDataset
-    output_column_names: List[str]
-    pred_function : Union[typing.Type[predfunction.PredictionFunction], predfunction.PredictionFunction]
+    pred_function : predfunc.PredictionFunction
     theta_names : List[str]
     eta_names : List[str]
     eps_names : List[str]
@@ -44,12 +42,7 @@ class FOCEInter(tc.nn.Module) :
         super(FOCEInter, self).__init__()
 
         self.model_config = model_config
-
-        pred_function_module_type = type(model_config.pred_function)
-        if pred_function_module_type is type :
-            self.pred_function = model_config.pred_function(model_config.dataset, model_config.output_column_names)
-        elif isinstance(model_config.pred_function, predfunction.PredictionFunction) :
-            self.pred_function = model_config.pred_function
+        self.pred_function = model_config.pred_function
         
         self.theta_names = model_config.theta_names
         self.eta_names = model_config.eta_names

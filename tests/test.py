@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, models, ode, predfunction, loss
+from torchpm import covariate, models, ode, predfunc, loss
 from torchpm import data
 from torchpm.data import CSVDataset
 from torchpm.parameter import *
@@ -48,9 +48,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
 
         print('=================================== A Optimal ===================================')
         model_config = models.ModelConfig(
-                dataset = dataset,
-                output_column_names= output_column_names,
-                pred_function = BasementModelFIM, 
+                pred_function = BasementModelFIM(dataset=dataset,output_column_names=output_column_names,), 
                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                 eps_names= ['eps_0'], 
@@ -129,7 +127,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
                 ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
         plt.show()
 
-class BasementModel(predfunction.SymbolicPredictionFunction) :
+class BasementFunction(predfunc.SymbolicPredictionFunction) :
 
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
@@ -161,7 +159,7 @@ class BasementModel(predfunction.SymbolicPredictionFunction) :
         p['v_v'] = p['v'] 
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
-class BasementModelFIM(predfunction.SymbolicPredictionFunction) :
+class BasementModelFIM(predfunc.SymbolicPredictionFunction) :
 
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
@@ -194,7 +192,7 @@ class BasementModelFIM(predfunction.SymbolicPredictionFunction) :
         return y_pred +  self.eps_0()
 
 
-class AnnModel(predfunction.SymbolicPredictionFunction) :
+class AnnModel(predfunc.SymbolicPredictionFunction) :
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
         self.theta_0 = Theta(0., 1.5, 10.)
@@ -238,7 +236,7 @@ class AnnModel(predfunction.SymbolicPredictionFunction) :
 
 
 
-class AmtModel(predfunction.SymbolicPredictionFunction) :
+class AmtModel(predfunc.SymbolicPredictionFunction) :
 
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
@@ -270,7 +268,7 @@ class AmtModel(predfunction.SymbolicPredictionFunction) :
     def _calculate_error(self, y_pred, para) :
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
-class ODEModel(predfunction.NumericPredictionFunction) :
+class ODEModel(predfunc.NumericPredictionFunction) :
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
         self.theta_0 = Theta(0., 1.5, 10)
@@ -324,9 +322,7 @@ class TotalTest(unittest.TestCase) :
 
 
         model_config = models.ModelConfig(
-                dataset = dataset,
-                output_column_names= output_column_names,
-                pred_function = BasementModel, 
+                pred_function = BasementFunction(dataset, output_column_names), 
                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                 eps_names= ['eps_0','eps_1'], 
@@ -394,15 +390,12 @@ class TotalTest(unittest.TestCase) :
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
         model_config = models.ModelConfig(
-                dataset = dataset,
-                output_column_names= output_column_names,
-                pred_function = AnnModel, 
+                pred_function = AnnModel(dataset, output_column_names),
                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                 eps_names= ['eps_0','eps_1'], 
                 omega=omega, 
-                sigma=sigma
-        )
+                sigma=sigma)
 
         model = models.FOCEInter(model_config)
                                 
@@ -426,9 +419,7 @@ class TotalTest(unittest.TestCase) :
         sigma = Sigma([0.0177, 0.0762], [True])
 
         model_config = models.ModelConfig(
-                dataset=dataset,
-                output_column_names=output_column_names,
-                pred_function = AmtModel, 
+                pred_function = AmtModel(dataset, output_column_names), 
                 theta_names=['theta_0'],
                 eta_names=['eta_0', 'eta_1','eta_2'], 
                 eps_names= ['eps_0','eps_1'], 
@@ -468,9 +459,7 @@ class TotalTest(unittest.TestCase) :
         sigma = Sigma([[0.0177, 0.0762]], [True])
 
         model_config = models.ModelConfig(
-                dataset=dataset,
-                output_column_names=output_column_names,
-                pred_function = ODEModel, 
+                pred_function = ODEModel(dataset, output_column_names), 
                 theta_names = ['theta_0', 'theta_1', 'theta_2'],
                 eta_names=['eta_0', 'eta_1','eta_2'], 
                 eps_names= ['eps_0','eps_1'], 
@@ -500,7 +489,7 @@ class TotalTest(unittest.TestCase) :
         cov = covariate.Covariate(['v'],[[0,32,50]],['BWT'],function)
 
         cov_model_decorator = covariate.CovariatePredictionFunctionDecorator([cov])
-        CovModel = cov_model_decorator(BasementModel)
+        CovModel = cov_model_decorator(BasementFunction)
         
         dataset_file_path = './examples/THEO.csv'
         dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
@@ -516,9 +505,7 @@ class TotalTest(unittest.TestCase) :
         sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
 
         model_config = models.ModelConfig(
-                dataset=dataset,
-                output_column_names=output_column_names,
-                pred_function=CovModel, 
+                pred_function=CovModel(dataset, output_column_names), 
                 theta_names=['theta_0', 'v_theta', 'theta_2'],
                 eta_names= ['eta_0', 'v_eta','eta_2'], 
                 eps_names= ['eps_0','eps_1'], 
@@ -529,30 +516,3 @@ class TotalTest(unittest.TestCase) :
                                 
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-2, tolerance_change= 1e-3)
-    
-    def test_covariate_ann_model(self) :
-            
-        dataset_file_path = './examples/THEO_cov_searching.csv'
-        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
-        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
-        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT', 'fixed', 'rand-1+1', 'norm(0,1)', 'BWT-0.5+0.5']
-        dataset = CSVDataset(dataset_np, column_names, device)
-        
-        dependent_parameter_names = ['k_a', 'v', 'k_e']
-        dependent_parameter_initial_values = [[0,1.4901,2],[30,32.4667,34],[0,0.08,0.1]]
-        independent_parameter_names = ['BWT', 'fixed', 'rand-1+1', 'norm(0,1)', 'BWT-0.5+0.5']
-
-        searcher = covariate.DeepCovariateSearching(dataset=dataset,
-                                        base_function=BasementModel,
-                                        dependent_parameter_names=dependent_parameter_names,
-                                        independent_parameter_names=independent_parameter_names,
-                                        dependent_parameter_initial_values=dependent_parameter_initial_values,
-                                        eps_names=['eps_0', 'eps_1'],
-                                        omega = Omega([0.4397,
-                                                        0.0575,  0.0198, 
-                                                        -0.0069,  0.0116,  0.0205], False, requires_grads=True),
-                                        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True]))
-        r = searcher.run(tolerance_grad=1e-3, tolerance_change=1e-3)
-        history = r['history']
-        for record in history :
-            print(record)

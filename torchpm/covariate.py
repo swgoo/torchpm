@@ -8,7 +8,7 @@ import torch as tc
 from .data import CSVDataset
 from .models import FOCEInter, ModelConfig
 from .parameter import *
-from . import predfunction
+from . import predfunc
 
 @dataclass
 class Covariate:
@@ -67,8 +67,8 @@ class CovariatePredictionFunctionDecorator :
         self.dependent_parameter_initial_values = dependent_parameter_initial_values
 
     def __call__(self, cls):
-        if not issubclass(cls, predfunction.PredictionFunction) :
-            raise Exception('Decorated class must be ' + str(predfunction.PredictionFunction))
+        if not issubclass(cls, predfunc.PredictionFunction) :
+            raise Exception('Decorated class must be ' + str(predfunc.PredictionFunction))
         meta_self = self
         class CovariateFunction(cls):
 
@@ -94,7 +94,8 @@ class CovariatePredictionFunctionDecorator :
 @dataclass
 class DeepCovariateSearching:
     dataset : CSVDataset
-    base_function : typing.Type[predfunction.PredictionFunction]
+    output_column_names : List[str]
+    base_function : typing.Type[predfunc.PredictionFunction]
     dependent_parameter_names : List[str]
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
@@ -137,14 +138,12 @@ class DeepCovariateSearching:
         cov_function_decorator = CovariatePredictionFunctionDecorator(
                 covariates=[cov],
                 dependent_parameter_initial_values = [dependent_parameter_initial_values])
-        CovPredFunc = cov_function_decorator(self.base_function)
+        CovPredFunc = cov_function_decorator(self.base_function)(dataset=self.dataset, output_column_names=self.output_column_names)
 
         theta_names = [name for name in self.dependent_parameter_names]
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
 
         model_config = ModelConfig(
-                dataset=self.dataset,
-                output_column_names=[],
                 pred_function=CovPredFunc, 
                 theta_names= theta_names,
                 eta_names= eta_names, 

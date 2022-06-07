@@ -48,21 +48,21 @@ class CompartmentEquation(nn.Module) :
     DB_FILE_NAME = "ode.db"
 
     def __init__(self, 
-            model_config: EquationConfig) -> None:
+            equation_config: EquationConfig) -> None:
         super().__init__()
-        self.model_config = model_config
+        self.model_config = equation_config
 
         self.distribution_matrix = []
-        for row in list(model_config.distribution_matrix) :
+        for row in list(equation_config.distribution_matrix) :
             self.distribution_matrix.append(list(row))
 
-        self.is_infusion = model_config.is_infusion
-        self.observed_compartment_num = model_config.observed_compartment_num
-        self.administrated_compartment_num = model_config.administrated_compartment_num
-        self.depot_compartment_num = model_config.administrated_compartment_num
-        self.has_depot = model_config.has_depot
-        self.transit = model_config.transit
-        self.is_delay_time = model_config.is_delay_time
+        self.is_infusion = equation_config.is_infusion
+        self.observed_compartment_num = equation_config.observed_compartment_num
+        self.administrated_compartment_num = equation_config.administrated_compartment_num
+        self.depot_compartment_num = equation_config.administrated_compartment_num
+        self.has_depot = equation_config.has_depot
+        self.transit = equation_config.transit
+        self.is_delay_time = equation_config.is_delay_time
 
         self._make_distribution_matrix()
 
@@ -124,7 +124,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
     
     def __init__(self, model_config : EquationConfig, timeout = 60) -> None:
         
-        super().__init__(model_config=model_config)
+        super().__init__(equation_config=model_config)
 
         if self.is_infusion :
             t_sym = sym.symbols('t', real=True, negative = False, finite = True)
