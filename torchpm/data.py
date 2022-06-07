@@ -10,6 +10,7 @@ class CSVDataset(tc.utils.data.Dataset):  # type: ignore
         column_names: csv file's column names
         device: (optional) data loaded location 
     """
+    ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
     
     def __init__(self, 
                  numpy_dataset : np.ndarray,

@@ -294,7 +294,7 @@ class PreparedCompartmentModel(CompartmentEquation) :
         try :
             self.module = DB[self.model_config]()
         except KeyError :
-            raise KeyError('Model not found in DB')
+            raise KeyError('A model is not found in DB')
     def forward(self, **variables):
         return self.module(**variables)
     
@@ -322,4 +322,3 @@ class TwoCompartmentInfusion(nn.Module) :
         return tc.concat([amt_infusion[:infusion_t.size()[0]], amt_elimination[infusion_t.size()[0]:]], dim = -1).unsqueeze(0)
 
 __init__()
-

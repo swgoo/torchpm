@@ -42,6 +42,9 @@ class FOCEInter(tc.nn.Module) :
             model_config : ModelConfig):
 
         super(FOCEInter, self).__init__()
+
+        self.model_config = model_config
+
         pred_function_module_type = type(model_config.pred_function)
         if pred_function_module_type is type :
             self.pred_function = model_config.pred_function(model_config.dataset, model_config.output_column_names)

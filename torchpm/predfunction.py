@@ -16,12 +16,16 @@ class PredictionFunction(tc.nn.Module):
 
     ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
 
+    def __new__(cls):
+        super().__new__(cls)
+        pass
+
     def __init__(self,
             dataset : data.CSVDataset,
             output_column_names: List[str],
             **kwargs):
 
-        super(PredictionFunction, self).__init__()
+        super().__init__(**kwargs)
         self.dataset = dataset
         self._column_names = dataset.column_names
         self._output_column_names = output_column_names
