@@ -16,9 +16,18 @@ class PredictionFunction(tc.nn.Module):
 
     ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
 
-    def __new__(cls):
-        super().__new__(cls)
-        pass
+    def __new__(cls, 
+            dataset, 
+            output_column_names, 
+            **kwargs):
+        obj = super().__new__(cls)
+        obj.dataset = dataset
+        obj._column_names = dataset.column_names
+        obj._output_column_names = output_column_names
+        obj._ids = set()
+        obj._record_lengths : Dict[str, int] = {}
+        obj._max_record_length = 0
+        return obj
 
     def __init__(self,
             dataset : data.CSVDataset,
@@ -26,23 +35,20 @@ class PredictionFunction(tc.nn.Module):
             **kwargs):
 
         super().__init__(**kwargs)
-        self.dataset = dataset
-        self._column_names = dataset.column_names
-        self._output_column_names = output_column_names
-        self._ids = set()
-        self._record_lengths : Dict[str, int] = {}
-        self._max_record_length = 0
 
-        for data in tc.utils.data.DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
-            id = data[0][:, self._column_names.index('ID')][0]
-            self._ids.add(int(id))
-            self._record_lengths[str(int(id))] = data[0].size()[0]
-            self._max_record_length = max(data[0].size()[0], self._max_record_length)
+        
         
         self._set_estimated_parameters()
         self._init_parameters()
     
     def _init_parameters(self):
+
+        for data in tc.utils.data.DataLoader(self.dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
+            id = data[0][:, self._column_names.index('ID')][0]
+            self._ids.add(int(id))
+            self._record_lengths[str(int(id))] = data[0].size()[0]
+            self._max_record_length = max(data[0].size()[0], self._max_record_length)
+
         self._theta_names : Set[str] = set()
         self._eta_names : Set[str] = set()
         self._eps_names : Set[str] = set()
