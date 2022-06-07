@@ -16,66 +16,70 @@ class PredictionFunction(tc.nn.Module):
 
     ESSENTIAL_COLUMNS : List[str] = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT']
 
-    def __new__(cls, 
-            dataset, 
-            output_column_names, 
-            **kwargs):
-        obj = super().__new__(cls)
-        obj.dataset = dataset
-        obj._column_names = dataset.column_names
-        obj._output_column_names = output_column_names
-        obj._ids = set()
-        obj._record_lengths : Dict[str, int] = {}
-        obj._max_record_length = 0
-        return obj
+    # def __new__(cls, 
+    #         dataset, 
+    #         output_column_names, 
+    #         **kwargs):
+    #     self = super().__new__(cls)
+    #     self.dataset = dataset
+    #     self._column_names = dataset.column_names
+    #     self._output_column_names = output_column_names
+    #     self._ids = set()
+    #     self._record_lengths : Dict[str, int] = {}
+    #     self._max_record_length = 0
+
+    #     for data in tc.utils.data.DataLoader(self.dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
+    #         id = data[0][:, self._column_names.index('ID')][0]
+    #         self._ids.add(int(id))
+    #         self._record_lengths[str(int(id))] = data[0].size()[0]
+    #         self._max_record_length = max(data[0].size()[0], self._max_record_length)
+        
+    #     return self
 
     def __init__(self,
             dataset : data.CSVDataset,
             output_column_names: List[str],
             **kwargs):
-
         super().__init__(**kwargs)
-
-        
-        
-        self._set_estimated_parameters()
-        self.init_parameters()
-    
-    def init_parameters(self):
+        self._theta_names = set()
+        self._eta_names = set()
+        self._eps_names = set()
+        self.dataset = dataset
+        self._column_names = dataset.column_names
+        self._output_column_names = output_column_names
+        self._ids = set()
+        self._record_lengths : Dict[str, int] = {}
+        self._max_record_length = 0
 
         for data in tc.utils.data.DataLoader(self.dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
             id = data[0][:, self._column_names.index('ID')][0]
             self._ids.add(int(id))
             self._record_lengths[str(int(id))] = data[0].size()[0]
             self._max_record_length = max(data[0].size()[0], self._max_record_length)
+    
+    def __setattr__(self, name: str, value) -> None:
+        att_type = type(value)
 
-        self._theta_names : Set[str] = set()
-        self._eta_names : Set[str] = set()
-        self._eps_names : Set[str] = set()
+        with tc.no_grad() :
+            if att_type is Theta :
+                self._theta_names.add(name)
 
-        attributes = dir(self)
+            elif att_type is Eta :
+                self._eta_names.add(name)
 
-        for att_name in attributes:
-            att = getattr(self, att_name)
-            att_type = type(att)
+                for id in self._ids : # type: ignore
+                    eta_value = tc.tensor(0.1, device=self.dataset.device) # type: ignore
+                    value.parameter_values.update({str(int(id)): tc.nn.Parameter(eta_value)}) # type: ignore
 
-            with tc.no_grad() :
-                if att_type is Theta :
-                    self._theta_names.add(att_name)
+            elif att_type is Eps :
+                self._eps_names.add(name)
 
-                elif att_type is Eta :
-                    self._eta_names.add(att_name)
-
-                    for id in self._ids :
-                        eta_value = tc.tensor(0.1, device=self.dataset.device) 
-                        att.parameter_values.update({str(int(id)): tc.nn.Parameter(eta_value)}) # type: ignore
-
-                elif att_type is Eps :
-                    self._eps_names.add(att_name)
-
-                    for id in self._ids :
-                        eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
-                        att.parameter_values[str(int(id))] = eps_value
+                for id in self._ids :
+                    eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
+                    value.parameter_values[str(int(id))] = eps_value # type: ignore
+        
+        super().__setattr__(name, value)
+        
 
     def _get_estimated_parameters(self, names) :
         dictionary : Dict[str, Any] = {}
@@ -210,9 +214,9 @@ class PredictionFunction(tc.nn.Module):
         return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
 
     #TODO Remove this method
-    @abstractmethod
-    def _set_estimated_parameters(self):
-        pass
+    # @abstractmethod
+    # def _set_estimated_parameters(self):
+    #     pass
     
     @abstractmethod
     def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
@@ -291,10 +295,15 @@ class NumericPredictionFunction(PredictionFunction):
         parameters_sliced = {k: v[index] for k, v in self.parameter_values.items()}
         return self._calculate_preds(t, y, parameters_sliced) + \
             self.infusion_rate * (self.infusion_end_time > t)
+
+    def __new__(cls, dataset, output_column_names, **kwargs):
+        obj = super().__new__(dataset, output_column_names, **kwargs)
+        obj.parameter_values : Dict[str, tc.Tensor] = {}
+        return obj 
     
-    def __init__(self, dataset: data.CSVDataset, output_column_names: List[str]):
-        super().__init__(dataset, output_column_names)
-        self.parameter_values : Dict[str, tc.Tensor] = {}
+    def __init__(self, dataset: data.CSVDataset, output_column_names: List[str], **kwargs):
+        super().__init__(dataset, output_column_names, **kwargs)
+        
 
     def forward(self, dataset) :
         parameters = self._pre_forward(dataset)

@@ -131,7 +131,8 @@ class FisherInformationMatrixTest(unittest.TestCase):
 
 class BasementModel(predfunction.SymbolicPredictionFunction) :
 
-    def _set_estimated_parameters(self):
+    def __init__(self, dataset, output_column_names):
+        super().__init__(dataset, output_column_names)
         self.theta_0 = Theta(0., 5., 10.)
         self.theta_1 = Theta(0., 30., 100.)
         self.theta_2 = Theta(0, 0.08, 1)
@@ -162,7 +163,8 @@ class BasementModel(predfunction.SymbolicPredictionFunction) :
 
 class BasementModelFIM(predfunction.SymbolicPredictionFunction) :
 
-    def _set_estimated_parameters(self):
+    def __init__(self, dataset, output_column_names):
+        super().__init__(dataset, output_column_names)
         self.theta_0 = Theta(0.01, 2., 10.)
         self.theta_1 = Theta(0.01, 30., 40.)
         self.theta_2 = Theta(0.01, 0.8, 1.)
@@ -172,6 +174,7 @@ class BasementModelFIM(predfunction.SymbolicPredictionFunction) :
         self.eta_2 = Eta()
 
         self.eps_0 = Eps()
+        
     
     def _calculate_parameters(self, para):
         para['k_a'] = self.theta_0() * self.eta_0().exp()
@@ -192,7 +195,8 @@ class BasementModelFIM(predfunction.SymbolicPredictionFunction) :
 
 
 class AnnModel(predfunction.SymbolicPredictionFunction) :
-    def _set_estimated_parameters(self):
+    def __init__(self, dataset, output_column_names):
+        super().__init__(dataset, output_column_names)
         self.theta_0 = Theta(0., 1.5, 10.)
         self.theta_1 = Theta(0., 30., 100.)
         self.theta_2 = Theta(0, 0.08, 1)
@@ -206,6 +210,8 @@ class AnnModel(predfunction.SymbolicPredictionFunction) :
 
         self.lin = nn.Sequential(nn.Linear(1,3),
                                     nn.Linear(3,3))
+        
+        
     
     def _calculate_parameters(self, para):
         
@@ -234,8 +240,8 @@ class AnnModel(predfunction.SymbolicPredictionFunction) :
 
 class AmtModel(predfunction.SymbolicPredictionFunction) :
 
-    def _set_estimated_parameters(self):
-
+    def __init__(self, dataset, output_column_names):
+        super().__init__(dataset, output_column_names)
         self.theta_0 = Theta(0, 100, 500)
 
         self.eta_0 = Eta()
@@ -244,6 +250,8 @@ class AmtModel(predfunction.SymbolicPredictionFunction) :
 
         self.eps_0 = Eps()
         self.eps_1 = Eps()
+
+        
         
     def _calculate_parameters(self, para):
         para['k_a'] = 1.4901*tc.exp(self.eta_0())
@@ -263,7 +271,8 @@ class AmtModel(predfunction.SymbolicPredictionFunction) :
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
 class ODEModel(predfunction.NumericPredictionFunction) :
-    def _set_estimated_parameters(self):
+    def __init__(self, dataset, output_column_names):
+        super().__init__(dataset, output_column_names)
         self.theta_0 = Theta(0., 1.5, 10)
         self.theta_1 = Theta(0, 30, 100)
         self.theta_2 = Theta(0, 0.08, 1)
@@ -274,6 +283,8 @@ class ODEModel(predfunction.NumericPredictionFunction) :
 
         self.eps_0 = Eps()
         self.eps_1 = Eps()
+
+        
     
     def _calculate_parameters(self, p):
         p['k_a'] = self.theta_0()*tc.exp(self.eta_0())
