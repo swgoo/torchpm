@@ -19,9 +19,9 @@ class PredictionFunction(tc.nn.Module):
             output_column_names: List[str],
             **kwargs):
         super().__init__(**kwargs)
-        self._theta_names = set()
-        self._eta_names = set()
-        self._eps_names = set()
+        self.theta_names = set()
+        self.eta_names = set()
+        self.eps_names = set()
         self.dataset = dataset
         self._column_names = dataset.column_names
         self._output_column_names = output_column_names
@@ -40,17 +40,17 @@ class PredictionFunction(tc.nn.Module):
 
         with tc.no_grad() :
             if att_type is Theta :
-                self._theta_names.add(name)
+                self.theta_names.add(name)
 
             elif att_type is Eta :
-                self._eta_names.add(name)
+                self.eta_names.add(name)
 
                 for id in self._ids : # type: ignore
                     eta_value = tc.tensor(0.1, device=self.dataset.device) # type: ignore
                     value.parameter_values.update({str(int(id)): tc.nn.Parameter(eta_value)}) # type: ignore
 
             elif att_type is Eps :
-                self._eps_names.add(name)
+                self.eps_names.add(name)
 
                 for id in self._ids :
                     eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
@@ -67,13 +67,13 @@ class PredictionFunction(tc.nn.Module):
         return dictionary
 
     def get_thetas(self) -> Dict[str, Theta]:
-        return self._get_estimated_parameters(self._theta_names)
+        return self._get_estimated_parameters(self.theta_names)
 
     def get_etas(self) -> Dict[str, Eta]:
-        return self._get_estimated_parameters(self._eta_names)
+        return self._get_estimated_parameters(self.eta_names)
 
     def get_epss(self) -> Dict[str, Eps]:
-        return self._get_estimated_parameters(self._eps_names)
+        return self._get_estimated_parameters(self.eps_names)
     
     def _get_estimated_parameter_values(self, names) -> Dict[str, Any]:
         dictionary : Dict[str, Any] = {}
@@ -98,16 +98,16 @@ class PredictionFunction(tc.nn.Module):
         return dictionary
 
     def get_theta_values(self) -> Dict[str, Theta]:
-        return self._get_estimated_values(self._theta_names)
+        return self._get_estimated_values(self.theta_names)
 
     def get_theta_parameter_values(self) :
-        return self._get_estimated_parameter_values(self._theta_names)
+        return self._get_estimated_parameter_values(self.theta_names)
     
     def get_eta_parameter_values(self) -> Dict[str, nn.ParameterDict]:  # type: ignore
-        return self._get_estimated_parameter_values(self._eta_names)
+        return self._get_estimated_parameter_values(self.eta_names)
     
     def get_eps_parameter_values(self) -> Dict[str, Dict[str, nn.Parameter]]:  # type: ignore
-        return self._get_estimated_parameter_values(self._eps_names)
+        return self._get_estimated_parameter_values(self.eps_names)
 
     def reset_epss(self) :
         attributes = dir(self)
@@ -159,11 +159,11 @@ class PredictionFunction(tc.nn.Module):
         id = str(int(dataset[:,self._column_names.index('ID')][0]))
         self._id = id
 
-        for name in self._eta_names:
+        for name in self.eta_names:
             att = getattr(self, name)
             att.id = id
 
-        for name in self._eps_names:
+        for name in self.eps_names:
             att = getattr(self, name)
             att.id = id
 

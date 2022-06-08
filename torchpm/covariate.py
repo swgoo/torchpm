@@ -5,6 +5,8 @@ import typing
 from torch import nn
 import torch as tc
 
+from scipy.stats import chi2
+
 from .data import CSVDataset
 from .models import FOCEInter, ModelConfig
 from .parameter import *
@@ -35,7 +37,7 @@ def calculate_parameters(obj, covariates, parameters):
         for name, value in result_dict.items() :
             parameters[name] = value
 
-def _get_covariate_ann_function(independent_parameter_names, dependent_parameter_names) -> nn.Module:  # type: ignore
+def get_covariate_ann_function(independent_parameter_names, dependent_parameter_names) -> nn.Module:  # type: ignore
     idp_para_names_length = len(independent_parameter_names)
     dp_para_names_length = len(dependent_parameter_names)
     class CovariateRelationshipFunction(nn.Module):  # type: ignore
@@ -132,7 +134,7 @@ class DeepCovariateSearching:
 
         cov = Covariate(dependent_parameter_names,
                         independent_parameter_names,
-                        _get_covariate_ann_function(
+                        get_covariate_ann_function(
                                 dependent_parameter_names,
                                 independent_parameter_names)())
         cov_function_decorator = CovariatePredictionFunctionDecorator(
@@ -158,7 +160,8 @@ class DeepCovariateSearching:
             checkpoint_file_path: Optional[str] = None,
             tolerance_grad : float= 1e-3,
             tolerance_change : float = 1e-3,
-            max_iteration : int = 1000) :
+            max_iteration : int = 1000,
+            p_value = 0.05) :
 
         self.independent_parameter_names_candidate = deepcopy(self.independent_parameter_names)
 
@@ -199,7 +202,7 @@ class DeepCovariateSearching:
                     'loss difference' : loss_diff,}
             removed_covs.append(cov_name)
             loss_history.append(record)
-            if loss_diff  < 3.84 :
+            if loss_diff  < chi2.ppf(1-p_value, 1) :
                 print('===============================',
                 '\n Removed :', cov_name,
                 '\n===================================')
