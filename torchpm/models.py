@@ -11,6 +11,7 @@ from .parameter import *
 from .data import CSVDataset
 from . import predfunc
 from . import loss
+from .data import EssentialColumns
 from .misc import *
 
 
@@ -410,7 +411,7 @@ class FOCEInter(tc.nn.Module) :
 
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
 
-            id = str(int(data[:,self.pred_function._column_names.index('ID')][0]))
+            id = str(int(data[:,self.pred_function._column_names.index(EssentialColumns.ID.value)][0]))
             result[id] = {}
             result_cur_id = result[id]
 
@@ -452,7 +453,7 @@ class FOCEInter(tc.nn.Module) :
             fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
             
             result_cur_id['pred'] = y_pred
-            result_cur_id['time'] = data[:,self.pred_function._column_names.index('TIME')]
+            result_cur_id['time'] = data[:,self.pred_function._column_names.index(EssentialColumns.TIME.value)]
             result_cur_id['mdv_mask'] = mdv_mask
 
             for name, value in parameters.items() :
@@ -473,7 +474,7 @@ class FOCEInter(tc.nn.Module) :
         result : Dict[str, OptimizationResult]= {}
         for data, y_true in dataloader:
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
-            id = str(int(data[:,self.pred_function._column_names.index('ID')][0]))
+            id = str(int(data[:,self.pred_function._column_names.index(EssentialColumns.ID.value)][0]))
 
             result[id] = OptimizationResult()
             result_cur_id = result[id]
@@ -495,7 +496,7 @@ class FOCEInter(tc.nn.Module) :
             
             result_cur_id.cwres_values = cwres(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
             result_cur_id.pred = y_pred_masked
-            result_cur_id.time = data[:,self.pred_function._column_names.index('TIME')].masked_select(mdv_mask)
+            result_cur_id.time = data[:,self.pred_function._column_names.index(EssentialColumns.TIME.value)].masked_select(mdv_mask)
             result_cur_id.mdv_mask = mdv_mask
 
             result_cur_id.output_columns = parameters
@@ -616,7 +617,7 @@ class FOCEInter(tc.nn.Module) :
             
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, _ = self(data)
 
-            id = str(int(data[:,self.pred_function._column_names.index('ID')][0]))
+            id = str(int(data[:,self.pred_function._column_names.index(EssentialColumns.ID.value)][0]))
             print('id', id)
  
             y_pred = y_pred.masked_select(mdv_mask)
@@ -685,12 +686,12 @@ class FOCEInter(tc.nn.Module) :
         result : Dict[str, Dict[str, Union[tc.Tensor, List[tc.Tensor]]]] = {}
         for i, (data, _) in enumerate(dataloader):
             
-            id = str(int(data[:, self.pred_function._column_names.index('ID')][0]))
+            id = str(int(data[:, self.pred_function._column_names.index(EssentialColumns.ID.value)][0]))
             
             etas_cur = etas[i,:,:]
             epss_cur = epss[i,:,:]
 
-            time_data = data[:,self.pred_function._column_names.index('TIME')].t()
+            time_data = data[:,self.pred_function._column_names.index(EssentialColumns.TIME.value)].t()
 
             result[id] = {}
             result_cur_id : Dict[str, Union[tc.Tensor, List[tc.Tensor]]] = result[id]

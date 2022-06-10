@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import enum
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, OrderedDict
 
 import numpy as np
 from pyrsistent import s
@@ -8,7 +8,7 @@ from regex import F
 from sympy import Id
 import torch as tc
 from scipy import stats
-from .ode import DosageFormConfig   
+# from .ode import DosageFormConfig   
 
 class EssentialColumns(enum.Enum) :
     ID = 'ID'
@@ -26,7 +26,7 @@ class EssentialColumns(enum.Enum) :
 @dataclass
 class Record:
     column_names : List[str]
-    covariate_names : List[str]
+    covariates : OrderedDict[str, float]
     id : int = 1
     time : float = 0
     amt : float = 0
@@ -75,6 +75,9 @@ class CSVDataset(tc.utils.data.Dataset):  # type: ignore
         self.mean = {}
         for i in range(len(self.column_names)):
             self.mean[self.column_names[i]] = numpy_dataset[:,i].mean()
+        self.std = {}
+        for i in range(len(self.column_names)):
+            self.std[self.column_names[i]] = numpy_dataset[:,i].std()
         ids, ids_start_idx = np.unique(numpy_dataset[:, column_names.index(EssentialColumns.ID.value)], return_index=True)
         ids_start_idx = ids_start_idx[1:]
         dataset_np = np.split(numpy_dataset, ids_start_idx)
@@ -136,7 +139,6 @@ class DataPartitioner(object):
     
 class OptimalDesignDataset(CSVDataset):
     def __init__(self,  
-                dosage_form_config : DosageFormConfig,  
                 dosing_interval : float,
                 observated_compartment_num : int,
                 administrated_compartment_num : int,
@@ -147,10 +149,8 @@ class OptimalDesignDataset(CSVDataset):
         i=0
         while True :
             i+=1
-            record = Record(EssentialColumns.va, covariate_names=covariate_names)
+            record = Record(EssentialColumns.get_list() + covariate_names, covariate_names=covariate_names)
 
-            if dosage_form_config.is_infusion : 
-                pass
 
         
         super().__init__(numpy_dataset, column_names, device, normalization_column_names)

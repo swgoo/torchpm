@@ -8,11 +8,15 @@ import shelve
 import typing
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
+from regex import R
 
 import sympy as sym
 import sympytorch as spt
 import torch as tc
 from torch import nn
+from zmq import RATE
+
+from .data import EssentialColumns
 
 DistributionMatrix = Tuple[Tuple[bool, ...], ...]
 
@@ -128,7 +132,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
 
         if self.is_infusion :
             t_sym = sym.symbols('t', real=True, negative = False, finite = True)
-            r_sym, dose_sym = sym.symbols('RATE, AMT', real=True, positive = True, finite = True)
+            r_sym, dose_sym = sym.symbols(EssentialColumns.RATE.value + ', ' + EssentialColumns.AMT.value, real=True, positive = True, finite = True)
             initial_states_infusion = self._get_initial_states(is_infusion=self.is_infusion)
             cs_infusion = self._solve_linode(initial_states_infusion, is_infusion=True, timeout=timeout)
 
@@ -164,7 +168,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
         Returns:
             ics: initial states of compartments
         """
-        d = sym.symbols('AMT', real = True, Positve = True, finite = True) #dose
+        d = sym.symbols(EssentialColumns.AMT.value, real = True, Positve = True, finite = True) #dose
         result = {}
 
         funcs = self._get_functions()  
@@ -188,7 +192,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
         comps_num = len(self.distribution_matrix)
 
         t = sym.symbols('t', negative = False, real=True, finite = True) #time
-        r = sym.symbols('RATE', positive = True, real=True, finite = True) #infusion rate
+        r = sym.symbols(EssentialColumns.RATE.value, positive = True, real=True, finite = True) #infusion rate
         
         funcs = [func(t) for func in self._get_functions()]  # type: ignore
         funcs_ = [func.diff(t) for func in funcs]
@@ -263,15 +267,12 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
 
     def forward(self, t, **variables):
         if self.is_infusion :
-            infusion_end_time = variables['AMT'] / variables['RATE']
+            infusion_end_time = variables[EssentialColumns.AMT.value] / variables[EssentialColumns.RATE.value]
             
             infusion_t = tc.masked_select(t, t <= infusion_end_time)
-            # elimination_t = tc.masked_select(t, t > infusion_end_time)
             variables['t'] = t
-            # variables['t'] = infusion_t
             infusion_amt = self.infusion_model(**variables).t()
 
-            # variables['t'] = elimination_t
             amt = self.model(**variables).t()
 
             
@@ -310,7 +311,6 @@ class TwoCompartmentInfusion(nn.Module) :
         infusion_time = AMT/RATE
 
         infusion_t = tc.masked_select(t, t <= infusion_time)
-        # elimination_t = tc.masked_select(t, t > infusion_time)
 
 
         amt_infusion = AMT/infusion_time * (a/alpha * (1 - tc.exp(-alpha*(t))) + b/beta * (1 - tc.exp(-beta*(t))))

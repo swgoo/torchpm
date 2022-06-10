@@ -11,6 +11,8 @@ from torchpm import data
 from .misc import *
 from .parameter import *
 
+from .data import EssentialColumns
+
 
 class PredictionFunction(tc.nn.Module):
 
@@ -30,7 +32,7 @@ class PredictionFunction(tc.nn.Module):
         self._max_record_length = 0
 
         for data in tc.utils.data.DataLoader(self.dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
-            id = data[0][:, self._column_names.index('ID')][0]
+            id = data[0][:, self._column_names.index(EssentialColumns.ID.value)][0]
             self._ids.add(int(id))
             self._record_lengths[str(int(id))] = data[0].size()[0]
             self._max_record_length = max(data[0].size()[0], self._max_record_length)
@@ -121,7 +123,7 @@ class PredictionFunction(tc.nn.Module):
                         att.parameter_values[str(int(id))] = eps_value
 
     def _get_amt_indice(self, dataset) :
-        amts = dataset[:, self._column_names.index('AMT')]
+        amts = dataset[:, self._column_names.index(EssentialColumns.AMT.value)]
         end = amts.size()[0]
         start_index = tc.squeeze(amts.nonzero(), 0)
 
@@ -156,7 +158,7 @@ class PredictionFunction(tc.nn.Module):
 
 
     def _pre_forward(self, dataset):
-        id = str(int(dataset[:,self._column_names.index('ID')][0]))
+        id = str(int(dataset[:,self._column_names.index(EssentialColumns.ID.value)][0]))
         self._id = id
 
         for name in self.eta_names:
@@ -228,21 +230,21 @@ class SymbolicPredictionFunction(PredictionFunction):
             dataset_pre = dataset[:start_time_index, :]
             f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
 
-            times = parameters['TIME'][start_time_index:]
+            times = parameters[EssentialColumns.TIME.value][start_time_index:]
             start_time = times[0]
 
-            amts = parameters['AMT'][start_time_index].repeat(parameters['AMT'][start_time_index:].size()[0])
+            amts = parameters[EssentialColumns.AMT.value][start_time_index].repeat(parameters[EssentialColumns.AMT.value][start_time_index:].size()[0])
 
             parameters_sliced = {k: v[start_time_index:] for k, v in parameters.items()}            
-            parameters_sliced['TIME'] = times
-            parameters_sliced['AMT'] = amts
+            parameters_sliced[EssentialColumns.TIME.value] = times
+            parameters_sliced[EssentialColumns.AMT.value] = amts
 
             t = times - start_time
             f_cur = self._calculate_preds(t, parameters_sliced)
             f = f + tc.cat([f_pre, f_cur], 0)
 
         y_pred = self._calculate_error(f, parameters)
-        mdv_mask = dataset[:,self._column_names.index('MDV')] == 0
+        mdv_mask = dataset[:,self._column_names.index(EssentialColumns.MDV.value)] == 0
         post_forward_output = self._post_forward(dataset, parameters)
         return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
 
@@ -283,10 +285,10 @@ class NumericPredictionFunction(PredictionFunction):
 
         for i in range(len(amt_indice) - 1):
             amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
-            amt = parameters['AMT'][amt_indice[i]]
-            rate = parameters['RATE'][amt_indice[i]]
-            cmt  = parameters['CMT'][amt_slice]
-            times = parameters['TIME'][amt_slice]
+            amt = parameters[EssentialColumns.AMT.value][amt_indice[i]]
+            rate = parameters[EssentialColumns.RATE.value][amt_indice[i]]
+            cmt  = parameters[EssentialColumns.CMT.value][amt_slice]
+            times = parameters[EssentialColumns.TIME.value][amt_slice]
 
             if  rate == 0 :                    
                 bolus = tc.zeros(self.max_cmt + 1, device = dataset.device)
@@ -324,6 +326,6 @@ class NumericPredictionFunction(PredictionFunction):
                     parameters_result[k] = tc.cat([parameters_result[k], parameters_sliced[k]])
             y_pred_arr.append(y_pred)
 
-        mdv_mask = dataset[:,self._column_names.index('MDV')] == 0
+        mdv_mask = dataset[:,self._column_names.index(EssentialColumns.MDV.value)] == 0
         post_forward_output = self._post_forward(dataset, parameters_result)
         return ChainMap({'y_pred': tc.cat(y_pred_arr), 'mdv_mask': mdv_mask}, post_forward_output)
