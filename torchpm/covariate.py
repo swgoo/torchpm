@@ -20,7 +20,7 @@ class Covariate:
 
 def set_estimated_parameters(obj, covariates):
     for i, cov in enumerate(covariates):
-        setattr(obj, '_covariate_relationship_function_' + str(i), cov.covariate_relationship_function)
+        setattr(obj, '_covariate_relationship_function_' + str(i), cov.covariate_relationship_function())
 
 def calculate_parameters(obj, covariates, parameters):
     for i, cov in enumerate(covariates):
@@ -29,7 +29,7 @@ def calculate_parameters(obj, covariates, parameters):
             para_dict[name] = parameters[name]
         
         for name in  cov.dependent_parameter_names :
-            para_dict[name] = getattr(obj, name)
+            para_dict[name] = parameters[name]
         
         function : Callable[..., Dict[str, tc.Tensor]] = getattr(obj, '_covariate_relationship_function_' + str(i))
         

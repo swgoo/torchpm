@@ -11,6 +11,17 @@ import numpy as np
 if __name__ == '__main__' :
     unittest.main()
 
+class DatasetTest(unittest.TestCase) :
+    def test_csvdataset(self) : 
+        dataset_file_path = './examples/THEO.csv'
+        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        dataset = CSVDataset(dataset_np, column_names, normalization_column_names=['BWT'])
+
+        for data, y_true in dataset:
+            bwt = data.t()[column_names.index('BWT')]
+            print(bwt)
+
 class ShowTimeDVTest(unittest.TestCase):
     def test_show_time_dv(self):
         dataset_file_path = './examples/THEO.csv'

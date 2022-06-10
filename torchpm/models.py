@@ -451,7 +451,7 @@ class FOCEInter(tc.nn.Module) :
         loss = self.design_optimal_function(fisher_information_matrix_total)
         return result, loss
 
-    def evaluate(self):
+    def evaluate(self) -> Dict[str,OptimizationResult]:
 
         dataloader = DataLoader(self.pred_function.dataset, batch_size=None, shuffle=False, num_workers=0)
 
@@ -519,7 +519,7 @@ class FOCEInter(tc.nn.Module) :
             parameters.append(p)
         return parameters
 
-    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-6, tolerance_change = 1e-8, max_iteration = 9999,):
+    def fit_population(self, checkpoint_file_path : Optional[str] = None, learning_rate : float= 1, tolerance_grad = 1e-5, tolerance_change = 1e-7, max_iteration = 9999,):
         max_iter = max_iteration
         parameters = self.get_unfixed_parameter_values()
         self.pred_function.reset_epss()

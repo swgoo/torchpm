@@ -2,6 +2,7 @@ from typing import Iterable, List, Optional
 
 import numpy as np
 import torch as tc
+from scipy import stats
 
 class CSVDataset(tc.utils.data.Dataset):  # type: ignore
     """
@@ -15,10 +16,18 @@ class CSVDataset(tc.utils.data.Dataset):  # type: ignore
     def __init__(self, 
                  numpy_dataset : np.ndarray,
                  column_names : List[str],
-                 device : tc.device = tc.device("cpu")):
+                 device : tc.device = tc.device("cpu"),
+                 normalization_column_names : Optional[List[str]] = None):
 
         self.column_names = column_names
         self.device = device
+        
+        self.normalization_column_names = normalization_column_names
+        if self.normalization_column_names :
+            for name in self.normalization_column_names :
+                numpy_dataset[:, column_names.index(name)] = stats.zscore(numpy_dataset[:, column_names.index(name)])
+
+
         y_true_total = numpy_dataset[:,self.column_names.index('DV')]
         self.mean = {}
         for i in range(len(self.column_names)):
