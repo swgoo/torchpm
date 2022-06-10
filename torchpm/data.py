@@ -40,13 +40,11 @@ class Record:
         if len(set(EssentialColumns.get_list()) - set(self.column_names)) < 1 :
             raise Exception('column_names must contain EssentialColumns')
 
-        for name in self.covariate_names :
-            setattr(self, name, 0)
-    def make_record_list(self):
-        for name in self.column_names :
-            att = getattr(self, name)
+        for k, v in self.covariates.items() :
+            setattr(self, k, v)
 
-        return None
+    def make_record_list(self):
+        return [getattr(self, col) for col in self.column_names]
 
 class CSVDataset(tc.utils.data.Dataset):  # type: ignore
     """
