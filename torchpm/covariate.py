@@ -44,9 +44,9 @@ def get_covariate_ann_function(independent_parameter_names, dependent_parameter_
         def __init__(self) -> None:
             super().__init__()
             self.lin = nn.Sequential(  # type: ignore
-                        nn.Linear(idp_para_names_length, dp_para_names_length),  # type: ignore
+                        nn.Linear(idp_para_names_length, idp_para_names_length),  # type: ignore
                         nn.Sigmoid(),  # type: ignore
-                        nn.Linear(dp_para_names_length, dp_para_names_length))  # type: ignore
+                        nn.Linear(idp_para_names_length, dp_para_names_length))  # type: ignore
 
         def forward(self, **para_dict : Any) -> Dict[str, tc.Tensor] :
             idp_para_tensor = tc.stack([para_dict[name] for name in independent_parameter_names]).t()

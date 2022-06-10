@@ -66,15 +66,27 @@ class FOCEInter(tc.nn.Module) :
             if not fixed :
                 unfixed_parameter_values.append(parameter_value)
         
-        for k, p in self.pred_function.get_thetas().items() :
-            if not p.fixed :
-                unfixed_parameter_values.append(p.parameter_value)
+        # for k, p in self.pred_function.get_thetas().items() :
+        #     if not p.fixed :
+        #         unfixed_parameter_values.append(p.parameter_value)
             
-        for k, p in self.pred_function.get_etas().items() :
-            unfixed_parameter_values.extend(list(p.parameter_values.values()))
+        pred_function_parameters = list(self.pred_function.parameters())
+        pred_function_parameters_deleting_indices = []
+        for i, parameter in enumerate(pred_function_parameters) : 
+            for k, p in self.pred_function.get_thetas().items() :
+                if type(parameter) is tc.Tensor and (p.parameter_value == parameter) and p.fixed :
+                    pred_function_parameters_deleting_indices.append(i)
+        pred_function_parameters_deleting_indices.sort(reverse=True)
+        for i in pred_function_parameters_deleting_indices :
+            del pred_function_parameters[i]
         
-        for k, p in self.pred_function.get_epss().items() :
-            unfixed_parameter_values.extend(list(p.parameter_values.values()))
+        unfixed_parameter_values.extend(pred_function_parameters)
+                
+        # for k, p in self.pred_function.get_etas().items() :
+        #     unfixed_parameter_values.extend(list(p.parameter_values.values()))
+        
+        # for k, p in self.pred_function.get_epss().items() :
+        #     unfixed_parameter_values.extend(list(p.parameter_values.values()))
         
         return unfixed_parameter_values
         
@@ -547,7 +559,7 @@ class FOCEInter(tc.nn.Module) :
         opt_fn = self.optimization_function_closure(self.pred_function.dataset, optimizer, checkpoint_file_path = checkpoint_file_path)
         optimizer.step(opt_fn)
 
-    def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.6, tolerance_grad = 1e-7, tolerance_change = 1e-9, max_iteration = 9999,):
+    def fit_population_FIM(self, parameters, checkpoint_file_path : Optional[str] = None, learning_rate : float= 0.6, tolerance_grad = 1e-5, tolerance_change = 1e-7, max_iteration = 9999,):
         max_iter = max_iteration
         self.pred_function.reset_epss()
         optimizer = tc.optim.LBFGS(parameters, 
