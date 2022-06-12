@@ -32,7 +32,7 @@ COMPARTMENT_DISTRIBUTION_MATRIX = {}
 class DosageFormConfig :
     has_depot : bool = False
     is_infusion: bool = False
-    is_delay_time: bool = False
+    has_delay_time: bool = False
     transit: int = 0
 
 @dataclass(frozen=True, eq=True)
@@ -66,7 +66,7 @@ class CompartmentEquation(nn.Module) :
         self.depot_compartment_num = equation_config.administrated_compartment_num
         self.has_depot = equation_config.has_depot
         self.transit = equation_config.transit
-        self.is_delay_time = equation_config.is_delay_time
+        self.is_delay_time = equation_config.has_delay_time
 
         self._make_distribution_matrix()
 

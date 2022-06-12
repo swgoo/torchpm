@@ -3,7 +3,7 @@ import torch as tc
 from torch import nn
 from torchpm import covariate, models, ode, predfunc, loss
 from torchpm import data
-from torchpm.data import CSVDataset
+from torchpm.data import CSVDataset, OptimalDesignDataset
 from torchpm.parameter import *
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,6 +21,21 @@ class DatasetTest(unittest.TestCase) :
         for data, y_true in dataset:
             bwt = data.t()[column_names.index('BWT')]
             print(bwt)
+    
+    def test_optimal_design_dataset(self) :
+        dataset_file_path = './examples/THEO.csv'
+        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        equation_config = ode.EquationConfig()
+        dataset = OptimalDesignDataset(
+            equation_config=equation_config,
+            column_names = column_names,
+            dosing_interval= 12,
+            sampling_times_after_dosing_time=[0.5, 1, 2, 4, 8, 12],
+            target_trough_concentration=10.)
+
+        for data, y_true in dataset:
+            print(data)
 
 class ShowTimeDVTest(unittest.TestCase):
     def test_show_time_dv(self):
