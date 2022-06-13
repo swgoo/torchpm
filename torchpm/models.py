@@ -15,7 +15,7 @@ from .data import EssentialColumns
 from .misc import *
 
 
-@dataclass
+@dataclass(eq=True, frozen=True)
 class ModelConfig :
     pred_function : predfunc.PredictionFunction
     theta_names : List[str]
