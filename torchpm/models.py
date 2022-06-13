@@ -17,7 +17,6 @@ from .misc import *
 
 @dataclass(eq=True, frozen=True)
 class ModelConfig :
-    pred_function : predfunc.PredictionFunction
     theta_names : List[str]
     eta_names : List[str]
     eps_names : List[str]
@@ -38,12 +37,14 @@ class OptimizationResult :
 class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
-            model_config : ModelConfig):
+            model_config : ModelConfig,
+            pred_function : predfunc.PredictionFunction,
+            ):
 
         super(FOCEInter, self).__init__()
 
         self.model_config = model_config
-        self.pred_function = model_config.pred_function
+        self.pred_function = pred_function
         
         self.theta_names = model_config.theta_names
         self.eta_names = model_config.eta_names
