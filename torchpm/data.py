@@ -151,7 +151,6 @@ class OptimalDesignDataset(CSVDataset):
             covariates[name] = 0.
         
         dataset : List[List[float]]= []
-        trough_sampling_times_after_dose = 0.
         for i in range(repeats) :
             dosing_time = dosing_interval*i
             trough_sampling_times_after_dose = dosing_interval * (i+1) - 1e-6
@@ -183,18 +182,18 @@ class OptimalDesignDataset(CSVDataset):
                             MDV=0)
                     dataset.append(record_sampling.make_record_list())
             
-        record_trough = Record(
-                column_names = column_names,
-                covariates = covariates,
-                ID = 1,
-                AMT = 0,
-                RATE = 0,
-                TIME=trough_sampling_times_after_dose,
-                DV = target_trough_concentration,
-                CMT=equation_config.observed_compartment_num,
-                MDV=0)
-        
-        dataset.append(record_trough.make_record_list())
+            record_trough = Record(
+                    column_names = column_names,
+                    covariates = covariates,
+                    ID = 1,
+                    AMT = 0,
+                    RATE = 0,
+                    TIME=trough_sampling_times_after_dose,
+                    DV = target_trough_concentration,
+                    CMT=equation_config.observed_compartment_num,
+                    MDV=0)
+            
+            dataset.append(record_trough.make_record_list())
         
         numpy_dataset = np.array(dataset)
         
