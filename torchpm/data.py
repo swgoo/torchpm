@@ -142,6 +142,8 @@ class OptimalDesignDataset(CSVDataset):
                 target_trough_concentration : float,
                 sampling_times_after_dosing_time : List[float] = [],
                 device: tc.device = tc.device("cpu"),
+                include_each_trough : bool = False,
+                include_last_trough : bool = False,
                 repeats : int = 10,):
         covariate_names = set(column_names) - set(EssentialColumns.get_list())
         covariate_names = list(covariate_names)
@@ -181,18 +183,30 @@ class OptimalDesignDataset(CSVDataset):
                             CMT=equation_config.observed_compartment_num,
                             MDV=0)
                     dataset.append(record_sampling.make_record_list())
-            
+            if include_each_trough :
+                record_trough = Record(
+                        column_names = column_names,
+                        covariates = covariates,
+                        ID = 1,
+                        AMT = 0,
+                        RATE = 0,
+                        TIME=trough_sampling_times_after_dose,
+                        DV = target_trough_concentration,
+                        CMT=equation_config.observed_compartment_num,
+                        MDV=0)
+                
+                dataset.append(record_trough.make_record_list())
+        if include_last_trough :
             record_trough = Record(
                     column_names = column_names,
                     covariates = covariates,
                     ID = 1,
                     AMT = 0,
                     RATE = 0,
-                    TIME=trough_sampling_times_after_dose,
+                    TIME=dosing_interval*repeats,
                     DV = target_trough_concentration,
                     CMT=equation_config.observed_compartment_num,
                     MDV=0)
-            
             dataset.append(record_trough.make_record_list())
         
         numpy_dataset = np.array(dataset)
