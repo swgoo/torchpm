@@ -26,13 +26,20 @@ class DatasetTest(unittest.TestCase) :
         dataset_file_path = './examples/THEO.csv'
         dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        equation_config = ode.EquationConfig()
+        equation_config = ode.EquationConfig(
+                administrated_compartment_num=0,
+                observed_compartment_num=1,
+                is_infusion=True)
         dataset = OptimalDesignDataset(
-            equation_config=equation_config,
-            column_names = column_names,
-            dosing_interval= 12,
-            sampling_times_after_dosing_time=[0.5, 1, 2, 4, 8, 12],
-            target_trough_concentration=10.)
+                equation_config=equation_config,
+                column_names = column_names,
+                dosing_interval= 12,
+                sampling_times_after_dosing_time=[0.5, 1, 2, 4, 8, 12],
+                target_trough_concentration=10.,
+                repeats=2,
+                include_trough_before_dose=True,
+                include_last_trough=False,
+                )
 
         for data, y_true in dataset:
             print(data)

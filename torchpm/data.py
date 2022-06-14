@@ -139,10 +139,10 @@ class OptimalDesignDataset(CSVDataset):
                 equation_config : EquationConfig,
                 column_names : List[str],
                 dosing_interval : float,
-                target_trough_concentration : float,
+                target_trough_concentration : float = 0.,
                 sampling_times_after_dosing_time : List[float] = [],
                 device: tc.device = tc.device("cpu"),
-                include_each_trough : bool = False,
+                include_trough_before_dose : bool = False,
                 include_last_trough : bool = False,
                 repeats : int = 10,):
         covariate_names = set(column_names) - set(EssentialColumns.get_list())
@@ -178,31 +178,31 @@ class OptimalDesignDataset(CSVDataset):
                             covariates=covariates,
                             TIME = cur_time,
                             ID = 1,
-                            AMT = 1,
+                            AMT = 0,
                             RATE = 1 if equation_config.is_infusion else 0,
                             CMT=equation_config.observed_compartment_num,
                             MDV=0)
                     dataset.append(record_sampling.make_record_list())
-            if include_each_trough :
+            if include_trough_before_dose and i < repeats - 1 :
                 record_trough = Record(
                         column_names = column_names,
                         covariates = covariates,
                         ID = 1,
                         AMT = 0,
-                        RATE = 0,
-                        TIME=trough_sampling_times_after_dose,
+                        RATE = 1 if equation_config.is_infusion else 0,
+                        TIME=trough_sampling_times_after_dose - 1e-6,
                         DV = target_trough_concentration,
                         CMT=equation_config.observed_compartment_num,
                         MDV=0)
                 
                 dataset.append(record_trough.make_record_list())
-        if include_last_trough :
+        if include_last_trough:
             record_trough = Record(
                     column_names = column_names,
                     covariates = covariates,
                     ID = 1,
-                    AMT = 0,
-                    RATE = 0,
+                    AMT = 1,
+                    RATE = 1 if equation_config.is_infusion else 0,
                     TIME=dosing_interval*repeats,
                     DV = target_trough_concentration,
                     CMT=equation_config.observed_compartment_num,
