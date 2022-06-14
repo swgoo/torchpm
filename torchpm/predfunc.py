@@ -159,7 +159,7 @@ class PredictionFunction(tc.nn.Module):
 
     def _pre_forward(self, dataset):
         id = str(int(dataset[:,self._column_names.index(EssentialColumns.ID.value)][0]))
-        self._id = id
+        # self._id = id
 
         for name in self.eta_names:
             att = getattr(self, name)
