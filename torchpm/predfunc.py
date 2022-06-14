@@ -59,6 +59,20 @@ class PredictionFunction(tc.nn.Module):
                     value.parameter_values[str(int(id))] = eps_value # type: ignore
         
         super().__setattr__(name, value)
+
+    def __getattribute__(self, __name: str) -> Any:
+        att = super().__getattribute__(__name)
+        att_type = type(att)
+        if att_type is Eta or att_type is Eps :
+            att.id = self._id
+        return att
+    
+    # def __getattr__(self, name: str) -> Any :
+    #     att = super().__getattr__(name)
+    #     att_type = type(att)
+    #     if att_type is Eta or att_type is Eps :
+    #         return lambda : att(self._id)
+    #     return att
         
 
     def _get_estimated_parameters(self, names) :
@@ -159,7 +173,7 @@ class PredictionFunction(tc.nn.Module):
 
     def _pre_forward(self, dataset):
         id = str(int(dataset[:,self._column_names.index(EssentialColumns.ID.value)][0]))
-        # self._id = id
+        self._id = id
 
         for name in self.eta_names:
             att = getattr(self, name)

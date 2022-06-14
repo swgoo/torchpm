@@ -1,7 +1,7 @@
 
 from dataclasses import dataclass
 import time
-from typing import Callable, List, Dict, Optional
+from typing import Any, Callable, List, Dict, Optional
 import typing
 import torch as tc
 import torch.distributed as dist
@@ -55,6 +55,13 @@ class FOCEInter(tc.nn.Module) :
         self.design_optimal_function = model_config.optimal_design_creterion if model_config.optimal_design_creterion is not None else loss.DOptimality()
         self.dataloader = None
     
+    # def __getattribute__(self, __name: str) -> Any:
+    #     att = super().__getattribute__(__name)
+    #     att_type = type(att)
+    #     if att_type is Eta or att_type is Eps :
+    #         return lambda : att(self._id)
+    #     return att
+    
     def get_unfixed_parameter_values(self) -> List[nn.Parameter]:  # type: ignore
         unfixed_parameter_values = []
 
@@ -93,6 +100,7 @@ class FOCEInter(tc.nn.Module) :
         return unfixed_parameter_values
         
     def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :
+        self._id = dataset[0,self.pred_function.dataset.column_names.index(EssentialColumns.ID.value)]
         
         pred_output = self.pred_function(dataset)
 
