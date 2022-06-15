@@ -209,7 +209,7 @@ class OptimalDesignDataset(CSVDataset):
                     MDV=0)
             dataset.append(record_trough.make_record_list())
         
-        numpy_dataset = np.array(dataset)
+        numpy_dataset = np.array(dataset, dtype=np.float32)
         
         super().__init__(numpy_dataset, column_names, device)
  
