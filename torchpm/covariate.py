@@ -146,14 +146,13 @@ class DeepCovariateSearching:
         eta_names = [name + '_eta' for name in self.dependent_parameter_names]
 
         model_config = ModelConfig(
-                pred_function=CovPredFunc, 
                 theta_names= theta_names,
                 eta_names= eta_names, 
                 eps_names= self.eps_names,
                 omega=deepcopy(self.omega),
                 sigma=deepcopy(self.sigma))
 
-        model = FOCEInter(model_config)
+        model = FOCEInter(model_config=model_config, pred_function=CovPredFunc)
         return model.to(self.dataset.device)
 
     def run(self, learning_rate : float = 1,

@@ -34,12 +34,12 @@ class DatasetTest(unittest.TestCase) :
                 equation_config=equation_config,
                 column_names = column_names,
                 dosing_interval= 12,
-                sampling_times_after_dosing_time=[0.5, 1, 2, 4, 8, 12],
+                sampling_times_after_dosing_time=[8],
                 target_trough_concentration=10.,
                 repeats=2,
                 include_trough_before_dose=True,
-                include_last_trough=False,
-                )
+                include_last_trough=True,)
+        print(dataset.column_names)
 
         for data, y_true in dataset:
             print(data)

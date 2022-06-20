@@ -1,13 +1,11 @@
-from dataclasses import dataclass
 import enum
-from typing import Dict, Iterable, List, Optional, OrderedDict, Union
+from dataclasses import dataclass
+from typing import List, Optional, OrderedDict
 
 import numpy as np
-from pyrsistent import s
-from regex import F
-from sympy import Id
 import torch as tc
 from scipy import stats
+
 
 class EssentialColumns(enum.Enum) :
     ID = 'ID'
@@ -21,25 +19,53 @@ class EssentialColumns(enum.Enum) :
     @classmethod
     def get_list(cls) -> List[str] :
         return [elem.value for elem in cls] 
+    
+    @classmethod
+    def check_essential_column(cls, column_names: List[str]) -> None:
+        if len(set(EssentialColumns.get_list()) - set(column_names)) > 0 :
+            raise Exception('column_names must contain EssentialColumns')
 
 @dataclass
 class Record:
-    column_names : List[str]
-    covariates : OrderedDict[str, float]
-    ID : int = 1
-    TIME : float = 0
-    AMT : float = 0
-    RATE : float = 0
-    DV : float = 0
-    MDV : int = 0
-    CMT : int = 0
-    
-    def __post_init__(self):
-        if len(set(EssentialColumns.get_list()) - set(self.column_names)) > 0 :
-            raise Exception('column_names must contain EssentialColumns')
 
-        for k, v in self.covariates.items() :
-            setattr(self, k, v)
+    def __init__(self,
+            column_names: List[str] = [],
+            ID : int = 1,
+            TIME : float = 0,
+            AMT : float = 0,
+            RATE : float = 0,
+            DV : float = 0,
+            MDV : int = 0,
+            CMT : int = 0,
+            **covariates : float) -> None:
+
+        self.ID = ID
+        self.TIME = TIME
+        self.AMT = AMT
+        self.RATE = RATE
+        self.DV = DV
+        self.MDV = MDV
+        self.CMT = CMT
+
+        covariate_names = list(covariates.keys())
+        covariate_names.sort()
+
+        for name, value in covariates.items() : 
+            setattr(self, name, value)
+        
+        if column_names is None :
+            self.column_names = EssentialColumns.get_list()
+            for name in covariate_names :
+                self.column_names.append(name)
+        else :
+            self.column_names = column_names
+            for name in EssentialColumns.get_list() :
+                if name not in column_names :
+                    self.column_names.append(name)
+    
+            for name in covariate_names : 
+                if name not in self.column_names :
+                    self.column_names.append(name)
 
     def make_record_list(self) -> List[float]:
         return [float(getattr(self, col)) for col in self.column_names]
@@ -57,14 +83,14 @@ class CSVDataset(tc.utils.data.Dataset):  # type: ignore
                  column_names : List[str],
                  device : tc.device = tc.device("cpu"),
                  normalization_column_names : Optional[List[str]] = None):
-
+        EssentialColumns.check_essential_column(column_names)
         self.column_names = column_names
         self.device = device
         
         self.normalization_column_names = normalization_column_names
         if self.normalization_column_names :
             for name in self.normalization_column_names :
-                numpy_dataset[:, column_names.index(name)] = stats.zscore(numpy_dataset[:, column_names.index(name)])
+                numpy_dataset[:, column_names.index(name)] = stats.zscore(numpy_dataset[:, column_names.index(name)], ddof=1)
 
 
         y_true_total = numpy_dataset[:,self.column_names.index(EssentialColumns.DV.value)]
@@ -73,7 +99,7 @@ class CSVDataset(tc.utils.data.Dataset):  # type: ignore
             self.mean[self.column_names[i]] = numpy_dataset[:,i].mean()
         self.std = {}
         for i in range(len(self.column_names)):
-            self.std[self.column_names[i]] = numpy_dataset[:,i].std()
+            self.std[self.column_names[i]] = numpy_dataset[:,i].std(ddof=1)
         ids, ids_start_idx = np.unique(numpy_dataset[:, column_names.index(EssentialColumns.ID.value)], return_index=True)
         ids_start_idx = ids_start_idx[1:]
         dataset_np = np.split(numpy_dataset, ids_start_idx)
@@ -159,13 +185,13 @@ class OptimalDesignDataset(CSVDataset):
             
             record_dose = Record(
                     column_names = column_names,
-                    covariates=covariates,
                     TIME = dosing_time,
                     ID = 1,
                     AMT = 1,
                     RATE = 1 if equation_config.is_infusion else 0,
                     CMT=equation_config.administrated_compartment_num,
-                    MDV=1)
+                    MDV=1,
+                    **covariates)
             dataset.append(record_dose.make_record_list())            
             
             for sampling_time_after_dose in sampling_times_after_dosing_time :
@@ -175,38 +201,38 @@ class OptimalDesignDataset(CSVDataset):
                 else :
                     record_sampling = Record(
                             column_names = column_names,
-                            covariates=covariates,
                             TIME = cur_time,
                             ID = 1,
                             AMT = 0,
                             RATE = 1 if equation_config.is_infusion else 0,
                             CMT=equation_config.observed_compartment_num,
-                            MDV=0)
+                            MDV=0,
+                            **covariates)
                     dataset.append(record_sampling.make_record_list())
             if include_trough_before_dose and i < repeats - 1 :
                 record_trough = Record(
                         column_names = column_names,
-                        covariates = covariates,
                         ID = 1,
                         AMT = 0,
                         RATE = 1 if equation_config.is_infusion else 0,
                         TIME=trough_sampling_times_after_dose - 1e-6,
                         DV = target_trough_concentration,
                         CMT=equation_config.observed_compartment_num,
-                        MDV=0)
+                        MDV=0,
+                        **covariates)
                 
                 dataset.append(record_trough.make_record_list())
         if include_last_trough:
             record_trough = Record(
                     column_names = column_names,
-                    covariates = covariates,
                     ID = 1,
                     AMT = 1,
                     RATE = 1 if equation_config.is_infusion else 0,
                     TIME=dosing_interval*repeats,
                     DV = target_trough_concentration,
                     CMT=equation_config.observed_compartment_num,
-                    MDV=0)
+                    MDV=0,
+                    **covariates)
             dataset.append(record_trough.make_record_list())
         
         numpy_dataset = np.array(dataset, dtype=np.float32)
