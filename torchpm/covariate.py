@@ -1,6 +1,6 @@
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, OrderedDict
+from typing import Any, Callable, List, Optional
 import typing
 from torch import nn
 import torch as tc
@@ -18,11 +18,11 @@ class Covariate:
     independent_parameter_names : List[str]
     covariate_relationship_function : Callable[..., Dict[str,tc.Tensor]]
 
-def set_estimated_parameters(obj, covariates):
+def set_estimated_parameters(obj, covariates : List[Covariate]):
     for i, cov in enumerate(covariates):
         setattr(obj, '_covariate_relationship_function_' + str(i), cov.covariate_relationship_function())
 
-def calculate_parameters(obj, covariates, parameters):
+def calculate_parameters(obj, covariates : List[Covariate], parameters : Dict[str, tc.Tensor]):
     for i, cov in enumerate(covariates):
         para_dict = {}
         for name in cov.independent_parameter_names :
@@ -40,7 +40,7 @@ def calculate_parameters(obj, covariates, parameters):
 def get_covariate_ann_function(independent_parameter_names, dependent_parameter_names) -> nn.Module:  # type: ignore
     idp_para_names_length = len(independent_parameter_names)
     dp_para_names_length = len(dependent_parameter_names)
-    class CovariateRelationshipFunction(nn.Module):  # type: ignore
+    class CovariateANNFunction(nn.Module):  # type: ignore
         def __init__(self) -> None:
             super().__init__()
             self.lin = nn.Sequential(  # type: ignore
@@ -56,7 +56,7 @@ def get_covariate_ann_function(independent_parameter_names, dependent_parameter_
                 para_result[name] = para_dict[name] * tc.exp(lin_r[i])
             return para_result
 
-    return CovariateRelationshipFunction
+    return CovariateANNFunction
 
 
 

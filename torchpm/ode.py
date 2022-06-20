@@ -26,7 +26,7 @@ class DistributionMatrixes(DistributionMatrix, enum.Enum) :
     TWO_COMP_DIST   = ((True, True), (True, False))
     # THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))
 
-COMPARTMENT_DISTRIBUTION_MATRIX = {}
+# COMPARTMENT_DISTRIBUTION_MATRIX = {}
 
 @dataclass(frozen=True, eq=True)
 class DosageFormConfig :
@@ -66,7 +66,7 @@ class CompartmentEquation(nn.Module) :
         self.depot_compartment_num = equation_config.administrated_compartment_num
         self.has_depot = equation_config.has_depot
         self.transit = equation_config.transit
-        self.is_delay_time = equation_config.has_delay_time
+        self.has_delay_time = equation_config.has_delay_time
 
         self._make_distribution_matrix()
 
@@ -119,7 +119,7 @@ class NumericCompartmentEquation(CompartmentEquation) :
                     - tc.diag(distribution_rate @ tc.ones(comps_num, 1)) \
                     - elimination_rate
 
-        if self.is_delay_time and variables['delay_time'] > t :
+        if self.has_delay_time and variables['delay_time'] > t :
             return tc.zeros_like(y)
         else :
             return dcdt_matrix.to(y.device) @ y
@@ -278,7 +278,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
             
 
             amts = tc.concat([infusion_amt[:,:infusion_t.size()[0]], amt[:,infusion_t.size()[0]:]], dim = -1)
-        elif self.is_delay_time and self.has_depot :
+        elif self.has_delay_time and self.has_depot :
             delay_time = variables['delay_time']
             variables['t'] = (t - delay_time).clamp(min=0)
             amts = self.model(**variables).t()
