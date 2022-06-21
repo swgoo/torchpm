@@ -192,8 +192,6 @@ class DeepCovariateSearching:
                 '\n total-pretotal: ', total_loss - pre_total_loss,
                 '\n=================================================')
             
-            
-            #TODO p-value 찾아서 쓰기
             loss_diff = float(total_loss - pre_total_loss)
             removed_covs = deepcopy(loss_history[-1]['removed covariates'])
             record = {'loss' : float(total_loss),

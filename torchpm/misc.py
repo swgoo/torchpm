@@ -35,7 +35,7 @@ def covariance_to_correlation(m):
     return ((m.t()/d).t())/d
 
 def make_positive_definite_matrix(dimension: int) -> tc.Tensor:
-    mat = tc.ones(dimension, dimension) * 0.05
+    mat = tc.ones(dimension, dimension) * 0.01
     mat = mat @ mat.t()
     return mat + tc.eye(dimension) * 0.05
 
