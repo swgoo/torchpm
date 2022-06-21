@@ -51,8 +51,10 @@ class FOCEInter(tc.nn.Module) :
         self.eps_names = model_config.eps_names
         self.omega = model_config.omega
         self.sigma = model_config.sigma
-        self.objective_function = model_config.objective_function if model_config.objective_function is not None else loss.FOCEInterObjectiveFunction()
-        self.design_optimal_function = model_config.optimal_design_creterion if model_config.optimal_design_creterion is not None else loss.DOptimality()
+        self.objective_function = model_config.objective_function \
+            if model_config.objective_function is not None else loss.FOCEInterObjectiveFunction()
+        self.design_optimal_function = model_config.optimal_design_creterion \
+            if model_config.optimal_design_creterion is not None else loss.DOptimality()
         self.dataloader = None
     
     # def __getattribute__(self, __name: str) -> Any:
@@ -75,27 +77,17 @@ class FOCEInter(tc.nn.Module) :
             if not fixed :
                 unfixed_parameter_values.append(parameter_value)
         
-        # for k, p in self.pred_function.get_thetas().items() :
-        #     if not p.fixed :
-        #         unfixed_parameter_values.append(p.parameter_value)
-            
         pred_function_parameters = list(self.pred_function.parameters())
         pred_function_parameters_deleting_indices = []
         for i, parameter in enumerate(pred_function_parameters) : 
-            for k, p in self.pred_function.get_thetas().items() :
-                if type(parameter) is tc.Tensor and (p.parameter_value == parameter) and p.fixed :
+            for p in self.pred_function.get_thetas().values() :
+                if tc.is_tensor(parameter) and (p.parameter_value.data_ptr() == parameter.data_ptr()) and p.fixed :
                     pred_function_parameters_deleting_indices.append(i)
         pred_function_parameters_deleting_indices.sort(reverse=True)
         for i in pred_function_parameters_deleting_indices :
             del pred_function_parameters[i]
         
         unfixed_parameter_values.extend(pred_function_parameters)
-                
-        # for k, p in self.pred_function.get_etas().items() :
-        #     unfixed_parameter_values.extend(list(p.parameter_values.values()))
-        
-        # for k, p in self.pred_function.get_epss().items() :
-        #     unfixed_parameter_values.extend(list(p.parameter_values.values()))
         
         return unfixed_parameter_values
         

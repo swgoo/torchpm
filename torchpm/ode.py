@@ -6,15 +6,14 @@ import os
 import pickle
 import shelve
 import typing
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import asdict, dataclass
 from typing import Dict, List, Tuple
-from regex import R
 
 import sympy as sym
 import sympytorch as spt
 import torch as tc
 from torch import nn
-from zmq import RATE
 
 from .data import EssentialColumns
 
@@ -40,6 +39,10 @@ class EquationConfig(DosageFormConfig):
     distribution_matrix: DistributionMatrix = DistributionMatrixes.ONE_COMP_DIST.value
     observed_compartment_num : int = 0
     administrated_compartment_num : int = 0
+
+    def to_DosageFormConfig(self) :
+        return DosageFormConfig(
+                **{k:deepcopy(v) for k, v in asdict(self).items() if k in DosageFormConfig.__dataclass_fields__})
 
 DB : Dict[EquationConfig, typing.Type[nn.Module]] = {}
 def __init__() :
