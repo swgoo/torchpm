@@ -22,8 +22,8 @@ class ModelConfig :
     eps_names : List[str]
     omega : Omega
     sigma : Sigma
-    objective_function : Optional[loss.ObjectiveFunction] = None
-    optimal_design_creterion : Optional[loss.DesignOptimalFunction] = None
+    objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()
+    optimal_design_creterion : loss.DesignOptimalFunction = loss.DOptimality()
 
 @dataclass
 class OptimizationResult :

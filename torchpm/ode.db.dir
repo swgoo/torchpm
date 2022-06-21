@@ -1,7 +1,7 @@
 '{"dcdt_eqs": "Eq(Derivative(c_0(t), t), RATE - k_00*c_0(t))", "ics": "{c_0(0): 0}"}', (0, 757)
 '{"dcdt_eqs": "Eq(Derivative(c_0(t), t), -k_00*c_0(t))", "ics": "{c_0(0): (RATE*exp(AMT*k_00/RATE)/k_00 - RATE/k_00)*exp(-AMT*k_00/RATE)}"}', (1024, 914)
 '{"dcdt_eqs": "[Eq(Derivative(c_0(t), t), -k_00*c_0(t) + k_10*c_1(t)), Eq(Derivative(c_1(t), t), -k_10*c_1(t))]", "ics": "{c_0(0): 0, c_1(0): AMT}"}', (2048, 857)
-'{"dcdt_eqs": "Eq(Derivative(c_0(t), t), -k_00*c_0(t))", "ics": "{c_0(0): AMT}"}', (3072, 658)
+'{"dcdt_eqs": "Eq(Derivative(c_0(t), t), -k_00*c_0(t))", "ics": "{c_0(0): AMT}"}', (3072, 644)
 '{"dcdt_eqs": "[Eq(Derivative(c_0(t), t), k_10*c_1(t) + k_20*c_2(t) + (-k_00 - k_01)*c_0(t)), Eq(Derivative(c_1(t), t), k_01*c_0(t) - k_10*c_1(t)), Eq(Derivative(c_2(t), t), -k_20*c_2(t))]", "ics": "{c_0(0): 0, c_1(0): 0, c_2(0): AMT}"}', (4096, 3606)
 '{"dcdt_eqs": "[Eq(Derivative(c_0(t), t), RATE + k_10*c_1(t) + (-k_00 - k_01)*c_0(t)), Eq(Derivative(c_1(t), t), k_01*c_0(t) - k_10*c_1(t))]", "ics": "{c_0(0): 0, c_1(0): 0}"}', (8192, 3302)
 '{"dcdt_eqs": "[Eq(Derivative(c_0(t), t), -k_00*c_0(t) + k_20*c_2(t)), Eq(Derivative(c_1(t), t), RATE - k_12*c_1(t)), Eq(Derivative(c_2(t), t), k_12*c_1(t) - k_20*c_2(t))]", "ics": "{c_0(0): 0, c_1(0): 0, c_2(0): 0}"}', (11776, 1368)
