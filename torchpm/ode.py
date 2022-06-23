@@ -236,7 +236,8 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
                 future = loop.run_in_executor(
                         None, 
                         functools.partial(sym.solvers.ode.dsolve, dcdt_eqs, funcs, hint = '1st_linear', ics = initial_states))
-                future = asyncio.wait_for(future, timeout, loop=loop)
+                # future = asyncio.wait_for(future, timeout, loop=loop)
+                future = asyncio.wait_for(future, timeout)
                 eqs = loop.run_until_complete(future)
             except asyncio.TimeoutError :
                 raise TimeoutError()

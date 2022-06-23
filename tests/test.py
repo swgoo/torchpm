@@ -10,6 +10,37 @@ import numpy as np
 
 if __name__ == '__main__' :
     unittest.main()
+class BasementFunction(predfunc.SymbolicPredictionFunction) :
+
+    def __init__(self, dataset, output_column_names):
+        super().__init__(dataset, output_column_names)
+        self.theta_0 = Theta(0., 5., 10.)
+        self.theta_1 = Theta(0., 30., 100.)
+        self.theta_2 = Theta(0, 0.08, 1)
+
+        self.eta_0 = Eta()
+        self.eta_1 = Eta()
+        self.eta_2 = Eta()
+
+        self.eps_0 = Eps()
+        self.eps_1 = Eps()
+    
+    def _calculate_parameters(self, para):
+        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
+        para['v'] = self.theta_1()*tc.exp(self.eta_1())
+        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+        para['AMT'] = tc.tensor(320., device=self.dataset.device)
+
+    def _calculate_preds(self, t, p):
+        dose = p['AMT'][0]
+        k_a = p['k_a']
+        v = p['v']
+        k_e = p['k_e']
+        return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
+        
+    def _calculate_error(self, y_pred, p):
+        p['v_v'] = p['v'] 
+        return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
 class DatasetTest(unittest.TestCase) :
     def test_csvdataset(self) : 
@@ -59,6 +90,49 @@ class ShowTimeDVTest(unittest.TestCase):
             ax = fig.add_subplot(1, 1, 1)             
             ax.plot(time, y_true, color="black")
             plt.show()
+
+class PredFuncTest(unittest.TestCase) : 
+    def test_symbolic_pred_func_multi_dose(self) : 
+        dataset_file_path = './examples/THEO_multidose.csv'
+        dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
+
+        device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
+        column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
+        dataset = CSVDataset(dataset_np, column_names, device)
+        
+        output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
+
+        basement_function = BasementFunction(dataset, output_column_names)
+
+        for data, y in dataset :
+
+            result = basement_function(data)
+            print(result['y_pred'])
+        
+
+        # for id, values in simulation_result.items() :
+        #     fig = plt.figure()
+        #     # i += 1
+        #     ax = fig.add_subplot(1, 1, 1)
+        #     print('id', id)
+        #     time_data : tc.Tensor = values['time'].to('cpu')
+            
+        #     preds : List[tc.Tensor] = values['preds']
+        #     preds_tensor = tc.stack(preds).to('cpu')
+        #     p95 = np.percentile(preds_tensor, 95, 0)
+        #     p50 = np.percentile(preds_tensor, 50, 0)
+        #     average = np.average(preds_tensor, 0)
+        #     p5 = np.percentile(preds_tensor, 5, 0)
+            
+        #     ax.plot(time_data, p95, color="black")
+        #     ax.plot(time_data, p50, color="green")
+        #     ax.plot(time_data, average, color="red")
+        #     ax.plot(time_data, p5, color="black")
+
+        #     for y_pred in values['preds'] :
+        #         ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
+            
+        #     plt.show()
 
 
 class FisherInformationMatrixTest(unittest.TestCase):
@@ -160,37 +234,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
                 ax.plot(time_data, y_pred.detach().to('cpu'), marker='.', linestyle='', color='gray')
         plt.show()
 
-class BasementFunction(predfunc.SymbolicPredictionFunction) :
 
-    def __init__(self, dataset, output_column_names):
-        super().__init__(dataset, output_column_names)
-        self.theta_0 = Theta(0., 5., 10.)
-        self.theta_1 = Theta(0., 30., 100.)
-        self.theta_2 = Theta(0, 0.08, 1)
-
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
-
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
-    
-    def _calculate_parameters(self, para):
-        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        para['v'] = self.theta_1()*tc.exp(self.eta_1())
-        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
-        para['AMT'] = tc.tensor(320., device=self.dataset.device)
-
-    def _calculate_preds(self, t, p):
-        dose = p['AMT'][0]
-        k_a = p['k_a']
-        v = p['v']
-        k_e = p['k_e']
-        return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
-        
-    def _calculate_error(self, y_pred, p):
-        p['v_v'] = p['v'] 
-        return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
 class BasementModelFIM(predfunc.SymbolicPredictionFunction) :
 
@@ -355,14 +399,13 @@ class TotalTest(unittest.TestCase) :
 
 
         model_config = models.ModelConfig(
-                pred_function = BasementFunction(dataset, output_column_names), 
                 theta_names=['theta_0', 'theta_1', 'theta_2'],
                 eta_names= ['eta_0', 'eta_1','eta_2'], 
                 eps_names= ['eps_0','eps_1'], 
                 omega=omega, 
                 sigma=sigma)
 
-        model = models.FOCEInter(model_config)
+        model = models.FOCEInter(model_config, pred_function = BasementFunction(dataset, output_column_names))
                                 
         model = model.to(device)
         model.fit_population(learning_rate = 1, tolerance_grad = 1e-5, tolerance_change= 1e-3)

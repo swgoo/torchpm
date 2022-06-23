@@ -139,7 +139,7 @@ class PredictionFunction(tc.nn.Module):
     def _get_amt_indice(self, dataset) :
         amts = dataset[:, self._column_names.index(EssentialColumns.AMT.value)]
         end = amts.size()[0]
-        start_index = tc.squeeze(amts.nonzero(), 0)
+        start_index = tc.squeeze(amts.nonzero(), 1)
 
         if start_index.size()[0] == 0 :
             return tc.tensor([0], device = dataset.device)
