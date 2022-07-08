@@ -330,16 +330,21 @@ class NumericPredictionFunction(PredictionFunction):
             cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset.device)  # type: ignore
             y_integrated = y_integrated.masked_select(cmt_mask==1)  # type: ignore
 
-            parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}
-            y_pred = self._calculate_error(y_integrated, parameters_sliced)
+            # parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}
+            
+            # for k, v in parameters_sliced.items() :
+            #     if k not in parameters_result.keys() :
+            #         parameters_result[k] = v
+            #     else :
+            #         parameters_result[k] = tc.cat([parameters_result[k], parameters_sliced[k]])
 
-            for k, v in parameters_sliced.items() :
-                if k not in parameters_result.keys() :
-                    parameters_result[k] = v
-                else :
-                    parameters_result[k] = tc.cat([parameters_result[k], parameters_sliced[k]])
-            y_pred_arr.append(y_pred)
+            if amt_indice[i+1]+1 == dataset.size()[0] :
+                y_pred_arr.append(y_integrated)
+            else :
+                y_pred_arr.append(y_integrated[:-1])
+
+        y_pred = self._calculate_error(tc.cat(y_pred_arr), parameters)
 
         mdv_mask = dataset[:,self._column_names.index(EssentialColumns.MDV.value)] == 0
-        post_forward_output = self._post_forward(dataset, parameters_result)
-        return ChainMap({'y_pred': tc.cat(y_pred_arr), 'mdv_mask': mdv_mask}, post_forward_output)
+        post_forward_output = self._post_forward(dataset, parameters)
+        return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
