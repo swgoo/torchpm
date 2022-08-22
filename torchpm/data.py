@@ -1,10 +1,13 @@
 import enum
-from dataclasses import dataclass
-from typing import List, Optional, OrderedDict
+from dataclasses import dataclass, asdict
+from typing import Dict, Iterable, List, Optional, OrderedDict, Set
 
 import numpy as np
 import torch as tc
 from scipy import stats
+import pandas as pd
+
+from torch.utils.data import Dataset
 
 
 class EssentialColumns(enum.Enum) :
@@ -17,100 +20,45 @@ class EssentialColumns(enum.Enum) :
     CMT = 'CMT'
 
     @classmethod
+    def get_set(cls) -> Set[str] :
+        return set([elem.value for elem in cls])
+
+    @classmethod
     def get_list(cls) -> List[str] :
-        return [elem.value for elem in cls] 
+        return list(cls.get_set())
     
     @classmethod
-    def check_essential_column(cls, column_names: List[str]) -> None:
-        if len(set(EssentialColumns.get_list()) - set(column_names)) > 0 :
+    def check_essential_column(cls, column_names: Iterable[str]) -> None:
+        if len(set(EssentialColumns.get_set()) - set(column_names)) > 0 :
             raise Exception('column_names must contain EssentialColumns')
 
-@dataclass
-class Record:
-
-    def __init__(self,
-            column_names: List[str] = [],
-            ID : int = 1,
-            TIME : float = 0,
-            AMT : float = 0,
-            RATE : float = 0,
-            DV : float = 0,
-            MDV : int = 0,
-            CMT : int = 0,
-            **covariates : float) -> None:
-
-        self.ID = ID
-        self.TIME = TIME
-        self.AMT = AMT
-        self.RATE = RATE
-        self.DV = DV
-        self.MDV = MDV
-        self.CMT = CMT
-
-        covariate_names = list(covariates.keys())
-        covariate_names.sort()
-
-        for name, value in covariates.items() : 
-            setattr(self, name, value)
-        
-        if column_names is None :
-            self.column_names = EssentialColumns.get_list()
-            for name in covariate_names :
-                self.column_names.append(name)
-        else :
-            self.column_names = column_names
-            for name in EssentialColumns.get_list() :
-                if name not in column_names :
-                    self.column_names.append(name)
-    
-            for name in covariate_names : 
-                if name not in self.column_names :
-                    self.column_names.append(name)
-
-    def make_record_list(self) -> List[float]:
-        return [float(getattr(self, col)) for col in self.column_names]
-
-class CSVDataset(tc.utils.data.Dataset):  # type: ignore
-    """
-    Args:
-        file_path: csv file path
-        column_names: csv file's column names
-        device: (optional) data loaded location 
-    """
+class PMDataset(Dataset):
     
     def __init__(self, 
-                 numpy_dataset : np.ndarray,
-                 column_names : List[str],
-                 device : tc.device = tc.device("cpu"),
-                 normalization_column_names : Optional[List[str]] = None):
-        EssentialColumns.check_essential_column(column_names)
-        self.column_names = column_names
-        self.device = device
+                 dataframe : pd.DataFrame,
+                 **kwargs):
+        super().__init__(**kwargs)
+        EssentialColumns.check_essential_column(dataframe.columns)       
         
-        self.normalization_column_names = normalization_column_names
-        if self.normalization_column_names :
-            for name in self.normalization_column_names :
-                numpy_dataset[:, column_names.index(name)] = stats.zscore(numpy_dataset[:, column_names.index(name)], ddof=1)
+        for col in dataframe.columns :
+            if col == EssentialColumns.ID.value :
+                dataframe[col] = dataframe[col].astype(str)
+            else :
+                dataframe[col] = dataframe[col].astype(float)
+        
+        self.ids = list(dataframe[EssentialColumns.ID.value].sort_values(0).unique())
+        
+        self.datasets_by_id : Dict[str, Dict[str, tc.Tensor]] = {}
+        for id in self.ids :
+            id_mask = dataframe[EssentialColumns.ID.value] == id
+            dataset_by_id = dataframe.loc[id_mask]
+            self.datasets_by_id[id] = {col: tc.tensor(dataset_by_id[col].values) for col in dataframe.columns}
 
+        self.len = len(self.datasets_by_id.keys())
 
-        y_true_total = numpy_dataset[:,self.column_names.index(EssentialColumns.DV.value)]
-        self.mean = {}
-        for i in range(len(self.column_names)):
-            self.mean[self.column_names[i]] = numpy_dataset[:,i].mean()
-        self.std = {}
-        for i in range(len(self.column_names)):
-            self.std[self.column_names[i]] = numpy_dataset[:,i].std(ddof=1)
-        ids, ids_start_idx = np.unique(numpy_dataset[:, column_names.index(EssentialColumns.ID.value)], return_index=True)
-        ids_start_idx = ids_start_idx[1:]
-        dataset_np = np.split(numpy_dataset, ids_start_idx)
-        y_true_np = np.split(y_true_total, ids_start_idx)
-
-        self.dataset = [tc.from_numpy(data_np).to(device) for data_np in dataset_np]
-        self.y_true = [tc.from_numpy(y_true_cur).to(device) for y_true_cur in y_true_np]
-        self.len = len(self.dataset)
-
-    def __getitem__(self, index):
-        return self.dataset[index], self.y_true[index]
+    def __getitem__(self, idx):
+        id = self.ids[idx]
+        return self.datasets_by_id[id]
 
     def __len__(self):
         return self.len
@@ -138,7 +86,7 @@ class DataPartitioner(object):
         device: data loaded locations
     """
 
-    def __init__(self, data : CSVDataset, sizes : List[int], devices : List[tc.DeviceObjType]):
+    def __init__(self, data : PMDataset, sizes : List[int], devices : List[tc.DeviceObjType]):
         
         if len(sizes) != len(devices) :
             raise Exception('sizes length must equal devices length.')
@@ -158,7 +106,7 @@ class DataPartitioner(object):
     def use(self, partition_index : int):
         return Partition(self.data, self.partitions[partition_index], self.devices[partition_index])
 
-class OptimalDesignDataset(CSVDataset):
+class OptimalDesignDataset(PMDataset):
     from .ode import EquationConfig
 
     def __init__(self,  
@@ -171,7 +119,7 @@ class OptimalDesignDataset(CSVDataset):
                 include_trough_before_dose : bool = False,
                 include_last_trough : bool = False,
                 repeats : int = 10,):
-        covariate_names = set(column_names) - set(EssentialColumns.get_list())
+        covariate_names = set(column_names) - set(EssentialColumns.get_set())
         covariate_names = list(covariate_names)
 
         covariates = OrderedDict()
@@ -183,7 +131,7 @@ class OptimalDesignDataset(CSVDataset):
             dosing_time = dosing_interval*i
             trough_sampling_times_after_dose = dosing_interval * (i+1) - 1e-6
             
-            record_dose = Record(
+            record_dose = PMRecord(
                     column_names = column_names,
                     TIME = dosing_time,
                     ID = 1,
@@ -199,7 +147,7 @@ class OptimalDesignDataset(CSVDataset):
                 if cur_time >= trough_sampling_times_after_dose :
                     break
                 else :
-                    record_sampling = Record(
+                    record_sampling = PMRecord(
                             column_names = column_names,
                             TIME = cur_time,
                             ID = 1,
@@ -210,7 +158,7 @@ class OptimalDesignDataset(CSVDataset):
                             **covariates)
                     dataset.append(record_sampling.make_record_list())
             if include_trough_before_dose and i < repeats - 1 :
-                record_trough = Record(
+                record_trough = PMRecord(
                         column_names = column_names,
                         ID = 1,
                         AMT = 0,
@@ -223,7 +171,7 @@ class OptimalDesignDataset(CSVDataset):
                 
                 dataset.append(record_trough.make_record_list())
         if include_last_trough:
-            record_trough = Record(
+            record_trough = PMRecord(
                     column_names = column_names,
                     ID = 1,
                     AMT = 1,

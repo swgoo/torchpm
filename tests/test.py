@@ -3,7 +3,7 @@ import torch as tc
 from torch import nn
 from torchpm import covariate, models, ode, predfunc, loss
 from torchpm import data
-from torchpm.data import CSVDataset, OptimalDesignDataset
+from torchpm.data import PMDataset, OptimalDesignDataset
 from torchpm.parameter import *
 import matplotlib.pyplot as plt
 import numpy as np
@@ -80,7 +80,7 @@ class DatasetTest(unittest.TestCase) :
         dataset_file_path = './examples/THEO.csv'
         dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, normalization_column_names=['BWT'])
+        dataset = PMDataset(dataset_np, column_names, normalization_column_names=['BWT'])
 
         for data, y_true in dataset:
             bwt = data.t()[column_names.index('BWT')]
@@ -113,7 +113,7 @@ class ShowTimeDVTest(unittest.TestCase):
         dataset_file_path = './examples/THEO.csv'
         dataset_np = np.loadtxt(dataset_file_path, delimiter=',', dtype=np.float32, skiprows=1)
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names)
+        dataset = PMDataset(dataset_np, column_names)
 
         for data, y_true in dataset:
             time = data.t()[column_names.index('TIME')]
@@ -131,7 +131,7 @@ class PredFuncTest(unittest.TestCase) :
 
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
@@ -151,7 +151,7 @@ class PredFuncTest(unittest.TestCase) :
 
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
@@ -175,7 +175,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
 
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
@@ -422,7 +422,7 @@ class TotalTest(unittest.TestCase) :
 
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
@@ -490,7 +490,7 @@ class TotalTest(unittest.TestCase) :
 
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
@@ -520,7 +520,7 @@ class TotalTest(unittest.TestCase) :
         column_names = ['ID', 'AMT', 'TIME',    'DV',   'BWT', 'CMT', "MDV", "tmpcov", "RATE"]
         
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
 
         output_column_names=column_names+['k_a', 'v', 'k_e']
         omega = Omega([[0.4397,
@@ -560,7 +560,7 @@ class TotalTest(unittest.TestCase) :
         column_names = ['ID', 'TIME', 'AMT', 'RATE', 'DV', 'MDV', 'CMT', 'COV']
 
         device = tc.device("cpu")
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
         output_column_names=column_names+['k_a', 'v', 'k_e']
 
         omega = Omega([[0.4397,
@@ -606,7 +606,7 @@ class TotalTest(unittest.TestCase) :
 
         device = tc.device("cuda:0" if tc.cuda.is_available() else "cpu")
         column_names = ['ID', 'AMT', 'TIME', 'DV', 'CMT', "MDV", "RATE", 'BWT']
-        dataset = CSVDataset(dataset_np, column_names, device)
+        dataset = PMDataset(dataset_np, column_names, device)
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
         omega = Omega([0.4397,

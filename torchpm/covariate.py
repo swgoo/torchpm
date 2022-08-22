@@ -7,7 +7,7 @@ import torch as tc
 
 from scipy.stats import chi2
 
-from .data import CSVDataset
+from .data import PMDataset
 from .models import FOCEInter, ModelConfig
 from .parameter import *
 from . import predfunc
@@ -95,7 +95,7 @@ class CovariatePredictionFunctionDecorator :
 
 @dataclass
 class DeepCovariateSearching:
-    dataset : CSVDataset
+    dataset : PMDataset
     output_column_names : List[str]
     base_function : typing.Type[predfunc.PredictionFunction]
     dependent_parameter_names : List[str]

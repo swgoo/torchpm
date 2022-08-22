@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 from .parameter import *
-from .data import CSVDataset
+from .data import PMDataset
 from . import predfunc
 from . import loss
 from .data import EssentialColumns
@@ -661,7 +661,7 @@ class FOCEInter(tc.nn.Module) :
         
         return {'cov': cov, 'se': se, 'cor': correl, 'ei_values': ei_values_sorted , 'inv_cov': inv_cov, 'r_mat': r_mat, 's_mat':s_mat}
 
-    def simulate(self, dataset : CSVDataset, repeat : int) :
+    def simulate(self, dataset : PMDataset, repeat : int) :
         """
         simulationg
         Args:

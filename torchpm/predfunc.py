@@ -17,7 +17,7 @@ from .data import EssentialColumns
 class PredictionFunction(tc.nn.Module):
 
     def __init__(self,
-            dataset : data.CSVDataset,
+            dataset : data.PMDataset,
             output_column_names: List[str],
             **kwargs):
         super().__init__(**kwargs)
