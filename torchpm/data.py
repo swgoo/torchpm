@@ -1,6 +1,6 @@
 import enum
 from dataclasses import dataclass, asdict
-from typing import Dict, Iterable, List, Optional, OrderedDict, Set
+from typing import Dict, Iterable, List, Literal, Optional, OrderedDict, Set, Tuple, Type
 
 import numpy as np
 import torch as tc
@@ -8,29 +8,47 @@ from scipy import stats
 import pandas as pd
 
 from torch.utils.data import Dataset
-
-
+@enum.unique
 class EssentialColumns(enum.Enum) :
-    ID = 'ID'
-    TIME = 'TIME'
-    AMT = 'AMT'
-    RATE = 'RATE'
-    DV = 'DV'
-    MDV = 'MDV'
-    CMT = 'CMT'
+
+    # def __new__(cls, col_name : str, dtype: object):
+    #     obj = object.__new__(cls)
+    #     obj._value_ = col_name
+    #     obj.dtype = dtype
+    #     return obj
+    
+    def __init__(self, col_name : str, dtype : Type) :
+        self._value_ : str = col_name
+        self.dtype = dtype
+
+    ID = ('ID', int)
+    TIME = ('TIME', float)
+    AMT = ('AMT', float)
+    RATE = ('RATE', float)
+    DV = ('DV', float)
+    MDV = ('MDV', int)
+    CMT = ('CMT', int)
 
     @classmethod
-    def get_set(cls) -> Set[str] :
+    def get_name_set(cls) -> Set[str] :
         return set([elem.value for elem in cls])
 
     @classmethod
-    def get_list(cls) -> List[str] :
-        return list(cls.get_set())
+    def get_name_list(cls) -> List[str] :
+        return list(cls.get_name_set())
     
     @classmethod
-    def check_essential_column(cls, column_names: Iterable[str]) -> None:
-        if len(set(EssentialColumns.get_set()) - set(column_names)) > 0 :
+    def check_inclusion_of_names(cls, column_names: Iterable[str]) -> None:
+        if len(set(EssentialColumns.get_name_set()) - set(column_names)) > 0 :
             raise Exception('column_names must contain EssentialColumns')
+    
+    @classmethod
+    def int_column_names(cls) -> List[str]:
+        return list([elem.value for elem in cls if elem.dtype is int])
+
+    @classmethod
+    def float_column_names(cls):
+        return list([elem.value for elem in cls if elem.dtype is float])
 
 class PMDataset(Dataset):
     
@@ -38,21 +56,26 @@ class PMDataset(Dataset):
                  dataframe : pd.DataFrame,
                  **kwargs):
         super().__init__(**kwargs)
-        EssentialColumns.check_essential_column(dataframe.columns)       
+        EssentialColumns.check_inclusion_of_names(dataframe.columns)
+
+        self.column_names = dataframe.columns
         
         for col in dataframe.columns :
-            if col == EssentialColumns.ID.value :
-                dataframe[col] = dataframe[col].astype(str)
+            if col in EssentialColumns.int_column_names() :
+                dataframe[col] = dataframe[col].astype(int)
             else :
                 dataframe[col] = dataframe[col].astype(float)
         
         self.ids = list(dataframe[EssentialColumns.ID.value].sort_values(0).unique())
         
-        self.datasets_by_id : Dict[str, Dict[str, tc.Tensor]] = {}
+        self.datasets_by_id : Dict[int, Dict[str, tc.Tensor]] = {}
         for id in self.ids :
             id_mask = dataframe[EssentialColumns.ID.value] == id
             dataset_by_id = dataframe.loc[id_mask]
-            self.datasets_by_id[id] = {col: tc.tensor(dataset_by_id[col].values) for col in dataframe.columns}
+            self.datasets_by_id[id] = {}
+
+            for col in dataframe.columns :
+                self.datasets_by_id[id][col] = tc.tensor(dataset_by_id[col].values)
 
         self.len = len(self.datasets_by_id.keys())
 

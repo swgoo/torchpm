@@ -21,7 +21,7 @@ class Theta(nn.Module):
 
         self.fixed = fixed
         if len(init_value) > 3 :
-            raise Exception('it must be len(init_value) < 3')
+            raise Exception('it must be len(init_value) <= 3')
         self.is_scale = True
 
         self.lb : tc.Tensor = tc.tensor(1.e-6)
