@@ -116,12 +116,15 @@ class PredictionFunction(tc.nn.Module):
             for att_name in attribute_names:
                 att = getattr(self, att_name)
                 if type(att) is Theta :
-                    theta_scaler = getattr(self, self._THETA_SCALER_PREFIX+att_name, None)
-                    lb = float(theta_scaler.lb)
-                    iv = float(att)
-                    ub = float(theta_scaler.ub)
-                    ThetaInit(lb, iv, ub, fixed=att.fixed, requires_grad=att.requires_grad)
-            
+                    theta_scaler : Optional[ThetaScaler] = getattr(self, self._THETA_SCALER_PREFIX+att_name, None)
+                    if theta_scaler is not None :
+                        lb = float(theta_scaler.lb)
+                        iv = float(att)
+                        ub = float(theta_scaler.ub)
+                        theta_init = ThetaInit(lb, iv, ub, fixed=att.fixed, requires_grad=att.requires_grad)
+                        setattr(self, att_name, theta_init)
+                    else : 
+                        setattr(self, att_name, att)
             self.theta_scale = True
         return self
 
@@ -161,13 +164,6 @@ class PredictionFunction(tc.nn.Module):
     @abstractmethod
     def forward(self, dataset):
         pass
-
-    # def _get_input_columns(self, dataset) :
-    #     dataset = dataset.t()
-    #     input_columns = {}
-    #     for i, name in enumerate(self._column_names) :
-    #         input_columns[name] = dataset[i]
-    #     return input_columns
 
 class SymbolicPredictionFunction(PredictionFunction):
 
@@ -242,10 +238,10 @@ class NumericPredictionFunction(PredictionFunction):
 
         for i in range(len(amt_indice) - 1):
             amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
-            amt = parameters[EssentialColumnNames.AMT.value][amt_indice[i]]
-            rate = parameters[EssentialColumnNames.RATE.value][amt_indice[i]]
-            cmt  = parameters[EssentialColumnNames.CMT.value][amt_slice]
-            times = parameters[EssentialColumnNames.TIME.value][amt_slice]
+            amt = parameters[EssentialColumns.AMT.value][amt_indice[i]]
+            rate = parameters[EssentialColumns.RATE.value][amt_indice[i]]
+            cmt  = parameters[EssentialColumns.CMT.value][amt_slice]
+            times = parameters[EssentialColumns.TIME.value][amt_slice]
 
             if  rate == 0 :                    
                 bolus = tc.zeros(self.max_cmt + 1, device = dataset.device)
