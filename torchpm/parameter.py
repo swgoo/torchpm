@@ -17,7 +17,7 @@ class Theta(Parameter) :
             has_boundary = True):
         self.init_values = init_values
         self.fixed = fixed
-        self.boundary = has_boundary
+        self.has_boundary = has_boundary
 
         if has_boundary :
             super().__init__(tensor(0.1), requires_grad = requires_grad)

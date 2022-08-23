@@ -39,7 +39,7 @@ class PredictionFunction(tc.nn.Module):
         with tc.no_grad() :
             if type(value) is Theta :
                 super().__setattr__(name, value)
-                if value.boundary :
+                if value.has_boundary :
                     theta_scaler = ThetaBoundary(*value.init_values)
                     super().__setattr__(self._THETA_BOUNDARY_PREFIX + name, theta_scaler)
                 return
@@ -71,12 +71,11 @@ class PredictionFunction(tc.nn.Module):
         attributes = dir(self)
         for att_name in attributes :
             att = getattr(self, att_name)
-            att_type = type(att)
             with tc.no_grad() :
-                if att_type is Eps :
+                if type(att) is Eps :
                     for id in self._ids :
-                        eps_value = tc.zeros(self._record_lengths[id], requires_grad=True, device=self.dataset.device)
-                        att.parameter_values[str(int(id))] = eps_value
+                        eps_value = tc.zeros_like(att[str(id)], requires_grad=True, device=att[str(id)].device)
+                        att[str(id)] = eps_value
 
     def _get_amt_indice(self, dataset : Dict[str, Tensor]) :
         amts = dataset[EssentialColumns.AMT.value]
@@ -84,13 +83,13 @@ class PredictionFunction(tc.nn.Module):
         start_index = tc.squeeze(amts.nonzero(), 1)
 
         if start_index.size()[0] == 0 :
-            return tc.tensor([0], device = dataset.device)
+            return tc.tensor([0], device=amts.device)
 
         if start_index[0] != 0 :
-            start_index = tc.cat([tc.tensor([0], device = dataset.device), start_index], 0)
+            start_index = tc.cat([tc.tensor([0], device = amts.device), start_index], 0)
 
         if start_index[-1] != end - 1 :
-            start_index = tc.cat([start_index, tc.tensor([end-1], device = dataset.device)] , 0)
+            start_index = tc.cat([start_index, tc.tensor([end-1], device = amts.device)] , 0)
 
         return start_index 
     
@@ -123,7 +122,7 @@ class PredictionFunction(tc.nn.Module):
                         lb = float(theta_scaler.lb)
                         iv = float(att)
                         ub = float(theta_scaler.ub)
-                        theta_init = ThetaInit(lb, iv, ub, fixed=att.fixed, requires_grad=att.requires_grad)
+                        theta_init = Theta(lb, iv, ub, fixed=att.fixed, has_boundary = att.has_boundary, requires_grad=att.requires_grad)
                         setattr(self, att_name, theta_init)
                     else : 
                         setattr(self, att_name, att)
@@ -134,7 +133,7 @@ class PredictionFunction(tc.nn.Module):
     def _pre_forward(self, dataset : Dict[str, Tensor]):
         id = dataset[EssentialColumns.ID.value][0]
 
-        self._calculate_parameters(id, dataset)
+        self._calculate_parameters(str(id), dataset)
         record_length = dataset[EssentialColumns.ID.value].size()[0]
 
         for key, para in dataset.items():
