@@ -9,16 +9,28 @@ from torch.nn.parameter import Parameter
 from .misc import *
 
 class Theta(Parameter) :
-    def __init__(self, *args, fixed : bool= False, scale : bool = True, **kwargs) :
-        super().__init__(*args, **kwargs)
-        self.fixed : bool = fixed
-        self.scale : bool = scale
+    def __init__(
+            self, 
+            *init_values: float, 
+            fixed = False, 
+            requires_grad = True, 
+            has_boundary = True):
+        self.init_values = init_values
+        self.fixed = fixed
+        self.boundary = has_boundary
+
+        if has_boundary :
+            super().__init__(tensor(0.1), requires_grad = requires_grad)
+        else :
+            if len(init_values) == 1 :
+                super().__init__(tensor(init_values[0]), requires_grad = requires_grad) 
+            else :
+                raise Exception("init_values' length must be 1.")
     
-class ThetaScaler(nn.Module):
-    def __init__(self, *init_values: float, fixed = False, requires_grad = True):
+class ThetaBoundary(nn.Module):
+    def __init__(self, *init_values: float):
         super().__init__()
 
-        self.fixed = fixed
         if len(init_values) > 3 :
             raise Exception('it must be len(init_value) <= 3')
 
@@ -53,33 +65,6 @@ class ThetaScaler(nn.Module):
     def forward(self, theta) :
             theta = tc.exp(theta - self.alpha)/(tc.exp(theta - self.alpha) + 1)*(self.ub - self.lb) + self.lb
             return theta
-
-class ThetaInit:
-    """
-    Args:
-        init_value: initial value of scala
-        lower_boundary: lower boundary of scala
-        upper_boundary: upper boundary of scala
-    Attributes: .
-    """
-    def __init__(
-            self, 
-            *init_value: float, 
-            fixed = False, 
-            requires_grad = True, 
-            scale = True):
-        if scale :
-            self.theta_scaler = ThetaScaler(*init_value, fixed=fixed, requires_grad=requires_grad)
-            self.theta = Theta(tensor(0.1))
-            self.theta.fixed = fixed
-        else :
-            if len(init_value) == 1 :
-                self.theta = Theta(tensor(init_value[0])) 
-                self.theta_scaler = None
-            else :
-                raise Exception("init_value's length must be 1.")
-        
-        
 
 class Eta(ParameterDict) :
     pass

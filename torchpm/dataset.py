@@ -34,11 +34,11 @@ class EssentialColumns(enum.Enum) :
 
     @classmethod
     def get_name_set(cls) -> Set[str] :
-        return set([elem.value for elem in cls])
+        return set(cls.get_name_list())
 
     @classmethod
     def get_name_list(cls) -> List[str] :
-        return list(cls.get_name_set())
+        return [elem.value for elem in cls]
     
     @classmethod
     def check_inclusion_of_names(cls, column_names: Iterable[str]) -> None:
@@ -88,49 +88,6 @@ class PMDataset(Dataset):
 
     def __len__(self):
         return self.len
-
-class Partition(object):
-
-    def __init__(self, data, index, device):
-        self.data = data
-        self.index = index
-        self.device = device
-
-    def __len__(self):
-        return len(self.index)
-
-    def __getitem__(self, index):
-        data_idx = self.index[index]
-        return (data.to(self.device) for data in self.data[data_idx])
-
-class DataPartitioner(object):
-    """
-    Dataset for multiprocessing 
-    Args:
-        data: total dataset
-        partitions: sizes for dividing dataset by a ID.
-        device: data loaded locations
-    """
-
-    def __init__(self, data : PMDataset, sizes : List[int], devices : List[tc.DeviceObjType]):
-        
-        if len(sizes) != len(devices) :
-            raise Exception('sizes length must equal devices length.')
-
-        self.data = data
-        self.partitions = []
-        self.devices = devices
-        data_len = len(data)
-
-        indexes = [x for x in range(0, data_len)]
-
-        for size, device in zip(sizes, devices):
-            part_len = int(size)
-            self.partitions.append(indexes[0:part_len])
-            indexes = indexes[part_len:]
-
-    def use(self, partition_index : int):
-        return Partition(self.data, self.partitions[partition_index], self.devices[partition_index])
 
 @dataclass
 class PMRecord:

@@ -514,13 +514,13 @@ class FOCEInter(tc.nn.Module) :
         return 2 * k + total_loss
         
     def descale(self) :
-        self.pred_function.descale()
+        self.pred_function.remove_boundary()
         self.omega.descale()
         self.sigma.descale()
         return self
     
     def scale(self) :
-        self.pred_function.scale()
+        self.pred_function.set_boundary()
         self.omega.scale()
         self.sigma.scale()
         return self

@@ -17,6 +17,7 @@ from torch.nn import ParameterDict
 
 
 class PredictionFunction(tc.nn.Module):
+    _THETA_BOUNDARY_PREFIX = '_theta_boundary_'
 
     def __init__(self,
             dataset : dataset.PMDataset,
@@ -27,8 +28,7 @@ class PredictionFunction(tc.nn.Module):
         self._ids = dataset.ids
         self._record_lengths : Dict[int, int] = {}
         self._max_record_length = 0
-        self._THETA_SCALER_PREFIX = '_theta_scaler_'
-        self.theta_scale = True
+        self.has_boundary = True
 
         for id in self._ids:
             length = self.dataset.datasets_by_id[id][EssentialColumns.ID.value].size()[0]
@@ -37,9 +37,11 @@ class PredictionFunction(tc.nn.Module):
     
     def __setattr__(self, name: str, value) -> None:
         with tc.no_grad() :
-            if type(value) is ThetaInit :
-                super().__setattr__(name, value.theta)
-                super().__setattr__(self._THETA_SCALER_PREFIX+ name, value.theta_scaler)
+            if type(value) is Theta :
+                super().__setattr__(name, value)
+                if value.boundary :
+                    theta_scaler = ThetaBoundary(*value.init_values)
+                    super().__setattr__(self._THETA_BOUNDARY_PREFIX + name, theta_scaler)
                 return
             elif type(value) is Eta :
                 for id in self._ids : 
@@ -57,10 +59,10 @@ class PredictionFunction(tc.nn.Module):
 
     def __getattribute__(self, name: str) -> Any:
         att = super().__getattribute__(name)
-        if self.theta_scale and type(att) is Theta:
-            theta_scaler = super().__getattribute__(self._THETA_SCALER_PREFIX+name)
-            if theta_scaler is not None :
-                return theta_scaler(att)
+        if self.has_boundary and type(att) is Theta:
+            theta_boundary = super().__getattribute__(self._THETA_BOUNDARY_PREFIX+name)
+            if theta_boundary is not None :
+                return theta_boundary(att)
             else :
                 return att
         return att
@@ -92,31 +94,31 @@ class PredictionFunction(tc.nn.Module):
 
         return start_index 
     
-    def descale(self):
-        if not self.theta_scale :
+    def remove_boundary(self):
+        if not self.has_boundary :
             return self
         with tc.no_grad() :
             attribute_names = dir(self)
             for att_name in attribute_names:
                 att = getattr(self, att_name)
                 if type(att) is Theta :
-                    theta_scaler = getattr(self, self._THETA_SCALER_PREFIX+att_name, None)
+                    theta_scaler = getattr(self, self._THETA_BOUNDARY_PREFIX+att_name, None)
                     if theta_scaler is None :
                         continue
                     else :
                         setattr(self, att_name, theta_scaler(att))
-            self.theta_scale = False
+            self.has_boundary = False
         return self
     
-    def scale(self):
-        if self.theta_scale : 
+    def set_boundary(self):
+        if self.has_boundary : 
             return self
         with tc.no_grad() :
             attribute_names = dir(self)
             for att_name in attribute_names:
                 att = getattr(self, att_name)
                 if type(att) is Theta :
-                    theta_scaler : Optional[ThetaScaler] = getattr(self, self._THETA_SCALER_PREFIX+att_name, None)
+                    theta_scaler : Optional[ThetaBoundary] = getattr(self, self._THETA_BOUNDARY_PREFIX+att_name, None)
                     if theta_scaler is not None :
                         lb = float(theta_scaler.lb)
                         iv = float(att)
@@ -125,7 +127,7 @@ class PredictionFunction(tc.nn.Module):
                         setattr(self, att_name, theta_init)
                     else : 
                         setattr(self, att_name, att)
-            self.theta_scale = True
+            self.has_boundary = True
         return self
 
 
@@ -154,11 +156,11 @@ class PredictionFunction(tc.nn.Module):
         return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
     
     @abstractmethod
-    def _calculate_parameters(self, id : Tensor, input_columns : Dict[str, tc.Tensor]) -> None:
+    def _calculate_parameters(self, id : str, input_columns : Dict[str, tc.Tensor]) -> None:
         pass
     
     @abstractmethod
-    def _calculate_error(self, id : Tensor, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_error(self, id : str, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
     
     @abstractmethod
