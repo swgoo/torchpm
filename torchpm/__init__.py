@@ -1,4 +1,4 @@
-from . import data
+from . import dataset
 from . import misc
 from . import models
 from . import ode

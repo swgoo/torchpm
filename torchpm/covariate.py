@@ -7,7 +7,7 @@ import torch as tc
 
 from scipy.stats import chi2
 
-from .data import PMDataset
+from .dataset import PMDataset
 from .models import FOCEInter, ModelConfig
 from .parameter import *
 from . import predfunc
@@ -78,7 +78,7 @@ class CovariatePredictionFunctionDecorator :
                 super().__init__(dataset, output_column_names, **kwargs)
                 for i, cov in enumerate(meta_self.covariates):
                     for dp_name, init_value in zip(cov.dependent_parameter_names, meta_self.dependent_parameter_initial_values[i]) :
-                        setattr(self, dp_name, Theta(*init_value))
+                        setattr(self, dp_name, ThetaInit(*init_value))
                         setattr(self, dp_name + '_eta', Eta())
                 set_estimated_parameters(self, meta_self.covariates)
                 

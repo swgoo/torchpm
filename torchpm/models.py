@@ -8,10 +8,10 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 from .parameter import *
-from .data import PMDataset
+from .dataset import PMDataset
 from . import predfunc
 from . import loss
-from .data import EssentialColumns
+from .dataset import EssentialColumns
 from .misc import *
 
 

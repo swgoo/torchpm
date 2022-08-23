@@ -2,8 +2,8 @@ import unittest
 import torch as tc
 from torch import nn
 from torchpm import covariate, models, ode, predfunc, loss
-from torchpm import data
-from torchpm.data import PMDataset, OptimalDesignDataset
+from torchpm import dataset
+from torchpm.dataset import PMDataset, OptimalDesignDataset
 from torchpm.parameter import *
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,11 +12,11 @@ if __name__ == '__main__' :
     unittest.main()
 class BasementFunction(predfunc.SymbolicPredictionFunction) :
 
-    def __init__(self, dataset, output_column_names):
-        super().__init__(dataset, output_column_names)
-        self.theta_0 = Theta(0., 1.5, 10.)
-        self.theta_1 = Theta(0., 30., 100.)
-        self.theta_2 = Theta(0, 0.08, 1)
+    def __init__(self, dataset):
+        super().__init__(dataset)
+        self.theta_0 = ThetaInit(0., 1.5, 10.)
+        self.theta_1 = ThetaInit(0., 30., 100.)
+        self.theta_2 = ThetaInit(0, 0.08, 1)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()
@@ -25,30 +25,30 @@ class BasementFunction(predfunc.SymbolicPredictionFunction) :
         self.eps_0 = Eps()
         self.eps_1 = Eps()
     
-    def _calculate_parameters(self, para):
-        para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        para['v'] = self.theta_1()*tc.exp(self.eta_1())
-        para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+    def _calculate_parameters(self, id, para):
+        para['k_a'] = self.theta_0*tc.exp(self.eta_0[id])
+        para['v'] = self.theta_1*tc.exp(self.eta_1[id])
+        para['k_e'] = self.theta_2*tc.exp(self.eta_2[id])
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
-    def _calculate_preds(self, t, p):
+    def _calculate_preds(self, id, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
         k_e = p['k_e']
         return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
-    def _calculate_error(self, y_pred, p):
+    def _calculate_error(self, id, y_pred, p):
         p['v_v'] = p['v'] 
-        return y_pred +  y_pred * self.eps_0() + self.eps_1()
+        return y_pred +  y_pred * self.eps_0[id] + self.eps_1[id]
 
 class MultidoseBasementFunction(predfunc.SymbolicPredictionFunction) :
 
-    def __init__(self, dataset, output_column_names):
-        super().__init__(dataset, output_column_names)
-        self.theta_0 = Theta(0., 1.5, 10.)
-        self.theta_1 = Theta(0., 30., 100.)
-        self.theta_2 = Theta(0, 0.08/28, 1) #0.08이면 steady state 도달시간 48시간
+    def __init__(self, dataset):
+        super().__init__(dataset)
+        self.theta_0 = ThetaInit(0., 1.5, 10.)
+        self.theta_1 = ThetaInit(0., 30., 100.)
+        self.theta_2 = ThetaInit(0, 0.08/28, 1) #0.08이면 steady state 도달시간 48시간
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()
@@ -56,12 +56,14 @@ class MultidoseBasementFunction(predfunc.SymbolicPredictionFunction) :
 
         self.eps_0 = Eps()
         self.eps_1 = Eps()
+
+        self.amount = tc.tensor(320.)
     
     def _calculate_parameters(self, para):
         para['k_a'] = self.theta_0()*tc.exp(self.eta_0())
         para['v'] = self.theta_1()*tc.exp(self.eta_1())
         para['k_e'] = self.theta_2()*tc.exp(self.eta_2())
-        para['AMT'] = tc.tensor(320., device=self.dataset.device)
+        para['AMT'] = self.amount
 
     def _calculate_preds(self, t, p):
         dose = p['AMT'][0]
@@ -273,9 +275,9 @@ class BasementModelFIM(predfunc.SymbolicPredictionFunction) :
 
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
-        self.theta_0 = Theta(0.01, 2., 10.)
-        self.theta_1 = Theta(0.01, 30., 40.)
-        self.theta_2 = Theta(0.01, 0.8, 1.)
+        self.theta_0 = ThetaInit(0.01, 2., 10.)
+        self.theta_1 = ThetaInit(0.01, 30., 40.)
+        self.theta_2 = ThetaInit(0.01, 0.8, 1.)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()
@@ -305,9 +307,9 @@ class BasementModelFIM(predfunc.SymbolicPredictionFunction) :
 class AnnModel(predfunc.SymbolicPredictionFunction) :
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
-        self.theta_0 = Theta(0., 1.5, 10.)
-        self.theta_1 = Theta(0., 30., 100.)
-        self.theta_2 = Theta(0, 0.08, 1)
+        self.theta_0 = ThetaInit(0., 1.5, 10.)
+        self.theta_1 = ThetaInit(0., 30., 100.)
+        self.theta_2 = ThetaInit(0, 0.08, 1)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()
@@ -350,7 +352,7 @@ class AmtModel(predfunc.SymbolicPredictionFunction) :
 
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
-        self.theta_0 = Theta(0, 100, 500)
+        self.theta_0 = ThetaInit(0, 100, 500)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()
@@ -381,9 +383,9 @@ class AmtModel(predfunc.SymbolicPredictionFunction) :
 class NumericFunction(predfunc.NumericPredictionFunction) :
     def __init__(self, dataset, output_column_names):
         super().__init__(dataset, output_column_names)
-        self.theta_0 = Theta(0., 1.5, 10)
-        self.theta_1 = Theta(0, 30, 100)
-        self.theta_2 = Theta(0, 0.08/20, 1)
+        self.theta_0 = ThetaInit(0., 1.5, 10)
+        self.theta_1 = ThetaInit(0, 30, 100)
+        self.theta_2 = ThetaInit(0, 0.08/20, 1)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()

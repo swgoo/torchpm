@@ -15,7 +15,7 @@ import sympytorch as spt
 import torch as tc
 from torch import nn
 
-from .data import EssentialColumns
+from .dataset import EssentialColumns
 
 DistributionMatrix = Tuple[Tuple[bool, ...], ...]
 

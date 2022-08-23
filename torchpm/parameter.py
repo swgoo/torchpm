@@ -1,13 +1,60 @@
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
-import torch as tc
 from numpy import diag
 from torch import nn
+from torch.nn import ParameterDict
+from torch import tensor, Tensor
+from torch.nn.parameter import Parameter
 
 from .misc import *
 
+class Theta(Parameter) :
+    def __init__(self, *args, fixed : bool= False, scale : bool = True, **kwargs) :
+        super().__init__(*args, **kwargs)
+        self.fixed : bool = fixed
+        self.scale : bool = scale
+    
+class ThetaScaler(nn.Module):
+    def __init__(self, *init_values: float, fixed = False, requires_grad = True):
+        super().__init__()
 
-class Theta(nn.Module):
+        self.fixed = fixed
+        if len(init_values) > 3 :
+            raise Exception('it must be len(init_value) <= 3')
+
+        set_parameter = lambda x : Parameter(tensor(x), requires_grad=False)
+
+        lb = set_parameter(1.e-6)
+        iv = tc.tensor(0)
+        ub = set_parameter(1.e6)
+        if len(init_values) == 1 :
+            iv = tc.tensor(init_values[0])
+            if lb > init_values[0] :
+                lb = set_parameter(init_values[0])
+            if ub < init_values[0] :
+                ub = set_parameter(init_values[0])
+        elif len(init_values) == 2 :
+            if init_values[1] < init_values[0]:
+                raise Exception('lower value must be lower than upper value.')
+            lb = set_parameter(init_values[0])
+            iv = set_parameter((init_values[0] + init_values[1])/2)
+            ub = set_parameter(init_values[1])
+        elif len(init_values) == 3 :
+            if init_values[0] < init_values[1] < init_values[2] :
+                self.lb = set_parameter(init_values[0])
+                iv = tensor(init_values[1])
+                ub = set_parameter(init_values[2])
+            else :
+                raise Exception('init_values must increase in order.')
+        self.lb : Parameter = lb
+        self.ub : Parameter = ub
+        self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
+
+    def forward(self, theta) :
+            theta = tc.exp(theta - self.alpha)/(tc.exp(theta - self.alpha) + 1)*(self.ub - self.lb) + self.lb
+            return theta
+
+class ThetaInit:
     """
     Args:
         init_value: initial value of scala
@@ -15,97 +62,30 @@ class Theta(nn.Module):
         upper_boundary: upper boundary of scala
     Attributes: .
     """
-
-    def __init__(self, *init_value: float, fixed = False, requires_grad = True):
-        super().__init__()
-
-        self.fixed = fixed
-        if len(init_value) > 3 :
-            raise Exception('it must be len(init_value) <= 3')
-        self.is_scale = True
-
-        self.lb : tc.Tensor = tc.tensor(1.e-6)
-        iv = tc.tensor(0)
-        self.ub : tc.Tensor = tc.tensor(1.e6)
-
-        if len(init_value) == 1 :
-            iv = tc.tensor(init_value[0])
-
-            if self.lb > init_value[0] :
-                self.lb = tc.tensor(init_value[0])
-
-            if self.ub < init_value[0] :
-                self.ub = tc.tensor(init_value[0])
-
-        elif len(init_value) == 2 :
-            
-            if init_value[1] < init_value[0]:
-                raise Exception('lower value must be lower than upper value.')
-            
-            self.lb = tc.tensor(init_value[0])
-            iv = tc.tensor((init_value[0] + init_value[1])/2)
-            self.ub = tc.tensor(init_value[1])
-
-
-        elif len(init_value) == 3 :
-
-            if init_value[1] < init_value[0]:
-                raise Exception('lower value must be lower than initial value.') 
-
-            if init_value[1] > init_value[2] :
-                raise Exception('upper value must be upper than initial value.')
-
-            self.lb = tc.tensor(init_value[0])
-            iv = tc.tensor(init_value[1])
-            self.ub = tc.tensor(init_value[2])
-                
-        lb = self.lb
-        ub = self.ub
-
-        self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
-        self.parameter_value = nn.Parameter(tc.tensor(0.1), requires_grad = requires_grad) # type: ignore
-
-    def descale(self) :
-        if self.is_scale:
-            with tc.no_grad() :
-                self.scaled_parameter_for_save = self.parameter_value.data.clone()
-                self.parameter_value.data = self.forward()
-                self.is_scale = False
-
-    def scale(self) :
-        if not self.is_scale and self.scaled_parameter_for_save is not None :
-            with tc.no_grad() :
-                self.parameter_value.data = self.scaled_parameter_for_save
-                self.scaled_parameter_for_save = None
-                self.is_scale = True
-
-    def forward(self) :
-        if self.is_scale :
-            para = self.parameter_value.clamp(-10, 10)
-            theta = tc.exp(para - self.alpha)/(tc.exp(para - self.alpha) + 1)*(self.ub - self.lb) + self.lb
-            return theta
+    def __init__(
+            self, 
+            *init_value: float, 
+            fixed = False, 
+            requires_grad = True, 
+            scale = True):
+        if scale :
+            self.theta_scaler = ThetaScaler(*init_value, fixed=fixed, requires_grad=requires_grad)
+            self.theta = Theta(tensor(0.1))
+            self.theta.fixed = fixed
         else :
-            return self.parameter_value
+            if len(init_value) == 1 :
+                self.theta = Theta(tensor(init_value[0])) 
+                self.theta_scaler = None
+            else :
+                raise Exception("init_value's length must be 1.")
+        
+        
 
-class Eta(nn.Module) :
+class Eta(ParameterDict) :
+    pass
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.parameter_values = nn.ParameterDict()
-
-    def forward(self):
-        return self.parameter_values[str(self.id)]
-
-
-
-class Eps(nn.Module):
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.parameter_values : Dict[str, nn.Parameter] = {} # type: ignore
-
-    def forward(self):
-        return self.parameter_values[str(self.id)]
+class Eps(Dict[str, Tensor]):
+    pass
 
 class CovarianceMatrix(nn.Module) :
     def __init__(self,

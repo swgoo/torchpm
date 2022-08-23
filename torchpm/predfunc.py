@@ -1,129 +1,69 @@
 from abc import abstractmethod
 from collections import ChainMap
-from typing import Any, Dict, Set
+from typing import Any, Dict, Set, Tuple
 
 import torch as tc
 import torch.nn as nn
 from torchdiffeq import odeint
 
-from torchpm import data
+from torchpm import dataset
 
 from .misc import *
 from .parameter import *
 
-from .data import EssentialColumns
+from .dataset import EssentialColumns
+from torch.nn.parameter import Parameter
+from torch.nn import ParameterDict
 
 
 class PredictionFunction(tc.nn.Module):
 
     def __init__(self,
-            dataset : data.PMDataset,
-            output_column_names: List[str],
+            dataset : dataset.PMDataset,
             **kwargs):
         super().__init__(**kwargs)
-        self.theta_names = set()
-        self.eta_names = set()
-        self.eps_names = set()
         self.dataset = dataset
         self._column_names = dataset.column_names
-        self._output_column_names = output_column_names
-        self._ids = set()
-        self._record_lengths : Dict[str, int] = {}
+        self._ids = dataset.ids
+        self._record_lengths : Dict[int, int] = {}
         self._max_record_length = 0
+        self._THETA_SCALER_PREFIX = '_theta_scaler_'
+        self.theta_scale = True
 
-        for data in tc.utils.data.DataLoader(self.dataset, batch_size=None, shuffle=False, num_workers=0):  # type: ignore
-            id = data[0][:, self._column_names.index(EssentialColumns.ID.col_name)][0]
-            self._ids.add(int(id))
-            self._record_lengths[str(int(id))] = data[0].size()[0]
-            self._max_record_length = max(data[0].size()[0], self._max_record_length)
+        for id in self._ids:
+            length = self.dataset.datasets_by_id[id][EssentialColumns.ID.value].size()[0]
+            self._record_lengths[id] = length
+            self._max_record_length = max(length, self._max_record_length)
     
     def __setattr__(self, name: str, value) -> None:
-        att_type = type(value)
-
         with tc.no_grad() :
-            if att_type is Theta :
-                self.theta_names.add(name)
-
-            elif att_type is Eta :
-                self.eta_names.add(name)
-
-                for id in self._ids : # type: ignore
-                    eta_value = tc.tensor(0.1, device=self.dataset.device) # type: ignore
-                    value.parameter_values.update({str(int(id)): tc.nn.Parameter(eta_value)}) # type: ignore
-
-            elif att_type is Eps :
-                self.eps_names.add(name)
-
+            if type(value) is ThetaInit :
+                super().__setattr__(name, value.theta)
+                super().__setattr__(self._THETA_SCALER_PREFIX+ name, value.theta_scaler)
+                return
+            elif type(value) is Eta :
+                for id in self._ids : 
+                    eta_value = tensor(0.1)
+                    value.update({str(int(id)): Parameter(eta_value)})
+                super().__setattr__(name, value)
+                return
+            elif type(value) is Eps :
                 for id in self._ids :
-                    eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
-                    value.parameter_values[str(int(id))] = eps_value # type: ignore
-        
+                    eps_value = tc.zeros(self._record_lengths[id], requires_grad=True)
+                    value[id] = eps_value
+                super().__setattr__(name, value)
+                return
         super().__setattr__(name, value)
 
-    def __getattribute__(self, __name: str) -> Any:
-        att = super().__getattribute__(__name)
-        att_type = type(att)
-        if att_type is Eta or att_type is Eps :
-            att.id = self._id
+    def __getattribute__(self, name: str) -> Any:
+        att = super().__getattribute__(name)
+        if self.theta_scale and type(att) is Theta:
+            theta_scaler = super().__getattribute__(self._THETA_SCALER_PREFIX+name)
+            if theta_scaler is not None :
+                return theta_scaler(att)
+            else :
+                return att
         return att
-    
-    # def __getattr__(self, name: str) -> Any :
-    #     att = super().__getattr__(name)
-    #     att_type = type(att)
-    #     if att_type is Eta or att_type is Eps :
-    #         return lambda : att(self._id)
-    #     return att
-        
-
-    def _get_estimated_parameters(self, names) :
-        dictionary : Dict[str, Any] = {}
-        for name in names :
-            att = getattr(self, name)
-            dictionary[name] = att
-        return dictionary
-
-    def get_thetas(self) -> Dict[str, Theta]:
-        return self._get_estimated_parameters(self.theta_names)
-
-    def get_etas(self) -> Dict[str, Eta]:
-        return self._get_estimated_parameters(self.eta_names)
-
-    def get_epss(self) -> Dict[str, Eps]:
-        return self._get_estimated_parameters(self.eps_names)
-    
-    def _get_estimated_parameter_values(self, names) -> Dict[str, Any]:
-        dictionary : Dict[str, Any] = {}
-        for name in names :
-            att = getattr(self, name)
-            parameter_att_list = dir(att)
-            if isinstance(att, Theta) and 'parameter_value' in parameter_att_list:  # type: ignore
-                dictionary[name] = att.parameter_value
-            elif isinstance(att, (Eta, Eps, Omega, Sigma)) and 'parameter_values' in parameter_att_list:  # type: ignore
-                dictionary[name] = att.parameter_values
-        return dictionary
-        
-    def _get_estimated_values(self, names) -> Dict[str, Any]:
-        dictionary : Dict[str, Any] = {}
-        for name in names :
-            att = getattr(self, name)
-            parameter_att_list = dir(att)
-            if isinstance(att, Theta) and 'parameter_value' in parameter_att_list:  # type: ignore
-                dictionary[name] = att
-            elif isinstance(att, (Eta, Eps, Omega, Sigma)) and 'parameter_values' in parameter_att_list:  # type: ignore
-                dictionary[name] = att
-        return dictionary
-
-    def get_theta_values(self) -> Dict[str, Theta]:
-        return self._get_estimated_values(self.theta_names)
-
-    def get_theta_parameter_values(self) :
-        return self._get_estimated_parameter_values(self.theta_names)
-    
-    def get_eta_parameter_values(self) -> Dict[str, nn.ParameterDict]:  # type: ignore
-        return self._get_estimated_parameter_values(self.eta_names)
-    
-    def get_eps_parameter_values(self) -> Dict[str, Dict[str, nn.Parameter]]:  # type: ignore
-        return self._get_estimated_parameter_values(self.eps_names)
 
     def reset_epss(self) :
         attributes = dir(self)
@@ -133,11 +73,11 @@ class PredictionFunction(tc.nn.Module):
             with tc.no_grad() :
                 if att_type is Eps :
                     for id in self._ids :
-                        eps_value = tc.zeros(self._record_lengths[str(int(id))], requires_grad=True, device=self.dataset.device)
+                        eps_value = tc.zeros(self._record_lengths[id], requires_grad=True, device=self.dataset.device)
                         att.parameter_values[str(int(id))] = eps_value
 
-    def _get_amt_indice(self, dataset) :
-        amts = dataset[:, self._column_names.index(EssentialColumnNames.AMT.value)]
+    def _get_amt_indice(self, dataset : Dict[str, Tensor]) :
+        amts = dataset[EssentialColumns.AMT.value]
         end = amts.size()[0]
         start_index = tc.squeeze(amts.nonzero(), 1)
 
@@ -153,46 +93,49 @@ class PredictionFunction(tc.nn.Module):
         return start_index 
     
     def descale(self):
+        if not self.theta_scale :
+            return self
         with tc.no_grad() :
             attribute_names = dir(self)
             for att_name in attribute_names:
                 att = getattr(self, att_name)
                 if type(att) is Theta :
-                    att.descale()
+                    theta_scaler = getattr(self, self._THETA_SCALER_PREFIX+att_name, None)
+                    if theta_scaler is None :
+                        continue
+                    else :
+                        setattr(self, att_name, theta_scaler(att))
+            self.theta_scale = False
         return self
     
     def scale(self):
+        if self.theta_scale : 
+            return self
         with tc.no_grad() :
             attribute_names = dir(self)
             for att_name in attribute_names:
                 att = getattr(self, att_name)
                 if type(att) is Theta :
-                    att.scale()
+                    theta_scaler = getattr(self, self._THETA_SCALER_PREFIX+att_name, None)
+                    lb = float(theta_scaler.lb)
+                    iv = float(att)
+                    ub = float(theta_scaler.ub)
+                    ThetaInit(lb, iv, ub, fixed=att.fixed, requires_grad=att.requires_grad)
+            
+            self.theta_scale = True
         return self
 
 
-    def _pre_forward(self, dataset):
-        id = str(int(dataset[:,self._column_names.index(EssentialColumnNames.ID.value)][0]))
-        self._id = id
+    def _pre_forward(self, dataset : Dict[str, Tensor]):
+        id = dataset[EssentialColumns.ID.value][0]
 
-        for name in self.eta_names:
-            att = getattr(self, name)
-            att.id = id
+        self._calculate_parameters(id, dataset)
+        record_length = dataset[EssentialColumns.ID.value].size()[0]
 
-        for name in self.eps_names:
-            att = getattr(self, name)
-            att.id = id
-
-        input_columns = self._get_input_columns(dataset)
-        self._calculate_parameters(input_columns)
-        parameters = input_columns
-        record_length = dataset.size()[0]
-
-        for key, para in parameters.items():
+        for key, para in dataset.items():
             if para.dim() == 0 or para.size()[0] == 1 :
-                parameters[key] = para.repeat([record_length])
-
-        return parameters
+                dataset[key] = para.repeat([record_length])
+        return dataset
     
 
     def _post_forward(self, dataset, parameters):
@@ -208,28 +151,28 @@ class PredictionFunction(tc.nn.Module):
         return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
     
     @abstractmethod
-    def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
+    def _calculate_parameters(self, id : Tensor, input_columns : Dict[str, tc.Tensor]) -> None:
         pass
     
     @abstractmethod
-    def _calculate_error(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_error(self, id : Tensor, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
     
     @abstractmethod
     def forward(self, dataset):
         pass
 
-    def _get_input_columns(self, dataset) :
-        dataset = dataset.t()
-        input_columns = {}
-        for i, name in enumerate(self._column_names) :
-            input_columns[name] = dataset[i]
-        return input_columns
+    # def _get_input_columns(self, dataset) :
+    #     dataset = dataset.t()
+    #     input_columns = {}
+    #     for i, name in enumerate(self._column_names) :
+    #         input_columns[name] = dataset[i]
+    #     return input_columns
 
 class SymbolicPredictionFunction(PredictionFunction):
 
     @abstractmethod
-    def _calculate_preds(self, t : tc.Tensor, parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_preds(self, id, t : tc.Tensor, parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
     def forward(self, dataset) :
@@ -244,14 +187,14 @@ class SymbolicPredictionFunction(PredictionFunction):
             dataset_pre = dataset[:start_time_index, :]
             f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
 
-            times = parameters[EssentialColumnNames.TIME.value][start_time_index:]
+            times = parameters[EssentialColumns.TIME.value][start_time_index:]
             start_time = times[0]
 
-            amts = parameters[EssentialColumnNames.AMT.value][start_time_index].repeat(parameters[EssentialColumnNames.AMT.value][start_time_index:].size()[0])
+            amts = parameters[EssentialColumns.AMT.value][start_time_index].repeat(parameters[EssentialColumns.AMT.value][start_time_index:].size()[0])
 
             parameters_sliced = {k: v[start_time_index:] for k, v in parameters.items()}            
-            parameters_sliced[EssentialColumnNames.TIME.value] = times
-            parameters_sliced[EssentialColumnNames.AMT.value] = amts
+            parameters_sliced[EssentialColumns.TIME.value] = times
+            parameters_sliced[EssentialColumns.AMT.value] = amts
 
             t = times - start_time
             f_cur = self._calculate_preds(t, parameters_sliced)
@@ -274,7 +217,7 @@ class NumericPredictionFunction(PredictionFunction):
     atol : float = 1e-2
 
     @abstractmethod
-    def _calculate_preds(self, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_preds(self, id, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
     def _ode_function(self, t, y):

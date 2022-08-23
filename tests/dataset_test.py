@@ -2,8 +2,8 @@ import unittest
 import torch as tc
 from torch import nn
 from torchpm import covariate, models, ode, predfunc, loss
-from torchpm import data
-from torchpm.data import PMDataset, EssentialColumns
+from torchpm import dataset
+from torchpm.dataset import PMDataset, EssentialColumns
 from torchpm.parameter import *
 import matplotlib.pyplot as plt
 import numpy as np
@@ -21,4 +21,6 @@ class DatasetTest(unittest.TestCase) :
     def test_essential_columns(self) :
         print(EssentialColumns.AMT.value)
         print(EssentialColumns.AMT.dtype)
+        print(EssentialColumns.ID.value)
+        print(EssentialColumns.ID.dtype)
         pass
