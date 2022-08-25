@@ -17,9 +17,6 @@ from .misc import *
 
 @dataclass(eq=True, frozen=True)
 class ModelConfig :
-    theta_names : List[str]
-    eta_names : List[str]
-    eps_names : List[str]
     omega : Omega
     sigma : Sigma
     objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()
@@ -46,17 +43,20 @@ class FOCEInter(tc.nn.Module) :
         self.model_config = model_config
         self.pred_function = pred_function
         
-        self.theta_names = model_config.theta_names
-        self.eta_names = model_config.eta_names
-        self.eps_names = model_config.eps_names
         self.omega = model_config.omega
+        self.omega_scaler = None
+        if self.omega.set_scale :
+           self.omega_scaler = OmegaScaler(self.omega)
+
         self.sigma = model_config.sigma
+        self.sigma_scaler = SigmaScaler(self.sigma)
+        
         self.objective_function = model_config.objective_function \
             if model_config.objective_function is not None else loss.FOCEInterObjectiveFunction()
         self.design_optimal_function = model_config.optimal_design_creterion \
             if model_config.optimal_design_creterion is not None else loss.DOptimality()
         self.dataloader = None
-    
+
     # def __getattribute__(self, __name: str) -> Any:
     #     att = super().__getattribute__(__name)
     #     att_type = type(att)
@@ -92,7 +92,7 @@ class FOCEInter(tc.nn.Module) :
         return unfixed_parameter_values
         
     def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :
-        self._id = dataset[0,self.pred_function.dataset.column_names.index(EssentialColumnNames.ID.value)]
+        # self._id = dataset[self.pred_function.dataset.column_names.index(EssentialColumns.ID.value)][0]
         
         pred_output = self.pred_function(dataset)
 
@@ -475,7 +475,7 @@ class FOCEInter(tc.nn.Module) :
         result : Dict[str, OptimizationResult]= {}
         for data, y_true in dataloader:
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
-            id = str(int(data[:,self.pred_function._column_names.index(EssentialColumnNames.ID.value)][0]))
+            id = str(int(data[EssentialColumns.ID.value][0]))
 
             result[id] = OptimizationResult()
             result_cur_id = result[id]
@@ -497,7 +497,7 @@ class FOCEInter(tc.nn.Module) :
             
             result_cur_id.cwres_values = cwres(y_true_masked, y_pred_masked, g, h, eta, omega, sigma)
             result_cur_id.pred = y_pred_masked
-            result_cur_id.time = data[:,self.pred_function._column_names.index(EssentialColumnNames.TIME.value)].masked_select(mdv_mask)
+            result_cur_id.time = data[EssentialColumns.TIME.value].masked_select(mdv_mask)
             result_cur_id.mdv_mask = mdv_mask
 
             result_cur_id.output_columns = parameters
@@ -514,13 +514,13 @@ class FOCEInter(tc.nn.Module) :
         return 2 * k + total_loss
         
     def descale(self) :
-        self.pred_function.remove_boundary()
+        self.pred_function.set_non_boundary_mode()
         self.omega.descale()
         self.sigma.descale()
         return self
     
     def scale(self) :
-        self.pred_function.set_boundary()
+        self.pred_function.set_boundary_mode()
         self.omega.scale()
         self.sigma.scale()
         return self

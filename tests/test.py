@@ -14,9 +14,9 @@ class BasementFunction(predfunc.SymbolicPredictionFunction) :
 
     def __init__(self, dataset):
         super().__init__(dataset)
-        self.theta_0 = ThetaInit(0., 1.5, 10.)
-        self.theta_1 = ThetaInit(0., 30., 100.)
-        self.theta_2 = ThetaInit(0, 0.08, 1)
+        self.theta_0 = Theta(0., 1.5, 10.)
+        self.theta_1 = Theta(0., 30., 100.)
+        self.theta_2 = Theta(0, 0.08, 1)
 
         self.eta_0 = Eta()
         self.eta_1 = Eta()
@@ -72,9 +72,9 @@ class MultidoseBasementFunction(predfunc.SymbolicPredictionFunction) :
         k_e = p['k_e']
         return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
-    def _calculate_error(self, y_pred, p):
+    def _calculate_error(self, id, y_pred, p):
         p['v_v'] = p['v'] 
-        return y_pred +  y_pred * self.eps_0() + self.eps_1()
+        return y_pred +  y_pred * self.eps_0[id] + self.eps_1[id]
 
 
 class DatasetTest(unittest.TestCase) :

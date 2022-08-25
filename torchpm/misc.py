@@ -1,3 +1,4 @@
+from typing import Iterable, List
 import torch as tc
 
 def mat_sqrt_inv(mat) :
@@ -11,11 +12,18 @@ def lower_triangular_vector_to_covariance_matrix(lower_triangular_vector, diag :
         return lower_triangular_vector.diag()
     else :
         lower_triangular_vector_len = len(lower_triangular_vector)
-        dim = int(((8*lower_triangular_vector_len+1)**(1/2)-1)//2)
+        dim = get_dimension_of_lower_triangular_vector(lower_triangular_vector, diag = diag)
         m = tc.zeros(dim, dim, device=lower_triangular_vector.device)
         tril_indices = tc.tril_indices(row=dim, col=dim, offset=0)
         m[tril_indices[0], tril_indices[1]] = lower_triangular_vector
         return m + tc.tril(m).transpose(0,1) - m.diag().diag()
+
+def get_dimension_of_lower_triangular_vector(lower_triangular_vector: List[float], diag : bool = True) :
+    lower_triangular_vector_len = len(lower_triangular_vector)
+    if diag:
+        return lower_triangular_vector_len
+    else :
+        return int(((8*lower_triangular_vector_len+1)**(1/2)-1)//2)
 
 def matrix_to_lower_triangular_vector(m : tc.Tensor):
     tril_indices = m.tril().nonzero().t()

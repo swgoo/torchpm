@@ -7,7 +7,12 @@ import torch as tc
 from scipy import stats
 import pandas as pd
 
+from torch import Tensor
+
 from torch.utils.data import Dataset
+
+def get_id(dataset : Dict[str, Tensor]) -> int:
+    return int(dataset[EssentialColumns.ID.value][0])
 
 class EssentialColumnDtypes(enum.Enum) :
     ID = int
@@ -54,11 +59,12 @@ class EssentialColumns(enum.Enum) :
         return list([elem.value for elem in cls if elem.dtype is float])
 
 class PMDataset(Dataset):
-    
+
     def __init__(self, 
                  dataframe : pd.DataFrame,
                  **kwargs):
         super().__init__(**kwargs)
+        
         EssentialColumns.check_inclusion_of_names(dataframe.columns)
 
         self.column_names = list(dataframe.columns)
@@ -70,12 +76,16 @@ class PMDataset(Dataset):
                 dataframe[col] = dataframe[col].astype(float)
         
         self.ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(0).unique().tolist()
-        
+        self.max_record_length = 0
+        self.record_lengths : Dict[int, int]
         self.datasets_by_id : Dict[int, Dict[str, tc.Tensor]] = {}
         for id in self.ids :
             id_mask = dataframe[EssentialColumns.ID.value] == id
             dataset_by_id = dataframe.loc[id_mask]
             self.datasets_by_id[id] = {}
+            length = len(dataset_by_id)
+            self.max_record_length = max(length, self.max_record_length)
+            self.record_lengths[id] = length
 
             for col in dataframe.columns :
                 self.datasets_by_id[id][col] = tc.tensor(dataset_by_id[col].values)

@@ -2,8 +2,9 @@ from abc import abstractmethod
 from collections import ChainMap
 from typing import Any, Dict, Set, Tuple
 
-import torch as tc
+import torch
 import torch.nn as nn
+from torch.nn import Module
 from torchdiffeq import odeint
 
 from torchpm import dataset
@@ -13,11 +14,10 @@ from .parameter import *
 
 from .dataset import EssentialColumns
 from torch.nn.parameter import Parameter
-from torch.nn import ParameterDict
+from torch.nn import ParameterDict, ModuleDict
 
 
-class PredictionFunction(tc.nn.Module):
-    _THETA_BOUNDARY_PREFIX = '_theta_boundary_'
+class PredictionFunction(Module):
 
     def __init__(self,
             dataset : dataset.PMDataset,
@@ -26,41 +26,38 @@ class PredictionFunction(tc.nn.Module):
         self.dataset = dataset
         self._column_names = dataset.column_names
         self._ids = dataset.ids
-        self._record_lengths : Dict[int, int] = {}
-        self._max_record_length = 0
-        self.has_boundary = True
+        self._record_lengths = dataset.record_lengths
+        self._theta_boundary_mode = True
+        self.theta_boundaries = ModuleDict()
 
-        for id in self._ids:
-            length = self.dataset.datasets_by_id[id][EssentialColumns.ID.value].size()[0]
-            self._record_lengths[id] = length
-            self._max_record_length = max(length, self._max_record_length)
-    
     def __setattr__(self, name: str, value) -> None:
         with tc.no_grad() :
             if type(value) is Theta :
                 super().__setattr__(name, value)
-                if value.has_boundary :
-                    theta_scaler = ThetaBoundary(*value.init_values)
-                    super().__setattr__(self._THETA_BOUNDARY_PREFIX + name, theta_scaler)
+                if value.set_boundary:
+                    theta_boundary = ThetaBoundary(*value.init_values)
+                    self.theta_boundaries.update({name: theta_boundary})
+                    value.set_boundary = False
                 return
             elif type(value) is Eta :
                 for id in self._ids : 
-                    eta_value = tensor(0.1)
-                    value.update({str(int(id)): Parameter(eta_value)})
+                    value.update({str(id): Parameter(tensor(0.1))})
                 super().__setattr__(name, value)
                 return
             elif type(value) is Eps :
                 for id in self._ids :
-                    eps_value = tc.zeros(self._record_lengths[id], requires_grad=True)
-                    value[id] = eps_value
+                    value.update({str(id): Parameter(tc.zeros(self._record_lengths[id]))})
                 super().__setattr__(name, value)
                 return
         super().__setattr__(name, value)
 
     def __getattribute__(self, name: str) -> Any:
         att = super().__getattribute__(name)
-        if self.has_boundary and type(att) is Theta:
-            theta_boundary = super().__getattribute__(self._THETA_BOUNDARY_PREFIX+name)
+        if self._theta_boundary_mode \
+                and type(att) is Theta \
+                and att.boundary_mode \
+                and name in self.theta_boundaries.keys():
+            theta_boundary = self.theta_boundaries[name]
             if theta_boundary is not None :
                 return theta_boundary(att)
             else :
@@ -75,7 +72,7 @@ class PredictionFunction(tc.nn.Module):
                 if type(att) is Eps :
                     for id in self._ids :
                         eps_value = tc.zeros_like(att[str(id)], requires_grad=True, device=att[str(id)].device)
-                        att[str(id)] = eps_value
+                        att.update({str(id): Parameter(eps_value)})
 
     def _get_amt_indice(self, dataset : Dict[str, Tensor]) :
         amts = dataset[EssentialColumns.AMT.value]
@@ -86,80 +83,74 @@ class PredictionFunction(tc.nn.Module):
             return tc.tensor([0], device=amts.device)
 
         if start_index[0] != 0 :
-            start_index = tc.cat([tc.tensor([0], device = amts.device), start_index], 0)
+            start_index = tc.cat([tensor([0], device = amts.device), start_index], 0)
 
         if start_index[-1] != end - 1 :
-            start_index = tc.cat([start_index, tc.tensor([end-1], device = amts.device)] , 0)
+            start_index = tc.cat([start_index, tensor([end-1], device = amts.device)] , 0)
 
         return start_index 
     
-    def remove_boundary(self):
-        if not self.has_boundary :
+    def set_non_boundary_mode(self):
+        if not self._theta_boundary_mode :
             return self
         with tc.no_grad() :
             attribute_names = dir(self)
             for att_name in attribute_names:
                 att = getattr(self, att_name)
-                if type(att) is Theta :
-                    theta_scaler = getattr(self, self._THETA_BOUNDARY_PREFIX+att_name, None)
-                    if theta_scaler is None :
-                        continue
-                    else :
-                        setattr(self, att_name, theta_scaler(att))
-            self.has_boundary = False
+                if type(att) is Theta and att_name in self.theta_boundaries.keys():
+                    theta_boundary = self.theta_boundaries[att_name]
+                    theta_value = theta_boundary(att)
+                    theta = Theta(float(theta_value), fixed=att.fixed, requires_grad=att.requires_grad, set_boundary=False, boundary_mode=False)
+                    setattr(self, att_name, theta)
+            self._theta_boundary_mode = False
         return self
     
-    def set_boundary(self):
-        if self.has_boundary : 
+    def set_boundary_mode(self):
+        if self._theta_boundary_mode : 
             return self
         with tc.no_grad() :
             attribute_names = dir(self)
             for att_name in attribute_names:
                 att = getattr(self, att_name)
-                if type(att) is Theta :
-                    theta_scaler : Optional[ThetaBoundary] = getattr(self, self._THETA_BOUNDARY_PREFIX+att_name, None)
-                    if theta_scaler is not None :
-                        lb = float(theta_scaler.lb)
+                if type(att) is Theta and att_name in self.theta_boundaries.keys():
+                    theta_boundary = self.theta_boundaries[att_name]
+                    if type(theta_boundary) is ThetaBoundary:
+                        lb = float(theta_boundary.lb)
                         iv = float(att)
-                        ub = float(theta_scaler.ub)
-                        theta_init = Theta(lb, iv, ub, fixed=att.fixed, has_boundary = att.has_boundary, requires_grad=att.requires_grad)
+                        ub = float(theta_boundary.ub)
+                        theta_init = Theta(lb, iv, ub, fixed=att.fixed, set_boundary = True, requires_grad=att.requires_grad, boundary_mode=True)
                         setattr(self, att_name, theta_init)
-                    else : 
-                        setattr(self, att_name, att)
-            self.has_boundary = True
+            self._theta_boundary_mode = True
         return self
 
-
-    def _pre_forward(self, dataset : Dict[str, Tensor]):
+    def _pre_forward(self, dataset : Dict[str, Tensor]) -> Dict[str, Tensor]:
         id = dataset[EssentialColumns.ID.value][0]
 
         self._calculate_parameters(str(id), dataset)
-        record_length = dataset[EssentialColumns.ID.value].size()[0]
-
+        record_length = self._record_lengths[id]
+    
         for key, para in dataset.items():
             if para.dim() == 0 or para.size()[0] == 1 :
                 dataset[key] = para.repeat([record_length])
         return dataset
     
 
-    def _post_forward(self, dataset, parameters):
-        record_length = dataset.size()[0]
-        output_columns = {}
+    def _post_forward(self, dataset : Dict[str, Tensor]):
+        id = dataset[EssentialColumns.ID.value][0]
+        record_length = self._record_lengths[id]
 
-        for cov_name in self._output_column_names :
-            p = parameters[cov_name]
+        for key in dataset.keys() :
+            p = dataset[key]
             if p.dim() == 0 or p.size()[0] == 1 :
-                output_columns[cov_name] = p.repeat([record_length])
-            else :
-                output_columns[cov_name] = parameters[cov_name]
-        return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': output_columns}
+                dataset[key] = p.repeat([record_length])
+        return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': dataset}
     
     @abstractmethod
-    def _calculate_parameters(self, id : str, input_columns : Dict[str, tc.Tensor]) -> None:
+    def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
         pass
     
     @abstractmethod
-    def _calculate_error(self, id : str, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_error(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
     
     @abstractmethod
@@ -169,13 +160,14 @@ class PredictionFunction(tc.nn.Module):
 class SymbolicPredictionFunction(PredictionFunction):
 
     @abstractmethod
-    def _calculate_preds(self, id, t : tc.Tensor, parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_preds(self, t : tc.Tensor, dataset : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
     def forward(self, dataset) :
         parameters = self._pre_forward(dataset)
         f = tc.zeros(dataset.size()[0], device = dataset.device)
         amt_indice = self._get_amt_indice(dataset)
+        id = str(dataset[EssentialColumns.ID.value][0])
 
         for i in range(len(amt_indice) - 1):
             start_time_index = amt_indice[i]
@@ -194,12 +186,12 @@ class SymbolicPredictionFunction(PredictionFunction):
             parameters_sliced[EssentialColumns.AMT.value] = amts
 
             t = times - start_time
-            f_cur = self._calculate_preds(t, parameters_sliced)
+            f_cur = self._calculate_preds(id, t, parameters_sliced)
             f = f + tc.cat([f_pre, f_cur], 0)
 
-        y_pred = self._calculate_error(f, parameters)
-        mdv_mask = dataset[:,self._column_names.index(EssentialColumnNames.MDV.value)] == 0
-        post_forward_output = self._post_forward(dataset, parameters)
+        y_pred = self._calculate_error(id, f, parameters)
+        mdv_mask = dataset[EssentialColumns.MDV.value] == 0
+        post_forward_output = self._post_forward(parameters)
         return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
 
 
@@ -214,7 +206,7 @@ class NumericPredictionFunction(PredictionFunction):
     atol : float = 1e-2
 
     @abstractmethod
-    def _calculate_preds(self, id, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_preds(self, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
     def _ode_function(self, t, y):
@@ -223,13 +215,13 @@ class NumericPredictionFunction(PredictionFunction):
         return self._calculate_preds(t, y, parameters_sliced) + \
             self.infusion_rate * (self.infusion_end_time > t)
 
-    def forward(self, dataset) :
+    def forward(self, dataset : Dict[str, Tensor]) :
         if not hasattr(self, 'parameter_values'):
             self.parameter_values : Dict[str, tc.Tensor] = {}
         parameters = self._pre_forward(dataset)
         self.parameter_values = parameters
 
-        self.max_cmt = int(dataset[:,self._column_names.index('CMT')].max())
+        self.max_cmt = int(dataset[EssentialColumns.CMT.value].max())
         y_pred_arr = []
         parameters_result = {}
         y_init = tc.zeros(self.max_cmt+1, device = dataset.device)
@@ -278,13 +270,13 @@ class NumericPredictionFunction(PredictionFunction):
             #     else :
             #         parameters_result[k] = tc.cat([parameters_result[k], parameters_sliced[k]])
 
-            if amt_indice[i+1]+1 == dataset.size()[0] :
+            if amt_indice[i+1]+1 == dataset[EssentialColumns.ID.value].size()[0] :
                 y_pred_arr.append(y_integrated)
             else :
                 y_pred_arr.append(y_integrated[:-1])
 
-        y_pred = self._calculate_error(tc.cat(y_pred_arr), parameters)
+        y_pred = self._calculate_error(id, tc.cat(y_pred_arr), parameters)
 
-        mdv_mask = dataset[:,self._column_names.index(EssentialColumnNames.MDV.value)] == 0
-        post_forward_output = self._post_forward(dataset, parameters)
+        mdv_mask = dataset[EssentialColumns.MDV.value] == 0
+        post_forward_output = self._post_forward(parameters)
         return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
