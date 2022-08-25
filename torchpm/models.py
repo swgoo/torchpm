@@ -130,17 +130,18 @@ class FOCEInter(tc.nn.Module) :
     def train_step(self, batch, batch_idx):
 
         dataset = self(batch)
+        id = dataset[EssentialColumns.ID.value][0]
 
         eta_dict = self.pred_function.eta_dict
         eps_dict = self.pred_function.eps_dict
 
         eta = []
         for eta_name in self.eta_names:
-            eta.append(eta_dict[eta_name])
+            eta.append(eta_dict[eta_name][id])
 
         eps = []
         for eps_name in self.eps_names:
-            eps.append(eps_dict[eps_name])
+            eps.append(eps_dict[eps_name][id])
 
         y_pred = dataset[self.pred_function.PRED_COLUMN_NAME]
 
@@ -199,25 +200,12 @@ class FOCEInter(tc.nn.Module) :
             optimizer.zero_grad()
             total_loss = tc.zeros([], device = dataset.device)
             
-            for data, y_true in dataloader:
-                y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data)
+            for data in dataloader:
+                loss_value = self.train_step(data, None)
  
-                y_pred = y_pred.masked_select(mdv_mask)
-                eta_size = g.size()[-1]
-                if eta_size > 0 :
-                    g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
-                eps_size = h.size()[-1]
-                if eps_size > 0:
-                    h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
- 
-                y_true_masked = y_true.masked_select(mdv_mask)
-                loss = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
-                loss.backward()
+                loss_value.backward()
                 
                 total_loss = total_loss + loss
-            
-            if checkpoint_file_path is not None :
-                tc.save(self.state_dict(), checkpoint_file_path)
         
             print('running_time : ', time.time() - start_time, '\t total_loss:', total_loss)
             return total_loss
