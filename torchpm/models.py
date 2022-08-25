@@ -35,21 +35,32 @@ class FOCEInter(tc.nn.Module) :
 
     def __init__(self,
             model_config : ModelConfig,
-            pred_function : predfunc.PredictionFunction,
-            ):
+            pred_function : predfunc.PredictionFunction,):
 
         super(FOCEInter, self).__init__()
 
         self.model_config = model_config
         self.pred_function = pred_function
-        
-        self.omega = model_config.omega
-        self.omega_scaler = None
-        if self.omega.set_scale :
-           self.omega_scaler = OmegaScaler(self.omega)
 
-        self.sigma = model_config.sigma
-        self.sigma_scaler = SigmaScaler(self.sigma)
+        self.covariate_block_matrix = CovarianceBlockMatrix()
+        
+        self.omega_vector_list = model_config.omega
+        self.omega_scaler_list = CovarianceScalerList(None)
+        for omega_vector in self.omega_vector_list :
+            if type(omega_vector) is CovarianceVector and omega_vector.set_scale :
+                omega_scaler = CovarianceScaler(omega_vector)
+                self.omega_scaler_list.append(omega_scaler)
+            else :
+                self.omega_scaler_list.append(None)   # type: ignore
+
+        self.sigma_vector_list = model_config.sigma
+        self.sigma_scaler_list = CovarianceScalerList(None)
+        for sigma_vector in self.sigma_vector_list :
+            if type(sigma_vector) is CovarianceVector and sigma_vector.set_scale :
+                sigma_scaler = CovarianceScaler(sigma_vector)
+                self.sigma_scaler_list.append(sigma_scaler)
+            else :
+                self.sigma_scaler_list.append(None)   # type: ignore
         
         self.objective_function = model_config.objective_function \
             if model_config.objective_function is not None else loss.FOCEInterObjectiveFunction()
@@ -57,25 +68,51 @@ class FOCEInter(tc.nn.Module) :
             if model_config.optimal_design_creterion is not None else loss.DOptimality()
         self.dataloader = None
 
+        self.eta_names = self.omega_vector_list.random_variable_names
+        self.eps_names = self.sigma_vector_list.random_variable_names
+
     # def __getattribute__(self, __name: str) -> Any:
     #     att = super().__getattribute__(__name)
     #     att_type = type(att)
     #     if att_type is Eta or att_type is Eps :
     #         return lambda : att(self._id)
     #     return att
+
+    @property
+    def omega(self):
+        return self._get_covariance_matrix(self.omega_vector_list, self.omega_scaler_list)
+
+    @property
+    def sigma(self):
+        return self._get_covariance_matrix(self.sigma_vector_list, self.sigma_scaler_list)
     
+    def _get_covariance_matrix(self, covariance_vector_list : CovarianceVectorList, covariance_scaler_list : CovarianceScalerList):
+        covariance = []
+        covariance_block_matrix_list = self.covariate_block_matrix(covariance_vector_list)
+        for covariance_block_matrix, covariance_scaler, covariance_vector in zip(covariance_block_matrix_list, covariance_scaler_list, covariance_vector_list) :
+            if type(covariance_vector) is CovarianceVector and covariance_vector.scale_mode and covariance_scaler is not None :
+                covariance_block_matrix = covariance_scaler(covariance_block_matrix)
+                covariance.append(covariance_block_matrix)
+            else :
+                covariance.append(covariance_block_matrix)
+        return torch.block_diag(*covariance)
+
+            
+        
+
+
+
+    # TODO
     def get_unfixed_parameter_values(self) -> List[nn.Parameter]:  # type: ignore
         unfixed_parameter_values = []
 
-        omega_len = len(self.omega.parameter_values)
-        for i, parameter_value, fixed in zip(range(omega_len), self.omega.parameter_values, self.omega.fixed) :
-            if not fixed :
-                unfixed_parameter_values.append(parameter_value) 
+        for omega_vector in self.omega_vector_list:
+            if type(omega_vector) is CovarianceVector and not omega_vector.fixed :
+                unfixed_parameter_values.append(omega_vector) 
         
-        sigma_len = len(self.sigma.parameter_values)
-        for i, parameter_value, fixed in zip(range(sigma_len), self.sigma.parameter_values, self.sigma.fixed) :
-            if not fixed :
-                unfixed_parameter_values.append(parameter_value)
+        for sigma_vector in self.sigma_vector_list:
+            if type(sigma_vector) is CovarianceVector and not sigma_vector.fixed :
+                unfixed_parameter_values.append(sigma_vector) 
         
         pred_function_parameters = list(self.pred_function.parameters())
         pred_function_parameters_deleting_indices = []
@@ -91,51 +128,61 @@ class FOCEInter(tc.nn.Module) :
         
         return unfixed_parameter_values
         
-    def forward(self, dataset, partial_differentiate_by_etas = True, partial_differentiate_by_epss = True) :
-        # self._id = dataset[self.pred_function.dataset.column_names.index(EssentialColumns.ID.value)][0]
-        
-        pred_output = self.pred_function(dataset)
+    def forward(self, dataset) :
+        return self.pred_function(dataset)
+    
+    def train_step(self, batch, batch_idx):
 
-        etas = pred_output['etas']
+        dataset = self(batch)
+
+        eta_dict = self.pred_function.eta_dict
+        eps_dict = self.pred_function.eps_dict
+
         eta = []
         for eta_name in self.eta_names:
-            eta.append(etas[eta_name]())
+            eta.append(eta_dict[eta_name])
 
-        epss = pred_output['epss']
         eps = []
         for eps_name in self.eps_names:
-            eps.append(epss[eps_name]())
+            eps.append(eps_dict[eps_name])
 
-        y_pred, g, h = self._partial_differentiate(pred_output['y_pred'], eta, eps, by_etas = partial_differentiate_by_etas, by_epss = partial_differentiate_by_epss)
+        y_pred = dataset[self.pred_function.PRED_COLUMN_NAME]
+
+        eta_size = len(eta)
+        eps_size = len(eps)
+
+        h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
+        for i_h, y_pred_elem in enumerate(y_pred) :
+            if eps_size > 0 :
+                for i_eps, cur_eps in enumerate(eps):
+                    h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
+                    h[i_h,i_eps] = h_elem[0][i_h]
+
+        g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
+        for i_g, y_pred_elem in enumerate(y_pred) :
+            if eta_size > 0 :
+                for i_eta, cur_eta in enumerate(eta) :
+                    g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
+                    g[i_g, i_eta] = g_elem[0]
 
         eta = tc.stack(eta)
         eps = tc.stack(eps)
 
-        return y_pred, eta, eps, g, h, self.omega().to(dataset.device), self.sigma().to(dataset.device), pred_output['mdv_mask'], pred_output['output_columns']
-    
-    def _partial_differentiate(self, y_pred, eta, eps, by_etas, by_epss) :
-        eta_size = len(eta)
-        eps_size = len(eps)
+        mdv_mask = dataset[EssentialColumns.MDV] == 0
 
-        if by_epss:
-            h = tc.zeros(y_pred.size()[0], eps_size, device = y_pred.device)
-            for i_h, y_pred_elem in enumerate(y_pred) :
-                if eps_size > 0 :
-                    for i_eps, cur_eps in enumerate(eps):
-                        h_elem = tc.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
-                        h[i_h,i_eps] = h_elem[0][i_h]
-        else : h = None
+        y_pred = y_pred.masked_select(mdv_mask)
+        eta_size = g.size()[-1]
+        if eta_size > 0 :
+            g = g.t().masked_select(mdv_mask).reshape((eta_size,-1)).t()
+        eps_size = h.size()[-1]
+        if eps_size > 0:
+            h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
 
-        if by_etas:
-            g = tc.zeros(y_pred.size()[0], eta_size, device = y_pred.device)
-            for i_g, y_pred_elem in enumerate(y_pred) :
-                if eta_size > 0 :
-                    for i_eta, cur_eta in enumerate(eta) :
-                        g_elem = tc.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
-                        g[i_g, i_eta] = g_elem[0]
-        else : g = None
-        
-        return y_pred, g, h
+        y_true = dataset[EssentialColumns.DV.value]
+        y_true_masked = y_true.masked_select(mdv_mask)
+        loss_value = self.objective_function(y_true_masked, y_pred, g, h, eta, self.omega, self.sigma)
+
+        return loss_value
 
     def optimization_function_closure(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
         """
@@ -194,9 +241,9 @@ class FOCEInter(tc.nn.Module) :
             
             theta_dict = self.pred_function.get_theta_parameter_values()
             cov_mat_dim =  len(theta_dict)
-            for tensor in self.omega.parameter_values :
+            for tensor in self.omega_vector_list.parameter_values :
                 cov_mat_dim += tensor.size()[0]
-            for tensor in self.sigma.parameter_values :
+            for tensor in self.sigma_vector_list.parameter_values :
                 cov_mat_dim += tensor.size()[0]
             
             thetas = [theta_dict[key] for key in self.theta_names]
@@ -274,9 +321,9 @@ class FOCEInter(tc.nn.Module) :
         
         theta_dict = self.pred_function.get_theta_parameter_values()
         cov_mat_dim =  len(theta_dict)
-        for tensor in self.omega.parameter_values :
+        for tensor in self.omega_vector_list.parameter_values :
             cov_mat_dim += tensor.size()[0]
-        for tensor in self.sigma.parameter_values :
+        for tensor in self.sigma_vector_list.parameter_values :
             cov_mat_dim += tensor.size()[0]
         
         thetas = [theta_dict[key] for key in self.theta_names]
@@ -338,8 +385,8 @@ class FOCEInter(tc.nn.Module) :
         count += len(self.pred_function.get_thetas())
         count += len(self.pred_function.get_etas())
         count += len(self.pred_function.get_epss())
-        for tensor in self.omega.parameter_values : count += len(tensor)
-        for tensor in self.sigma.parameter_values : count += len(tensor)
+        for tensor in self.omega_vector_list.parameter_values : count += len(tensor)
+        for tensor in self.sigma_vector_list.parameter_values : count += len(tensor)
         return count
 
     
@@ -398,9 +445,9 @@ class FOCEInter(tc.nn.Module) :
         
         theta_dict = self.pred_function.get_theta_parameter_values()
         cov_mat_dim =  len(theta_dict)
-        for tensor in self.omega.parameter_values :
+        for tensor in self.omega_vector_list.parameter_values :
             cov_mat_dim += tensor.size()[0]
-        for tensor in self.sigma.parameter_values :
+        for tensor in self.sigma_vector_list.parameter_values :
             cov_mat_dim += tensor.size()[0]
         
         thetas = [theta_dict[key] for key in self.theta_names]
@@ -515,14 +562,14 @@ class FOCEInter(tc.nn.Module) :
         
     def descale(self) :
         self.pred_function.set_non_boundary_mode()
-        self.omega.descale()
-        self.sigma.descale()
+        self.omega_vector_list.descale()
+        self.sigma_vector_list.descale()
         return self
     
     def scale(self) :
         self.pred_function.set_boundary_mode()
-        self.omega.scale()
-        self.sigma.scale()
+        self.omega_vector_list.scale()
+        self.sigma_vector_list.scale()
         return self
     
     def parameters_for_individual(self) :
@@ -594,17 +641,17 @@ class FOCEInter(tc.nn.Module) :
         theta_dict = self.pred_function.get_theta_parameter_values()
 
         cov_mat_dim =  len(theta_dict)
-        for tensor in self.omega.parameter_values :
+        for tensor in self.omega_vector_list.parameter_values :
             cov_mat_dim += tensor.size()[0]
-        for tensor in self.sigma.parameter_values :
+        for tensor in self.sigma_vector_list.parameter_values :
             cov_mat_dim += tensor.size()[0]
         
         thetas = [theta_dict[key] for key in self.theta_names]
 
         requires_grad_memory = []
         estimated_parameters = [*thetas,
-                        *self.omega.parameter_values,
-                        *self.sigma.parameter_values]
+                        *self.omega_vector_list.parameter_values,
+                        *self.sigma_vector_list.parameter_values]
 
         for para in estimated_parameters :
             requires_grad_memory.append(para.requires_grad)
@@ -668,8 +715,8 @@ class FOCEInter(tc.nn.Module) :
             dataset: model dataset for simulation
             repeat : simulation times
         """
-        omega = self.omega()
-        sigma = self.sigma()
+        omega = self.omega_vector_list()
+        sigma = self.sigma_vector_list()
 
         eta_parameter_values = self.pred_function.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)

@@ -204,7 +204,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
         print('=================================== A Optimal, omega, sigma ===================================')
 
         model = model.descale()
-        parameters = [*model.omega.parameter_values, *model.sigma.parameter_values]
+        parameters = [*model.omega_vector_list.parameter_values, *model.sigma_vector_list.parameter_values]
         model.fit_population_FIM(parameters)
         
 
@@ -214,7 +214,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
 
         print('=================================== Adam ===================================')
 
-        parameters = [*model.omega.parameter_values, *model.sigma.parameter_values]
+        parameters = [*model.omega_vector_list.parameter_values, *model.sigma_vector_list.parameter_values]
         # parameters = model.parameters()
         optimizer = tc.optim.Adam(parameters, lr=0.001)
 

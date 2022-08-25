@@ -232,8 +232,7 @@ class CovarianceVector(Parameter):
 class CovarianceVectorList(ParameterList) :
     def __init__(
                 self,
-                parameters: Optional[Iterable[CovarianceVector]] = None, 
-                ) :
+                parameters: Optional[Iterable[CovarianceVector]] = None,) :
         super().__init__(parameters)
 
     @property
@@ -295,7 +294,7 @@ class CovarianceScaler(nn.Module):
         return self._get_descaled_matrix(covariance_block_matrix)
 
 class CovarianceScalerList(nn.ModuleList):
-    def __init__(self, covariance_scaler_list : List[CovarianceScaler]):
+    def __init__(self, covariance_scaler_list : Optional[List[CovarianceScaler]]):
         super().__init__(covariance_scaler_list)
 
     def forward(self, covariance_block_matrixes: List[Tensor]) -> List[Tensor]:

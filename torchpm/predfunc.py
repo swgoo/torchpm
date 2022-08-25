@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from collections import ChainMap
-from typing import Any, Dict, Set, Tuple
+from typing import Any, Dict, Set, Tuple, Type, TypeVar
 
 import torch
 import torch.nn as nn
@@ -16,8 +16,10 @@ from .dataset import EssentialColumns
 from torch.nn.parameter import Parameter
 from torch.nn import ParameterDict, ModuleDict
 
+T = TypeVar('T')
 
 class PredictionFunction(Module):
+    PRED_COLUMN_NAME : str = 'PRED'
 
     def __init__(self,
             dataset : dataset.PMDataset,
@@ -63,6 +65,30 @@ class PredictionFunction(Module):
             else :
                 return att
         return att
+
+   
+
+    def _get_attr_dict(self, dtype: Type[T]) -> Dict[str, T]:
+        attr_dict : Dict[str, dtype] = {}
+        att_names = dir(self)
+        for name in att_names :
+            att = getattr(self, name) 
+            if type(att) is dtype :
+                attr_dict[name] = att
+        return attr_dict
+
+    @property
+    def theta_dict(self) -> Dict[str, Theta]:
+        return self._get_attr_dict(Theta)
+    
+    @property
+    def eta_dict(self) -> Dict[str, Eta]:
+        return self._get_attr_dict(Eta)
+
+    @property
+    def eps_dict(self) -> Dict[str, Eps]:
+        return self._get_attr_dict(Eps)
+        
 
     def reset_epss(self) :
         attributes = dir(self)
@@ -126,7 +152,7 @@ class PredictionFunction(Module):
     def _pre_forward(self, dataset : Dict[str, Tensor]) -> Dict[str, Tensor]:
         id = dataset[EssentialColumns.ID.value][0]
 
-        self._calculate_parameters(str(id), dataset)
+        self._calculate_parameters(dataset)
         record_length = self._record_lengths[id]
     
         for key, para in dataset.items():
@@ -143,7 +169,7 @@ class PredictionFunction(Module):
             p = dataset[key]
             if p.dim() == 0 or p.size()[0] == 1 :
                 dataset[key] = p.repeat([record_length])
-        return {'etas': self.get_etas(), 'epss': self.get_epss(), 'output_columns': dataset}
+        return dataset
     
     @abstractmethod
     def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
@@ -165,7 +191,7 @@ class SymbolicPredictionFunction(PredictionFunction):
 
     def forward(self, dataset) :
         parameters = self._pre_forward(dataset)
-        f = tc.zeros(dataset.size()[0], device = dataset.device)
+        f = tc.zeros(dataset.size()[0], device = dataset[EssentialColumns.ID.value].device)
         amt_indice = self._get_amt_indice(dataset)
         id = str(dataset[EssentialColumns.ID.value][0])
 
@@ -174,7 +200,7 @@ class SymbolicPredictionFunction(PredictionFunction):
 
             #누적하기 위해 앞부분 생성
             dataset_pre = dataset[:start_time_index, :]
-            f_pre = tc.zeros(dataset_pre.size()[0], device = dataset.device)
+            f_pre = tc.zeros(dataset_pre.size()[0], device = dataset[EssentialColumns.ID.value].device)
 
             times = parameters[EssentialColumns.TIME.value][start_time_index:]
             start_time = times[0]
@@ -186,13 +212,16 @@ class SymbolicPredictionFunction(PredictionFunction):
             parameters_sliced[EssentialColumns.AMT.value] = amts
 
             t = times - start_time
-            f_cur = self._calculate_preds(id, t, parameters_sliced)
+            f_cur = self._calculate_preds(t, parameters_sliced)
             f = f + tc.cat([f_pre, f_cur], 0)
 
-        y_pred = self._calculate_error(id, f, parameters)
-        mdv_mask = dataset[EssentialColumns.MDV.value] == 0
+        pred = self._calculate_error(f, parameters)
+        # mdv_mask = dataset[EssentialColumns.MDV.value] == 0
         post_forward_output = self._post_forward(parameters)
-        return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
+        post_forward_output[self.PRED_COLUMN_NAME] = pred
+        
+
+        return post_forward_output
 
 
 class NumericPredictionFunction(PredictionFunction):
@@ -224,9 +253,9 @@ class NumericPredictionFunction(PredictionFunction):
         self.max_cmt = int(dataset[EssentialColumns.CMT.value].max())
         y_pred_arr = []
         parameters_result = {}
-        y_init = tc.zeros(self.max_cmt+1, device = dataset.device)
-        self.infusion_rate = tc.zeros(self.max_cmt+1, device = dataset.device)
-        self.infusion_end_time = tc.zeros(self.max_cmt+1, device = dataset.device)
+        y_init = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+        self.infusion_rate = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+        self.infusion_end_time = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
         amt_indice = self._get_amt_indice(dataset)
 
         for i in range(len(amt_indice) - 1):
@@ -237,20 +266,20 @@ class NumericPredictionFunction(PredictionFunction):
             times = parameters[EssentialColumns.TIME.value][amt_slice]
 
             if  rate == 0 :                    
-                bolus = tc.zeros(self.max_cmt + 1, device = dataset.device)
+                bolus = tc.zeros(self.max_cmt + 1, device = dataset[EssentialColumns.ID.value].device)
                 bolus[cmt[0].to(tc.int64)] = amt
                 y_init = y_init + bolus
 
             else :
                 time = times[0]
-                mask = tc.ones(self.max_cmt +1, device = dataset.device)
+                mask = tc.ones(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
                 mask[cmt[0].to(tc.int64)] = 0
  
-                rate_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
+                rate_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
                 rate_vector[cmt[0].to(tc.int64)] = rate
 
                 self.infusion_rate = self.infusion_rate * mask + rate_vector
-                infusion_end_time_vector = tc.zeros(self.max_cmt +1, device = dataset.device)
+                infusion_end_time_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
                 infusion_end_time_vector[cmt[0].to(tc.int64)] = time + amt / rate
                 self.infusion_end_time = self.infusion_end_time * mask + infusion_end_time_vector
                 
@@ -259,7 +288,7 @@ class NumericPredictionFunction(PredictionFunction):
             y_integrated = result
             y_init = result[-1]
 
-            cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset.device)  # type: ignore
+            cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset[EssentialColumns.ID.value].device)  # type: ignore
             y_integrated = y_integrated.masked_select(cmt_mask==1)  # type: ignore
 
             # parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}
@@ -275,8 +304,8 @@ class NumericPredictionFunction(PredictionFunction):
             else :
                 y_pred_arr.append(y_integrated[:-1])
 
-        y_pred = self._calculate_error(id, tc.cat(y_pred_arr), parameters)
+        pred = self._calculate_error(tc.cat(y_pred_arr), parameters)
 
-        mdv_mask = dataset[EssentialColumns.MDV.value] == 0
         post_forward_output = self._post_forward(parameters)
-        return ChainMap({'y_pred': y_pred, 'mdv_mask': mdv_mask}, post_forward_output)
+        post_forward_output[self.PRED_COLUMN_NAME] = pred
+        return post_forward_output
