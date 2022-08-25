@@ -97,10 +97,6 @@ class FOCEInter(tc.nn.Module) :
                 covariance.append(covariance_block_matrix)
         return torch.block_diag(*covariance)
 
-            
-        
-
-
 
     # TODO
     def get_unfixed_parameter_values(self) -> List[nn.Parameter]:  # type: ignore
@@ -183,6 +179,9 @@ class FOCEInter(tc.nn.Module) :
         loss_value = self.objective_function(y_true_masked, y_pred, g, h, eta, self.omega, self.sigma)
 
         return loss_value
+    #TODO
+    def configure_optimizers(self):
+        pass
 
     def optimization_function_closure(self, dataset, optimizer, checkpoint_file_path : Optional[str] = None) -> Callable:
         """
