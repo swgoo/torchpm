@@ -370,20 +370,6 @@ class FOCEInter(pl.LightningModule) :
                 total_loss += values.loss
         k = self.count_number_of_parameters()
         return 2 * k + total_loss
-        
-
-    #TODO Property로 변경
-    def descale(self) :
-        self.pred_function.set_non_boundary_mode()
-        self.omega_vector_list.descale()
-        self.sigma_vector_list.descale()
-        return self
-    #TODO property로 변경
-    def scale(self) :
-        self.pred_function.set_boundary_mode()
-        self.omega_vector_list.scale()
-        self.sigma_vector_list.scale()
-        return self
     
     def parameters_for_individual(self) :
         parameters = []
