@@ -102,8 +102,8 @@ class DeepCovariateSearching:
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
     eps_names : List[str]
-    omega : Omega
-    sigma : Sigma
+    omega : OmegaVectorList
+    sigma : SigmaVectorList
     
     def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names) -> nn.Module:  # type: ignore
         idp_para_names_length = len(independent_parameter_names)

@@ -11,27 +11,15 @@ import torch
 from .misc import *
 
 class Theta(Parameter) :
-    def __init__(
-            self, 
-            *init_values: float, 
-            fixed = False, 
-            requires_grad = True, 
-            set_boundary = True,
-            boundary_mode = True):
-        self.init_values = init_values
+    def __init__(self, data: Tensor, fixed = False, requires_grad: bool = True):
+        if data.dim() != 0:
+            raise Exception("theta's dim should be 0")
+        super().__init__(data, requires_grad)
+        
         self.fixed = fixed
-        self.set_boundary = set_boundary
-        self.boundary_mode = boundary_mode
 
-        if set_boundary :
-            super().__init__(tensor(0.1), requires_grad = requires_grad)
-        else :
-            if len(init_values) == 1 :
-                super().__init__(tensor(init_values[0]), requires_grad = requires_grad) 
-            else :
-                raise Exception("init_values' length must be 1.")
-    
 class ThetaBoundary(nn.Module):
+    @torch.no_grad()
     def __init__(self, *init_values: float):
         super().__init__()
 
@@ -40,35 +28,46 @@ class ThetaBoundary(nn.Module):
 
         set_parameter = lambda x : Parameter(tensor(x), requires_grad=False)
 
-        lb = set_parameter(1.e-6)
+        lb = 1.e-6
         iv = tc.tensor(0)
-        ub = set_parameter(1.e6)
+        ub = 1.e6
         if len(init_values) == 1 :
             iv = tc.tensor(init_values[0])
             if lb > init_values[0] :
-                lb = set_parameter(init_values[0])
+                lb = init_values[0]
             if ub < init_values[0] :
-                ub = set_parameter(init_values[0])
+                ub = init_values[0]
         elif len(init_values) == 2 :
             if init_values[1] < init_values[0]:
                 raise Exception('lower value must be lower than upper value.')
-            lb = set_parameter(init_values[0])
-            iv = set_parameter((init_values[0] + init_values[1])/2)
-            ub = set_parameter(init_values[1])
+            lb = init_values[0]
+            iv = (init_values[0] + init_values[1])/2
+            ub = init_values[1]
         elif len(init_values) == 3 :
             if init_values[0] < init_values[1] < init_values[2] :
-                self.lb = set_parameter(init_values[0])
+                lb = init_values[0]
                 iv = tensor(init_values[1])
-                ub = set_parameter(init_values[2])
+                ub = init_values[2]
             else :
                 raise Exception('init_values must increase in order.')
-        self.lb : Parameter = lb
-        self.ub : Parameter = ub
-        self.alpha = 0.1 - tc.log((iv - lb)/(ub - lb)/(1 - (iv - lb)/(ub - lb)))
+        self.lb : Parameter = set_parameter(lb)
+        self.ub : Parameter = set_parameter(ub)
+        alpha = 0.1 - tc.log((iv - self.lb)/(self.ub - self.lb)/(1 - (iv - self.lb)/(self.ub - self.lb)))
+        self.alpha : Parameter = set_parameter(alpha)
 
-    def forward(self, theta) :
-            theta = tc.exp(theta - self.alpha)/(tc.exp(theta - self.alpha) + 1)*(self.ub - self.lb) + self.lb
-            return theta
+    def forward(self, theta: Theta) :
+        if isinstance(theta, Tensor):
+            return tc.exp(theta - self.alpha)/(tc.exp(theta - self.alpha) + 1)*(self.ub - self.lb) + self.lb
+        else :
+            raise ValueError("theta should be instance of torch.Tensor")
+
+class ThetaInit:
+    def __init__(
+            self, 
+            *init_values: float,
+            fixed = False):
+        self.init_values = init_values
+        self.fixed = fixed
 
 class Eta(ParameterDict) :
     pass
@@ -132,10 +131,10 @@ class CovarianceBlockMatrix(nn.Module) :
                 m.append(lower_triangular_vector_to_covariance_matrix(lower_triangular_vector, diag = lower_triangular_vector.is_diagonal))
         return m
 
-class Omega(CovarianceVectorList):
+class OmegaVectorList(CovarianceVectorList):
     pass
 
-class Sigma(CovarianceVectorList):
+class SigmaVectorList(CovarianceVectorList):
     pass
 
 class CovarianceScaler(nn.Module):

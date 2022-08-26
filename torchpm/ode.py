@@ -171,7 +171,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
         Returns:
             ics: initial states of compartments
         """
-        d = sym.symbols(EssentialColumnNames.AMT.value, real = True, Positve = True, finite = True) #dose
+        d = sym.symbols(EssentialColumns.AMT.value, real = True, Positve = True, finite = True) #dose
         result = {}
 
         funcs = self._get_functions()  
@@ -195,7 +195,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
         comps_num = len(self.distribution_matrix)
 
         t = sym.symbols('t', negative = False, real=True, finite = True) #time
-        r = sym.symbols(EssentialColumnNames.RATE.value, positive = True, real=True, finite = True) #infusion rate
+        r = sym.symbols(EssentialColumns.RATE.value, positive = True, real=True, finite = True) #infusion rate
         
         funcs = [func(t) for func in self._get_functions()]  # type: ignore
         funcs_ = [func.diff(t) for func in funcs]
@@ -271,7 +271,7 @@ class SymbolicCompartmentEquation(CompartmentEquation) :
 
     def forward(self, t, **variables):
         if self.is_infusion :
-            infusion_end_time = variables[EssentialColumnNames.AMT.value] / variables[EssentialColumnNames.RATE.value]
+            infusion_end_time = variables[EssentialColumns.AMT.value] / variables[EssentialColumns.RATE.value]
             
             infusion_t = tc.masked_select(t, t <= infusion_end_time)
             variables['t'] = t

@@ -181,8 +181,8 @@ class FisherInformationMatrixTest(unittest.TestCase):
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
-        omega = Omega([0.1, 0.1, 0.1], [True])
-        sigma = Sigma([0.1], [True])
+        omega = OmegaVectorList([0.1, 0.1, 0.1], [True])
+        sigma = SigmaVectorList([0.1], [True])
 
         
 
@@ -428,10 +428,10 @@ class TotalTest(unittest.TestCase) :
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
-        omega = Omega([0.4397,
+        omega = OmegaVectorList([0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205], False, requires_grads=False)
-        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
+        sigma = SigmaVectorList([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
 
         model_config = models.ModelConfig(
@@ -496,10 +496,10 @@ class TotalTest(unittest.TestCase) :
         
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
-        omega = Omega([0.4397,
+        omega = OmegaVectorList([0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205], False, requires_grads=False)
-        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
+        sigma = SigmaVectorList([[0.0177], [0.0762]], [True, True], requires_grads=[False, True])
 
         model_config = models.ModelConfig(
                 pred_function = AnnModel(dataset, output_column_names),
@@ -525,10 +525,10 @@ class TotalTest(unittest.TestCase) :
         dataset = PMDataset(dataset_np, column_names, device)
 
         output_column_names=column_names+['k_a', 'v', 'k_e']
-        omega = Omega([[0.4397,
+        omega = OmegaVectorList([[0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
-        sigma = Sigma([0.0177, 0.0762], [True])
+        sigma = SigmaVectorList([0.0177, 0.0762], [True])
 
         model_config = models.ModelConfig(
                 pred_function = AmtModel(dataset, output_column_names), 
@@ -565,10 +565,10 @@ class TotalTest(unittest.TestCase) :
         dataset = PMDataset(dataset_np, column_names, device)
         output_column_names=column_names+['k_a', 'v', 'k_e']
 
-        omega = Omega([[0.4397,
+        omega = OmegaVectorList([[0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205]], [False], requires_grads=True)
-        sigma = Sigma([[0.0177, 0.0762]], [True])
+        sigma = SigmaVectorList([[0.0177, 0.0762]], [True])
 
         model_config = models.ModelConfig(
                 pred_function = NumericFunction(dataset, output_column_names), 
@@ -611,10 +611,10 @@ class TotalTest(unittest.TestCase) :
         dataset = PMDataset(dataset_np, column_names, device)
         output_column_names=['ID', 'TIME', 'AMT', 'k_a', 'v', 'k_e']
 
-        omega = Omega([0.4397,
+        omega = OmegaVectorList([0.4397,
                         0.0575,  0.0198, 
                         -0.0069,  0.0116,  0.0205], False, requires_grads=True)
-        sigma = Sigma([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
+        sigma = SigmaVectorList([[0.0177], [0.0762]], [True, True], requires_grads=[True, True])
 
         model_config = models.ModelConfig(
                 pred_function=CovModel(dataset, output_column_names), 

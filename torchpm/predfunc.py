@@ -29,44 +29,66 @@ class PredictionFunction(Module):
         self._column_names = dataset.column_names
         self._ids = dataset.ids
         self._record_lengths = dataset.record_lengths
-        self._theta_boundary_mode = True
+        self._theta_boundary_mode : bool = True
         self.theta_boundaries = ModuleDict()
 
-    def __setattr__(self, name: str, value) -> None:
+    def __setattr__(self, name: str, value : Any) -> None:
         with tc.no_grad() :
-            if type(value) is Theta :
-                super().__setattr__(name, value)
-                if value.set_boundary:
-                    theta_boundary = ThetaBoundary(*value.init_values)
-                    self.theta_boundaries.update({name: theta_boundary})
-                    value.set_boundary = False
-                return
+            if type(value) is ThetaInit :
+                theta_boundary = ThetaBoundary(*value.init_values)
+                self.theta_boundaries.update({name: theta_boundary})
+                value = Theta(tensor(0.1), fixed = value.fixed)
             elif type(value) is Eta :
                 for id in self._ids : 
                     value.update({str(id): Parameter(tensor(0.1))})
-                super().__setattr__(name, value)
-                return
             elif type(value) is Eps :
                 for id in self._ids :
                     value.update({str(id): Parameter(tc.zeros(self._record_lengths[id]))})
-                super().__setattr__(name, value)
-                return
         super().__setattr__(name, value)
 
     def __getattribute__(self, name: str) -> Any:
         att = super().__getattribute__(name)
-        if self._theta_boundary_mode \
+        if self.theta_boundary_mode \
                 and type(att) is Theta \
-                and att.boundary_mode \
                 and name in self.theta_boundaries.keys():
             theta_boundary = self.theta_boundaries[name]
-            if theta_boundary is not None :
-                return theta_boundary(att)
-            else :
-                return att
+            return theta_boundary(att)
         return att
+    
+    @property
+    def theta_boundary_mode(self) :
+        return self._theta_boundary_mode
 
-    def _get_attr_dict(self, dtype: Type[T]) -> Dict[str, T]:
+    @theta_boundary_mode.setter
+    @torch.no_grad()
+    def theta_boundary_mode(self, value: bool):
+        # turn on
+        if not self._theta_boundary_mode and value :
+            attribute_names = dir(self)
+            for name in attribute_names:
+                att = getattr(self, name)
+                if type(att) is Theta and name in self.theta_boundaries.keys():
+                    theta_boundary = self.theta_boundaries[name]
+                    if type(theta_boundary) is ThetaBoundary:
+                        lb = float(theta_boundary.lb)
+                        iv = float(att)
+                        ub = float(theta_boundary.ub)
+                        self.theta_boundaries[name] = ThetaBoundary(lb, iv, ub)
+                        setattr(self, name, Theta(tensor(0.1), fixed=att.fixed, requires_grad=att.requires_grad))
+            self._theta_boundary_mode = True
+        # turn off
+        elif self._theta_boundary_mode and not value :
+            attribute_names = dir(self)
+            for name in attribute_names:
+                att = getattr(self, name)
+                if type(att) is Theta and name in self.theta_boundaries.keys():
+                    theta_boundary = self.theta_boundaries[name]
+                    theta_value = theta_boundary(att)
+                    theta = Theta(float(theta_value), fixed=att.fixed, requires_grad=att.requires_grad, boundary_mode=False)
+                    setattr(self, name, theta)
+            self._theta_boundary_mode = False
+
+    def get_attr_dict(self, dtype: Type[T]) -> Dict[str, T]:
         attr_dict : Dict[str, dtype] = {}
         att_names = dir(self)
         for name in att_names :
@@ -74,19 +96,6 @@ class PredictionFunction(Module):
             if type(att) is dtype :
                 attr_dict[name] = att
         return attr_dict
-
-    @property
-    def theta_dict(self) -> Dict[str, Theta]:
-        return self._get_attr_dict(Theta)
-    
-    @property
-    def eta_dict(self) -> Dict[str, Eta]:
-        return self._get_attr_dict(Eta)
-
-    @property
-    def eps_dict(self) -> Dict[str, Eps]:
-        return self._get_attr_dict(Eps)
-        
 
     def reset_epss(self) :
         attributes = dir(self)
@@ -113,39 +122,6 @@ class PredictionFunction(Module):
             start_index = tc.cat([start_index, tensor([end-1], device = amts.device)] , 0)
 
         return start_index 
-    
-    def set_non_boundary_mode(self):
-        if not self._theta_boundary_mode :
-            return self
-        with tc.no_grad() :
-            attribute_names = dir(self)
-            for att_name in attribute_names:
-                att = getattr(self, att_name)
-                if type(att) is Theta and att_name in self.theta_boundaries.keys():
-                    theta_boundary = self.theta_boundaries[att_name]
-                    theta_value = theta_boundary(att)
-                    theta = Theta(float(theta_value), fixed=att.fixed, requires_grad=att.requires_grad, set_boundary=False, boundary_mode=False)
-                    setattr(self, att_name, theta)
-            self._theta_boundary_mode = False
-        return self
-    
-    def set_boundary_mode(self):
-        if self._theta_boundary_mode : 
-            return self
-        with tc.no_grad() :
-            attribute_names = dir(self)
-            for att_name in attribute_names:
-                att = getattr(self, att_name)
-                if type(att) is Theta and att_name in self.theta_boundaries.keys():
-                    theta_boundary = self.theta_boundaries[att_name]
-                    if type(theta_boundary) is ThetaBoundary:
-                        lb = float(theta_boundary.lb)
-                        iv = float(att)
-                        ub = float(theta_boundary.ub)
-                        theta_init = Theta(lb, iv, ub, fixed=att.fixed, set_boundary = True, requires_grad=att.requires_grad, boundary_mode=True)
-                        setattr(self, att_name, theta_init)
-            self._theta_boundary_mode = True
-        return self
 
     def _pre_forward(self, dataset : Dict[str, Tensor]) -> Dict[str, Tensor]:
         id = dataset[EssentialColumns.ID.value][0]
@@ -206,9 +182,7 @@ class SymbolicPredictionFunction(PredictionFunction):
         datasets = self._batch_to_datasets(batch)
         
         output = []
-
         for dataset in datasets :
-            id = str(dataset[EssentialColumns.ID.value][0])
             parameters = self._pre_forward(dataset)
             f = tc.zeros(dataset[EssentialColumns.ID.value].size()[0], device = dataset[EssentialColumns.ID.value].device)
             amt_indice = self._get_amt_indice(dataset)
@@ -235,7 +209,6 @@ class SymbolicPredictionFunction(PredictionFunction):
                 f = f + tc.cat([f_pre, f_cur], 0)
 
             pred = self._calculate_error(f, parameters)
-            # mdv_mask = dataset[EssentialColumns.MDV.value] == 0
             post_forward_output = self._post_forward(parameters)
             post_forward_output[self.PRED_COLUMN_NAME] = pred
             output.append(post_forward_output)
@@ -254,31 +227,43 @@ class NumericPredictionFunction(PredictionFunction):
     atol : float = 1e-2
 
     @abstractmethod
-    def _calculate_preds(self, t : tc.Tensor, y: tc.Tensor , parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
+    def _calculate_preds(self, t : Tensor, y: Tensor , parameters : Dict[str, Tensor]) -> Tensor:
         pass
 
-    def _ode_function(self, t, y):
-        index = (self.t < t).sum() - 1
-        parameters_sliced = {k: v[index] for k, v in self.parameter_values.items()}
-        return self._calculate_preds(t, y, parameters_sliced) + \
-            self.infusion_rate * (self.infusion_end_time > t)
+    # def _ode_function(self, t, y):
+    #     index = (self.t < t).sum() - 1
+    #     parameters_sliced = {k: v[index] for k, v in self.parameter_values.items()}
+    #     return self._calculate_preds(t, y, parameters_sliced) + self.infusion_rate * (self.infusion_end_time > t)
+    
+    def _generate_ode_function(
+            self, 
+            times : Tensor, 
+            parameters : Dict[str, Tensor], 
+            infusion_rate : Tensor, 
+            infusion_end_time : Tensor):
+        if times.dim() != 1 :
+            raise Exception("times' dim should be 1")
+        def ode_function(t : Tensor, y : Tensor):
+            # nonlocal parameters
+            # nonlocal times
+            index = (times < t).sum() - 1
+            parameters_sliced = {k: v[index] for k, v in parameters.items()}
+            return self._calculate_preds(t, y, parameters_sliced) + infusion_rate * (infusion_end_time > t)
+        return ode_function
+        
 
     def forward(self, batch : Dict[str, Tensor]) :
 
         datasets = self._batch_to_datasets(batch)
         output = []
         for dataset in datasets :
-            if not hasattr(self, 'parameter_values'):
-                self.parameter_values : Dict[str, tc.Tensor] = {}
             parameters = self._pre_forward(dataset)
-            self.parameter_values = parameters
 
-            self.max_cmt = int(dataset[EssentialColumns.CMT.value].max())
+            max_cmt = int(dataset[EssentialColumns.CMT.value].max())
             y_pred_arr = []
-            parameters_result = {}
-            y_init = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
-            self.infusion_rate = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
-            self.infusion_end_time = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            y_init = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            infusion_rate = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            infusion_end_time = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
             amt_indice = self._get_amt_indice(dataset)
 
             for i in range(len(amt_indice) - 1):
@@ -289,38 +274,29 @@ class NumericPredictionFunction(PredictionFunction):
                 times = parameters[EssentialColumns.TIME.value][amt_slice]
 
                 if  rate == 0 :                    
-                    bolus = tc.zeros(self.max_cmt + 1, device = dataset[EssentialColumns.ID.value].device)
+                    bolus = tc.zeros(max_cmt + 1, device = dataset[EssentialColumns.ID.value].device)
                     bolus[cmt[0].to(tc.int64)] = amt
                     y_init = y_init + bolus
 
                 else :
                     time = times[0]
-                    mask = tc.ones(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    mask = tc.ones(max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
                     mask[cmt[0].to(tc.int64)] = 0
     
-                    rate_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    rate_vector = tc.zeros(max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
                     rate_vector[cmt[0].to(tc.int64)] = rate
 
-                    self.infusion_rate = self.infusion_rate * mask + rate_vector
-                    infusion_end_time_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    infusion_rate = infusion_rate * mask + rate_vector
+                    infusion_end_time_vector = tc.zeros(max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
                     infusion_end_time_vector[cmt[0].to(tc.int64)] = time + amt / rate
-                    self.infusion_end_time = self.infusion_end_time * mask + infusion_end_time_vector
+                    infusion_end_time = infusion_end_time * mask + infusion_end_time_vector
                     
-                self.t = times
-                result = odeint(self._ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
+                result = odeint(self._generate_ode_function(times, parameters, infusion_rate, infusion_end_time), y_init, times, rtol=self.rtol, atol=self.atol)
                 y_integrated = result
                 y_init = result[-1]
 
                 cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset[EssentialColumns.ID.value].device)  # type: ignore
                 y_integrated = y_integrated.masked_select(cmt_mask==1)  # type: ignore
-
-                # parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}
-                
-                # for k, v in parameters_sliced.items() :
-                #     if k not in parameters_result.keys() :
-                #         parameters_result[k] = v
-                #     else :
-                #         parameters_result[k] = tc.cat([parameters_result[k], parameters_sliced[k]])
 
                 if amt_indice[i+1]+1 == dataset[EssentialColumns.ID.value].size()[0] :
                     y_pred_arr.append(y_integrated)

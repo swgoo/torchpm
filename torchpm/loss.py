@@ -1,16 +1,19 @@
 import torch as tc
+from torch import Tensor
+from torch.nn import Module
 import abc
 from .misc import *
 
-class ObjectiveFunction(metaclass=abc.ABCMeta) :
+class ObjectiveFunction(Module) :
+    
     @abc.abstractmethod
-    def __call__(self, y_true, y_pred, g, h, eta, omega, sigma) -> tc.Tensor:
+    def forward(self, dv, pred, g, h, eta, omega, sigma) -> Tensor:
         pass
 
 class FOCEInterObjectiveFunction(ObjectiveFunction) :
-    def __call__(self, y_true, y_pred, g, h, eta, omega, sigma) -> tc.Tensor:
+    def __call__(self, dv, pred, g, h, eta, omega, sigma) -> tc.Tensor:
 
-        res = y_true - y_pred
+        res = dv - pred
         v = (h @ sigma @ h.t()).diag().diag()
         
         inv_v = v.inverse()
@@ -32,9 +35,9 @@ class FOCEInterObjectiveFunction(ObjectiveFunction) :
         return tc.squeeze(term1 + term2 + term3 + term4 + term5)
 
 class FOCEObjectiveFunction(ObjectiveFunction) :
-    def __call__(self, y_true, y_pred, g, h, eta, omega, sigma) :
+    def __call__(self, dv, pred, g, h, eta, omega, sigma) :
         v = (h @ sigma @ h.t()).diag().diag()
-        res = y_true - y_pred 
+        res = dv - pred 
         c = g @ omega @ g.t() + v
         r = mat_sqrt_inv(c) @ (res + g @ eta)
         c_sign, c_det_value = c.slogdet()
