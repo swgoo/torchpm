@@ -74,13 +74,6 @@ class FOCEInter(pl.LightningModule) :
         self.eta_names = self.omega_vector_list.random_variable_names
         self.eps_names = self.sigma_vector_list.random_variable_names
 
-    # def __getattribute__(self, __name: str) -> Any:
-    #     att = super().__getattribute__(__name)
-    #     att_type = type(att)
-    #     if att_type is Eta or att_type is Eps :
-    #         return lambda : att(self._id)
-    #     return att
-
     @property
     def omega(self):
         return self._get_covariance_matrix(self.omega_vector_list, self.omega_scaler_list)
