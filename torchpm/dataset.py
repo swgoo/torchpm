@@ -8,6 +8,7 @@ from scipy import stats
 import pandas as pd
 
 from torch import Tensor
+from torch.nn import functional as F
 
 from torch.utils.data import Dataset
 
@@ -77,7 +78,7 @@ class PMDataset(Dataset):
         
         self.ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(0).unique().tolist()
         self.max_record_length = 0
-        self.record_lengths : Dict[int, int]
+        self.record_lengths : Dict[int, int] = {}
         self.datasets_by_id : Dict[int, Dict[str, tc.Tensor]] = {}
         for id in self.ids :
             id_mask = dataframe[EssentialColumns.ID.value] == id
@@ -88,7 +89,8 @@ class PMDataset(Dataset):
             self.record_lengths[id] = length
 
             for col in dataframe.columns :
-                self.datasets_by_id[id][col] = tc.tensor(dataset_by_id[col].values)
+                t = tc.tensor(dataset_by_id[col].values)
+                self.datasets_by_id[id][col] = F.pad(t, (0, self.max_record_length-length))
 
         self.len = len(self.datasets_by_id.keys())
 

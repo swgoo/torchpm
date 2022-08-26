@@ -66,8 +66,6 @@ class PredictionFunction(Module):
                 return att
         return att
 
-   
-
     def _get_attr_dict(self, dtype: Type[T]) -> Dict[str, T]:
         attr_dict : Dict[str, dtype] = {}
         att_names = dir(self)
@@ -160,8 +158,22 @@ class PredictionFunction(Module):
                 dataset[key] = para.repeat([record_length])
         return dataset
     
+    def _batch_to_datasets(self, batch) :
+        datasets : List[Dict[str, Tensor]] = []
+        with torch.no_grad() :
+            for id in batch[EssentialColumns.ID.value] :
+                datasets.append({})
+            for key, values in batch.items() :
+                for dataset, value in zip(datasets, values) :
+                    dataset[key] = value
+            for dataset, length in zip(datasets, self._record_lengths) :
+                for key, value in dataset.items() :
+                    dataset[key] = value[:length]   
+        return datasets
+    
 
     def _post_forward(self, dataset : Dict[str, Tensor]):
+
         id = dataset[EssentialColumns.ID.value][0]
         record_length = self._record_lengths[id]
 
@@ -189,39 +201,46 @@ class SymbolicPredictionFunction(PredictionFunction):
     def _calculate_preds(self, t : tc.Tensor, dataset : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
-    def forward(self, dataset) :
-        parameters = self._pre_forward(dataset)
-        f = tc.zeros(dataset.size()[0], device = dataset[EssentialColumns.ID.value].device)
-        amt_indice = self._get_amt_indice(dataset)
-        id = str(dataset[EssentialColumns.ID.value][0])
+    def forward(self, batch) :
 
-        for i in range(len(amt_indice) - 1):
-            start_time_index = amt_indice[i]
-
-            #누적하기 위해 앞부분 생성
-            dataset_pre = dataset[:start_time_index, :]
-            f_pre = tc.zeros(dataset_pre.size()[0], device = dataset[EssentialColumns.ID.value].device)
-
-            times = parameters[EssentialColumns.TIME.value][start_time_index:]
-            start_time = times[0]
-
-            amts = parameters[EssentialColumns.AMT.value][start_time_index].repeat(parameters[EssentialColumns.AMT.value][start_time_index:].size()[0])
-
-            parameters_sliced = {k: v[start_time_index:] for k, v in parameters.items()}            
-            parameters_sliced[EssentialColumns.TIME.value] = times
-            parameters_sliced[EssentialColumns.AMT.value] = amts
-
-            t = times - start_time
-            f_cur = self._calculate_preds(t, parameters_sliced)
-            f = f + tc.cat([f_pre, f_cur], 0)
-
-        pred = self._calculate_error(f, parameters)
-        # mdv_mask = dataset[EssentialColumns.MDV.value] == 0
-        post_forward_output = self._post_forward(parameters)
-        post_forward_output[self.PRED_COLUMN_NAME] = pred
+        datasets = self._batch_to_datasets(batch)
         
+        output = []
 
-        return post_forward_output
+        for dataset in datasets :
+            id = str(dataset[EssentialColumns.ID.value][0])
+            parameters = self._pre_forward(dataset)
+            f = tc.zeros(dataset[EssentialColumns.ID.value].size()[0], device = dataset[EssentialColumns.ID.value].device)
+            amt_indice = self._get_amt_indice(dataset)
+            
+
+            for i in range(len(amt_indice) - 1):
+                start_time_index = amt_indice[i]
+
+                #누적하기 위해 앞부분 생성
+                dataset_pre = {key: value[:start_time_index] for key, value in dataset.items()}
+                f_pre = tc.zeros(dataset_pre[EssentialColumns.ID.value].size()[0], device = dataset[EssentialColumns.ID.value].device)
+
+                times = parameters[EssentialColumns.TIME.value][start_time_index:]
+                start_time = times[0]
+
+                amts = parameters[EssentialColumns.AMT.value][start_time_index].repeat(parameters[EssentialColumns.AMT.value][start_time_index:].size()[0])
+
+                parameters_sliced = {k: v[start_time_index:] for k, v in parameters.items()}            
+                parameters_sliced[EssentialColumns.TIME.value] = times
+                parameters_sliced[EssentialColumns.AMT.value] = amts
+
+                t = times - start_time
+                f_cur = self._calculate_preds(t, parameters_sliced)
+                f = f + tc.cat([f_pre, f_cur], 0)
+
+            pred = self._calculate_error(f, parameters)
+            # mdv_mask = dataset[EssentialColumns.MDV.value] == 0
+            post_forward_output = self._post_forward(parameters)
+            post_forward_output[self.PRED_COLUMN_NAME] = pred
+            output.append(post_forward_output)
+
+        return output
 
 
 class NumericPredictionFunction(PredictionFunction):
@@ -244,68 +263,73 @@ class NumericPredictionFunction(PredictionFunction):
         return self._calculate_preds(t, y, parameters_sliced) + \
             self.infusion_rate * (self.infusion_end_time > t)
 
-    def forward(self, dataset : Dict[str, Tensor]) :
-        if not hasattr(self, 'parameter_values'):
-            self.parameter_values : Dict[str, tc.Tensor] = {}
-        parameters = self._pre_forward(dataset)
-        self.parameter_values = parameters
+    def forward(self, batch : Dict[str, Tensor]) :
 
-        self.max_cmt = int(dataset[EssentialColumns.CMT.value].max())
-        y_pred_arr = []
-        parameters_result = {}
-        y_init = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
-        self.infusion_rate = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
-        self.infusion_end_time = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
-        amt_indice = self._get_amt_indice(dataset)
+        datasets = self._batch_to_datasets(batch)
+        output = []
+        for dataset in datasets :
+            if not hasattr(self, 'parameter_values'):
+                self.parameter_values : Dict[str, tc.Tensor] = {}
+            parameters = self._pre_forward(dataset)
+            self.parameter_values = parameters
 
-        for i in range(len(amt_indice) - 1):
-            amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
-            amt = parameters[EssentialColumns.AMT.value][amt_indice[i]]
-            rate = parameters[EssentialColumns.RATE.value][amt_indice[i]]
-            cmt  = parameters[EssentialColumns.CMT.value][amt_slice]
-            times = parameters[EssentialColumns.TIME.value][amt_slice]
+            self.max_cmt = int(dataset[EssentialColumns.CMT.value].max())
+            y_pred_arr = []
+            parameters_result = {}
+            y_init = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            self.infusion_rate = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            self.infusion_end_time = tc.zeros(self.max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            amt_indice = self._get_amt_indice(dataset)
 
-            if  rate == 0 :                    
-                bolus = tc.zeros(self.max_cmt + 1, device = dataset[EssentialColumns.ID.value].device)
-                bolus[cmt[0].to(tc.int64)] = amt
-                y_init = y_init + bolus
+            for i in range(len(amt_indice) - 1):
+                amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
+                amt = parameters[EssentialColumns.AMT.value][amt_indice[i]]
+                rate = parameters[EssentialColumns.RATE.value][amt_indice[i]]
+                cmt  = parameters[EssentialColumns.CMT.value][amt_slice]
+                times = parameters[EssentialColumns.TIME.value][amt_slice]
 
-            else :
-                time = times[0]
-                mask = tc.ones(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
-                mask[cmt[0].to(tc.int64)] = 0
- 
-                rate_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
-                rate_vector[cmt[0].to(tc.int64)] = rate
+                if  rate == 0 :                    
+                    bolus = tc.zeros(self.max_cmt + 1, device = dataset[EssentialColumns.ID.value].device)
+                    bolus[cmt[0].to(tc.int64)] = amt
+                    y_init = y_init + bolus
 
-                self.infusion_rate = self.infusion_rate * mask + rate_vector
-                infusion_end_time_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
-                infusion_end_time_vector[cmt[0].to(tc.int64)] = time + amt / rate
-                self.infusion_end_time = self.infusion_end_time * mask + infusion_end_time_vector
+                else :
+                    time = times[0]
+                    mask = tc.ones(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    mask[cmt[0].to(tc.int64)] = 0
+    
+                    rate_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    rate_vector[cmt[0].to(tc.int64)] = rate
+
+                    self.infusion_rate = self.infusion_rate * mask + rate_vector
+                    infusion_end_time_vector = tc.zeros(self.max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    infusion_end_time_vector[cmt[0].to(tc.int64)] = time + amt / rate
+                    self.infusion_end_time = self.infusion_end_time * mask + infusion_end_time_vector
+                    
+                self.t = times
+                result = odeint(self._ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
+                y_integrated = result
+                y_init = result[-1]
+
+                cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset[EssentialColumns.ID.value].device)  # type: ignore
+                y_integrated = y_integrated.masked_select(cmt_mask==1)  # type: ignore
+
+                # parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}
                 
-            self.t = times
-            result = odeint(self._ode_function, y_init, self.t, rtol=self.rtol, atol=self.atol)
-            y_integrated = result
-            y_init = result[-1]
+                # for k, v in parameters_sliced.items() :
+                #     if k not in parameters_result.keys() :
+                #         parameters_result[k] = v
+                #     else :
+                #         parameters_result[k] = tc.cat([parameters_result[k], parameters_sliced[k]])
 
-            cmt_mask = tc.nn.functional.one_hot(cmt.to(tc.int64)).to(dataset[EssentialColumns.ID.value].device)  # type: ignore
-            y_integrated = y_integrated.masked_select(cmt_mask==1)  # type: ignore
+                if amt_indice[i+1]+1 == dataset[EssentialColumns.ID.value].size()[0] :
+                    y_pred_arr.append(y_integrated)
+                else :
+                    y_pred_arr.append(y_integrated[:-1])
 
-            # parameters_sliced = {k: v[amt_slice] for k, v in self.parameter_values.items()}
-            
-            # for k, v in parameters_sliced.items() :
-            #     if k not in parameters_result.keys() :
-            #         parameters_result[k] = v
-            #     else :
-            #         parameters_result[k] = tc.cat([parameters_result[k], parameters_sliced[k]])
+            pred = self._calculate_error(tc.cat(y_pred_arr), parameters)
 
-            if amt_indice[i+1]+1 == dataset[EssentialColumns.ID.value].size()[0] :
-                y_pred_arr.append(y_integrated)
-            else :
-                y_pred_arr.append(y_integrated[:-1])
-
-        pred = self._calculate_error(tc.cat(y_pred_arr), parameters)
-
-        post_forward_output = self._post_forward(parameters)
-        post_forward_output[self.PRED_COLUMN_NAME] = pred
-        return post_forward_output
+            post_forward_output = self._post_forward(parameters)
+            post_forward_output[self.PRED_COLUMN_NAME] = pred
+            output.append(post_forward_output)
+        return output

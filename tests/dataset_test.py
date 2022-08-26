@@ -16,7 +16,8 @@ class DatasetTest(unittest.TestCase) :
     def test_pmdataset(self) :
         dataframe = pd.read_csv('examples/THEO.csv')
         dataset = PMDataset(dataframe)
-        pass
+        for batch in torch.utils.data.DataLoader(dataset, batch_size=10) :
+            print(batch)
 
     def test_essential_columns(self) :
         print(EssentialColumns.AMT.value)
