@@ -7,7 +7,7 @@ import torch as tc
 
 from scipy.stats import chi2
 
-from .dataset import PMDataset
+from .data import PMDataset
 from .models import FOCEInter, ModelConfig
 from .parameter import *
 from . import predfunc

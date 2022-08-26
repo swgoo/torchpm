@@ -2,8 +2,8 @@ import unittest
 import torch as tc
 from torch import nn
 from torchpm import covariate, models, ode, predfunc, loss
-from torchpm import dataset
-from torchpm.dataset import PMDataset, OptimalDesignDataset
+from torchpm import data
+from torchpm.data import PMDataset, OptimalDesignDataset
 from torchpm.parameter import *
 import matplotlib.pyplot as plt
 import numpy as np

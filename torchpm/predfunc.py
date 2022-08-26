@@ -7,12 +7,12 @@ import torch.nn as nn
 from torch.nn import Module
 from torchdiffeq import odeint
 
-from torchpm import dataset
+from torchpm import data
 
 from .misc import *
 from .parameter import *
 
-from .dataset import EssentialColumns
+from .data import EssentialColumns
 from torch.nn.parameter import Parameter
 from torch.nn import ParameterDict, ModuleDict
 
@@ -22,7 +22,7 @@ class PredictionFunction(Module):
     PRED_COLUMN_NAME : str = 'PRED'
 
     def __init__(self,
-            dataset : dataset.PMDataset,
+            dataset : data.PMDataset,
             **kwargs):
         super().__init__(**kwargs)
         self.dataset = dataset

@@ -2,12 +2,11 @@ import enum
 from dataclasses import dataclass, asdict
 from typing import Dict, Iterable, List, Literal, Optional, OrderedDict, Set, Tuple, Type
 
-import numpy as np
-import torch as tc
+import torch
 from scipy import stats
 import pandas as pd
 
-from torch import Tensor
+from torch import Tensor, tensor
 from torch.nn import functional as F
 
 from torch.utils.data import Dataset
@@ -79,7 +78,7 @@ class PMDataset(Dataset):
         self.ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(0).unique().tolist()
         self.max_record_length = 0
         self.record_lengths : Dict[int, int] = {}
-        self.datasets_by_id : Dict[int, Dict[str, tc.Tensor]] = {}
+        self.datasets_by_id : Dict[int, Dict[str, Tensor]] = {}
         for id in self.ids :
             id_mask = dataframe[EssentialColumns.ID.value] == id
             dataset_by_id = dataframe.loc[id_mask]
@@ -89,12 +88,12 @@ class PMDataset(Dataset):
             self.record_lengths[id] = length
 
             for col in dataframe.columns :
-                t = tc.tensor(dataset_by_id[col].values)
-                self.datasets_by_id[id][col] = F.pad(t, (0, self.max_record_length-length))
+                t = tensor(dataset_by_id[col].values)
+                self.datasets_by_id[id][col] = F.pad(t, (0, self.max_record_length - length))
 
         self.len = len(self.datasets_by_id.keys())
 
-    def __getitem__(self, idx) -> Dict[str, tc.Tensor]:
+    def __getitem__(self, idx) -> Dict[str, Tensor]:
         id = self.ids[idx]
         return self.datasets_by_id[id]
 
