@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from random import random
 from re import L
 from typing import Dict, Iterable, List, Optional, Tuple, Union
 
@@ -76,34 +78,24 @@ class Eps(ParameterDict):
     pass
 
 class CovarianceVector(Parameter):
+    @tc.no_grad()
     def __init__(
                 self, 
-                init_values: List[float], 
+                data: Tensor, 
                 random_variable_names : Tuple[str, ...],
                 is_diagonal = True, 
-                fixed = False, 
-                set_scale = True,
-                scale_mode = True,
+                fixed = False,
                 requires_grad = True) :
         
         self.random_variable_names = random_variable_names
 
-        dimension = get_dimension_of_lower_triangular_vector(init_values, is_diagonal)
+        dimension = get_dimension_of_lower_triangular_vector(data, is_diagonal)
         if dimension != len(random_variable_names) :
             raise Exception("lower_trangular_vector can't be converted to square matrix")
 
-        
-        with tc.no_grad() :
-            if set_scale :
-                data = tensor([0.1]*len(init_values), dtype = torch.float)
-            else :
-                data = tensor(init_values, dtype = torch.float)
-            super().__init__(data, requires_grad = requires_grad)
-        self.init_values = init_values
+        super().__init__(data, requires_grad = requires_grad)
         self.fixed = fixed
         self.is_diagonal = is_diagonal
-        self.set_scale = set_scale
-        self.scale_mode = scale_mode
 
 class CovarianceVectorList(ParameterList) :
     def __init__(
@@ -119,6 +111,13 @@ class CovarianceVectorList(ParameterList) :
                 result = result + covariance_vector.random_variable_names
         return result
 
+@dataclass
+class CovarianceVectorInit :
+    init_values: List[float]
+    random_variable_names : Tuple[str, ...]
+    is_diagonal = True
+    fixed = False
+
 class CovarianceBlockMatrix(nn.Module) :
     def __init__(self) :
         super().__init__()
@@ -130,12 +129,6 @@ class CovarianceBlockMatrix(nn.Module) :
             if type(lower_triangular_vector) is CovarianceVector :
                 m.append(lower_triangular_vector_to_covariance_matrix(lower_triangular_vector, diag = lower_triangular_vector.is_diagonal))
         return m
-
-class OmegaVectorList(CovarianceVectorList):
-    pass
-
-class SigmaVectorList(CovarianceVectorList):
-    pass
 
 class CovarianceScaler(nn.Module):
     
@@ -156,9 +149,8 @@ class CovarianceScaler(nn.Module):
     #     scale_matrix = scale_matrix.nan_to_num()
     #     return scale_matrix @ scale_matrix.t()
 
-    def _set_scale(self, lower_triangular_vector : CovarianceVector) :
-        init_values = tensor(lower_triangular_vector.init_values)
-        var_mat = lower_triangular_vector_to_covariance_matrix(init_values, lower_triangular_vector.is_diagonal)
+    def _set_scale(self, covariance_vector : CovarianceVector) :
+        var_mat = lower_triangular_vector_to_covariance_matrix(covariance_vector, covariance_vector.is_diagonal)
         # m1 = tc.linalg.cholesky(var_mat).transpose(-2, -1).conj()
         m1 = tc.linalg.cholesky(var_mat).transpose(-2, -1)
         v1 = m1.diag()
@@ -170,7 +162,7 @@ class CovarianceScaler(nn.Module):
         return self._get_descaled_matrix(covariance_block_matrix)
 
 class CovarianceScalerList(nn.ModuleList):
-    def __init__(self, covariance_scaler_list : Optional[List[CovarianceScaler]]):
+    def __init__(self, covariance_scaler_list : Optional[List[CovarianceScaler]] = None):
         super().__init__(covariance_scaler_list)
 
     def forward(self, covariance_block_matrixes: List[Tensor]) -> List[Tensor]:

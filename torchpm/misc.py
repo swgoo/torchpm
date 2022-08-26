@@ -18,7 +18,7 @@ def lower_triangular_vector_to_covariance_matrix(lower_triangular_vector, diag :
         m[tril_indices[0], tril_indices[1]] = lower_triangular_vector
         return m + tc.tril(m).transpose(0,1) - m.diag().diag()
 
-def get_dimension_of_lower_triangular_vector(lower_triangular_vector: List[float], diag : bool = True) :
+def get_dimension_of_lower_triangular_vector(lower_triangular_vector, diag = True) :
     lower_triangular_vector_len = len(lower_triangular_vector)
     if diag:
         return lower_triangular_vector_len
