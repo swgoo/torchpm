@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from random import random
 from re import L
-from typing import Dict, Iterable, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Type, Union
 
 from numpy import diag
 from torch import nn
@@ -13,11 +13,13 @@ import torch
 from .misc import *
 
 class Theta(Parameter) :
-    def __init__(self, data: Tensor, fixed = False, requires_grad: bool = True):
+    def __new__(cls , data: Tensor, fixed = False, requires_grad: bool = True) :
         if data.dim() != 0:
             raise Exception("theta's dim should be 0")
-        super().__init__(data, requires_grad)
-        
+        obj = super().__new__(cls, data = data,  requires_grad = requires_grad)  # type: ignore
+        return obj
+
+    def __init__(self,  data: Tensor, fixed = False, requires_grad: bool = True) : 
         self.fixed = fixed
 
 class ThetaBoundary(nn.Module):
@@ -31,10 +33,10 @@ class ThetaBoundary(nn.Module):
         set_parameter = lambda x : Parameter(tensor(x), requires_grad=False)
 
         lb = 1.e-6
-        iv = tc.tensor(0)
+        iv = 0.
         ub = 1.e6
         if len(init_values) == 1 :
-            iv = tc.tensor(init_values[0])
+            iv = init_values[0]
             if lb > init_values[0] :
                 lb = init_values[0]
             if ub < init_values[0] :
@@ -48,14 +50,14 @@ class ThetaBoundary(nn.Module):
         elif len(init_values) == 3 :
             if init_values[0] < init_values[1] < init_values[2] :
                 lb = init_values[0]
-                iv = tensor(init_values[1])
+                iv = init_values[1]
                 ub = init_values[2]
             else :
                 raise Exception('init_values must increase in order.')
         self.lb : Parameter = set_parameter(lb)
         self.ub : Parameter = set_parameter(ub)
         alpha = 0.1 - tc.log((iv - self.lb)/(self.ub - self.lb)/(1 - (iv - self.lb)/(self.ub - self.lb)))
-        self.alpha : Parameter = set_parameter(alpha)
+        self.alpha : Parameter = set_parameter(float(alpha))
 
     def forward(self, theta: Theta) :
         if isinstance(theta, Tensor):

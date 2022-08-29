@@ -10,7 +10,7 @@ from torchdiffeq import odeint
 from torchpm import data
 
 from .misc import *
-from .parameter import *
+from .para import *
 
 from .data import EssentialColumns
 from torch.nn.parameter import Parameter
@@ -46,10 +46,10 @@ class PredictionFunction(Module):
                     value.update({str(id): Parameter(tc.zeros(self._record_lengths[id]))})
         super().__setattr__(name, value)
 
-    def __getattribute__(self, name: str) -> Any:
-        att = super().__getattribute__(name)
-        if self.theta_boundary_mode \
-                and type(att) is Theta \
+    def __getattr__(self, name: str) -> Any:
+        att = super().__getattr__(name)
+        if type(att) is Theta \
+                and self.theta_boundary_mode \
                 and name in self.theta_boundaries.keys():
             theta_boundary = self.theta_boundaries[name]
             return theta_boundary(att)
@@ -84,7 +84,7 @@ class PredictionFunction(Module):
                 if type(att) is Theta and name in self.theta_boundaries.keys():
                     theta_boundary = self.theta_boundaries[name]
                     theta_value = theta_boundary(att)
-                    theta = Theta(float(theta_value), fixed=att.fixed, requires_grad=att.requires_grad, boundary_mode=False)
+                    theta = Theta(tensor(theta_value), fixed=att.fixed, requires_grad=att.requires_grad)
                     setattr(self, name, theta)
             self._theta_boundary_mode = False
 
@@ -124,7 +124,7 @@ class PredictionFunction(Module):
         return start_index 
 
     def _pre_forward(self, dataset : Dict[str, Tensor]) -> Dict[str, Tensor]:
-        id = dataset[EssentialColumns.ID.value][0]
+        id = int(dataset[EssentialColumns.ID.value][0])
 
         self._calculate_parameters(dataset)
         record_length = self._record_lengths[id]
@@ -139,18 +139,19 @@ class PredictionFunction(Module):
         with torch.no_grad() :
             for id in batch[EssentialColumns.ID.value] :
                 datasets.append({})
-            for key, values in batch.items() :
+            for col_name, values in batch.items() :
                 for dataset, value in zip(datasets, values) :
-                    dataset[key] = value
-            for dataset, length in zip(datasets, self._record_lengths) :
-                for key, value in dataset.items() :
-                    dataset[key] = value[:length]   
+                    dataset[col_name] = value
+            for dataset in datasets :
+                id = dataset[EssentialColumns.ID.value][0]
+                length = self._record_lengths[int(id)]
+                for col_name, value in dataset.items() :
+                    dataset[col_name] = value[:length]   
         return datasets
     
-
     def _post_forward(self, dataset : Dict[str, Tensor]):
 
-        id = dataset[EssentialColumns.ID.value][0]
+        id = int(dataset[EssentialColumns.ID.value][0])
         record_length = self._record_lengths[id]
 
         for key in dataset.keys() :

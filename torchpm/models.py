@@ -7,7 +7,7 @@ import torch as tc
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 
-from .parameter import *
+from .para import *
 from .data import PMDataset
 from . import predfunc
 from . import loss
@@ -163,17 +163,6 @@ class FOCEInter(pl.LightningModule) :
                 continue
             else :
                 unfixed_parameter_values.append(para)
-
-        # pred_function_parameters_deleting_indices = []
-        # for i, parameter in enumerate(pred_function_parameters) : 
-        #     for p in self.pred_function.get_thetas().values() :
-        #         if tc.is_tensor(parameter) and (p.parameter_value.data_ptr() == parameter.data_ptr()) and p.fixed :
-        #             pred_function_parameters_deleting_indices.append(i)
-        # pred_function_parameters_deleting_indices.sort(reverse=True)
-        # for i in pred_function_parameters_deleting_indices :
-        #     del pred_function_parameters[i]
-        
-        # unfixed_parameter_values.extend(pred_function_parameters)
         
         return unfixed_parameter_values
         
@@ -237,12 +226,12 @@ class FOCEInter(pl.LightningModule) :
     def _fisher_information_step(self, batch, batch_idx):
         theta_dict = self.pred_function.get_theta_parameter_values()
         cov_mat_dim =  len(theta_dict)
-        for tensor in self.omega_vector_list.parameter_values :
+        for tensor in self.omega_vector_list :
             cov_mat_dim += tensor.size()[0]
-        for tensor in self.sigma_vector_list.parameter_values :
+        for tensor in self.sigma_vector_list :
             cov_mat_dim += tensor.size()[0]
         
-        thetas = [theta_dict[key] for key in self.theta_names]
+        thetas = [theta_dict[key] for key in self.pred_function.get_attr_dict(Theta)]
 
         fisher_information_matrix_total = tc.zeros(cov_mat_dim, cov_mat_dim, device = dataset.device)
         for data, y_true in dataloader:
@@ -381,20 +370,20 @@ class FOCEInter(pl.LightningModule) :
    
     def covariance_step(self) :
         dataset = self.pred_function.dataset
-        theta_dict = self.pred_function.get_theta_parameter_values()
+        theta_dict = self.pred_function.get_attr_dict(Theta)
 
         cov_mat_dim =  len(theta_dict)
-        for tensor in self.omega_vector_list.parameter_values :
+        for tensor in self.omega_vector_list :
             cov_mat_dim += tensor.size()[0]
-        for tensor in self.sigma_vector_list.parameter_values :
+        for tensor in self.sigma_vector_list :
             cov_mat_dim += tensor.size()[0]
         
         thetas = [theta_dict[key] for key in self.theta_names]
 
         requires_grad_memory = []
         estimated_parameters = [*thetas,
-                        *self.omega_vector_list.parameter_values,
-                        *self.sigma_vector_list.parameter_values]
+                        *self.omega_vector_list,
+                        *self.sigma_vector_list]
 
         for para in estimated_parameters :
             requires_grad_memory.append(para.requires_grad)
@@ -408,7 +397,7 @@ class FOCEInter(pl.LightningModule) :
             
             y_pred, eta, eps, g, h, omega, sigma, mdv_mask, _ = self(data)
 
-            id = str(int(data[:,self.pred_function._column_names.index(EssentialColumnNames.ID.value)][0]))
+            id = str(int(data[EssentialColumns.ID.value][0]))
             print('id', id)
  
             y_pred = y_pred.masked_select(mdv_mask)
@@ -459,8 +448,8 @@ class FOCEInter(pl.LightningModule) :
             dataset: model dataset for simulation
             repeat : simulation times
         """
-        omega = self.omega_vector_list()
-        sigma = self.sigma_vector_list()
+        omega = self.omega
+        sigma = self.sigma
 
         eta_parameter_values = self.pred_function.get_eta_parameter_values()
         eta_size = len(eta_parameter_values)

@@ -9,7 +9,7 @@ from scipy.stats import chi2
 
 from .data import PMDataset
 from .models import FOCEInter, ModelConfig
-from .parameter import *
+from .para import *
 from . import predfunc
 
 @dataclass
@@ -102,8 +102,8 @@ class DeepCovariateSearching:
     dependent_parameter_initial_values : List[List[float]]
     independent_parameter_names : List[str]
     eps_names : List[str]
-    omega : OmegaVectorList
-    sigma : SigmaVectorList
+    omega : CovarianceVectorList
+    sigma : CovarianceVectorList
     
     def _get_covariate_relationship_function(self, dependent_parameter_names, independent_parameter_names) -> nn.Module:  # type: ignore
         idp_para_names_length = len(independent_parameter_names)

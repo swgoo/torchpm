@@ -11,8 +11,8 @@ from torch.nn import functional as F
 
 from torch.utils.data import Dataset
 
-def get_id(dataset : Dict[str, Tensor]) -> int:
-    return int(dataset[EssentialColumns.ID.value][0])
+def get_id(dataset : Dict[str, Tensor]) -> str:
+    return str(int(dataset[EssentialColumns.ID.value][0]))
 
 class EssentialColumnDtypes(enum.Enum) :
     ID = int
@@ -75,7 +75,7 @@ class PMDataset(Dataset):
             else :
                 dataframe[col] = dataframe[col].astype(float)
         
-        self.ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(0).unique().tolist()
+        self.ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(axis = 0).unique().tolist()
         self.max_record_length = 0
         self.record_lengths : Dict[int, int] = {}
         self.datasets_by_id : Dict[int, Dict[str, Tensor]] = {}
@@ -87,10 +87,14 @@ class PMDataset(Dataset):
             self.max_record_length = max(length, self.max_record_length)
             self.record_lengths[id] = length
 
+        for id in self.ids :
             for col in dataframe.columns :
+                id_mask = dataframe[EssentialColumns.ID.value] == id
+                dataset_by_id = dataframe.loc[id_mask]
+                length = self.record_lengths[id]
                 t = tensor(dataset_by_id[col].values)
                 self.datasets_by_id[id][col] = F.pad(t, (0, self.max_record_length - length))
-
+                self.datasets_by_id[id][col] = self.datasets_by_id[id][col]
         self.len = len(self.datasets_by_id.keys())
 
     def __getitem__(self, idx) -> Dict[str, Tensor]:

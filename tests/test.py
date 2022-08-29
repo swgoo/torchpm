@@ -4,7 +4,7 @@ from torch import nn
 from torchpm import covariate, models, ode, predfunc, loss
 from torchpm import data
 from torchpm.data import PMDataset, OptimalDesignDataset
-from torchpm.parameter import *
+from torchpm.para import *
 import matplotlib.pyplot as plt
 import numpy as np
 
