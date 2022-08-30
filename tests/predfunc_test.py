@@ -29,6 +29,7 @@ class BasementFunction(predfunc.SymbolicPredictionFunction) :
         para['v'] = self.theta_1*tc.exp(self.eta_1[get_id(para)])
         para['k_e'] = self.theta_2*tc.exp(self.eta_2[get_id(para)])
         para['AMT'] = tc.tensor(320., device=para['ID'].device)
+        return para
 
     def _calculate_preds(self, t, p):
         dose = p['AMT'][0]

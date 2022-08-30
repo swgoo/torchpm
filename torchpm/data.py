@@ -59,7 +59,6 @@ class EssentialColumns(enum.Enum) :
         return list([elem.value for elem in cls if elem.dtype is float])
 
 class PMDataset(Dataset):
-
     def __init__(self, 
                  dataframe : pd.DataFrame,
                  **kwargs):
@@ -124,6 +123,8 @@ class PMRecord:
         self.DV = DV
         self.MDV = MDV
         self.CMT = CMT
+        for name, value in covariates.items() :
+            setattr(self, name, value)
 
 class OptimalDesignDataset(PMDataset):
     from .ode import EquationConfig

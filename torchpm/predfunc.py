@@ -123,10 +123,9 @@ class PredictionFunction(Module):
 
         return start_index 
 
-    def _pre_forward(self, dataset : Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def _reshape_dataset(self, dataset : Dict[str, Tensor]) -> Dict[str, Tensor]:
         id = int(dataset[EssentialColumns.ID.value][0])
 
-        self._calculate_parameters(dataset)
         record_length = self._record_lengths[id]
     
         for key, para in dataset.items():
@@ -149,19 +148,8 @@ class PredictionFunction(Module):
                     dataset[col_name] = value[:length]   
         return datasets
     
-    def _post_forward(self, dataset : Dict[str, Tensor]):
-
-        id = int(dataset[EssentialColumns.ID.value][0])
-        record_length = self._record_lengths[id]
-
-        for key in dataset.keys() :
-            p = dataset[key]
-            if p.dim() == 0 or p.size()[0] == 1 :
-                dataset[key] = p.repeat([record_length])
-        return dataset
-    
     @abstractmethod
-    def _calculate_parameters(self, input_columns : Dict[str, tc.Tensor]) -> None:
+    def _calculate_parameters(self, input_columns : Dict[str, Tensor]) -> Dict[str, Tensor]:
         pass
     
     @abstractmethod
@@ -184,7 +172,8 @@ class SymbolicPredictionFunction(PredictionFunction):
         
         output = []
         for dataset in datasets :
-            parameters = self._pre_forward(dataset)
+            dataset = self._calculate_parameters(dataset)
+            parameters = self._reshape_dataset(dataset)
             f = tc.zeros(dataset[EssentialColumns.ID.value].size()[0], device = dataset[EssentialColumns.ID.value].device)
             amt_indice = self._get_amt_indice(dataset)
             
@@ -192,7 +181,6 @@ class SymbolicPredictionFunction(PredictionFunction):
             for i in range(len(amt_indice) - 1):
                 start_time_index = amt_indice[i]
 
-                #누적하기 위해 앞부분 생성
                 dataset_pre = {key: value[:start_time_index] for key, value in dataset.items()}
                 f_pre = tc.zeros(dataset_pre[EssentialColumns.ID.value].size()[0], device = dataset[EssentialColumns.ID.value].device)
 
@@ -210,7 +198,7 @@ class SymbolicPredictionFunction(PredictionFunction):
                 f = f + tc.cat([f_pre, f_cur], 0)
 
             pred = self._calculate_error(f, parameters)
-            post_forward_output = self._post_forward(parameters)
+            post_forward_output = self._reshape_dataset(parameters)
             post_forward_output[self.PRED_COLUMN_NAME] = pred
             output.append(post_forward_output)
 
@@ -224,8 +212,17 @@ class NumericPredictionFunction(PredictionFunction):
         rtol: ratio tolerance about ordinary differential equation integration
         atol: absolute tolerance about ordinary differential equation integration
     """
-    rtol : float = 1e-2
-    atol : float = 1e-2
+    def __init__(
+            self, 
+            dataset: data.PMDataset, 
+            rtol : float = 1e-2,
+            atol : float = 1e-2,
+            **kwargs):
+        
+        super().__init__(dataset, **kwargs)
+        self.rtol = rtol
+        self.atol = atol
+    
 
     @abstractmethod
     def _calculate_preds(self, t : Tensor, y: Tensor , parameters : Dict[str, Tensor]) -> Tensor:
@@ -245,8 +242,10 @@ class NumericPredictionFunction(PredictionFunction):
         if times.dim() != 1 :
             raise Exception("times' dim should be 1")
         def ode_function(t : Tensor, y : Tensor):
-            # nonlocal parameters
             # nonlocal times
+            # nonlocal parameters
+            # nonlocal infusion_rate
+            # nonlocal infusion_end_time
             index = (times < t).sum() - 1
             parameters_sliced = {k: v[index] for k, v in parameters.items()}
             return self._calculate_preds(t, y, parameters_sliced) + infusion_rate * (infusion_end_time > t)
@@ -258,7 +257,8 @@ class NumericPredictionFunction(PredictionFunction):
         datasets = self._batch_to_datasets(batch)
         output = []
         for dataset in datasets :
-            parameters = self._pre_forward(dataset)
+            dataset = self._calculate_parameters(dataset)
+            parameters = self._reshape_dataset(dataset)
 
             max_cmt = int(dataset[EssentialColumns.CMT.value].max())
             y_pred_arr = []
@@ -306,7 +306,7 @@ class NumericPredictionFunction(PredictionFunction):
 
             pred = self._calculate_error(tc.cat(y_pred_arr), parameters)
 
-            post_forward_output = self._post_forward(parameters)
+            post_forward_output = self._reshape_dataset(parameters)
             post_forward_output[self.PRED_COLUMN_NAME] = pred
             output.append(post_forward_output)
         return output
