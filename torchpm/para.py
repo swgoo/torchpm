@@ -198,13 +198,6 @@ class CovarianceScaler(nn.Module):
         diag_part = scaled_matrix.diag().exp() * self.scale.diag()
         maT = tc.tril(x) - x.diag().diag() + diag_part.diag()
         return maT @ maT.t()
-    
-    # def _get_scaled_matrix(self, descaled_matrix : Tensor, scale : Tensor) :
-    #     maT = tc.linalg.cholesky(descaled_matrix)
-    #     # maT = scaled_matrix * scale - (scaled_matrix * scale).diag().diag() + (scaled_matrix.diag().exp() * scale.diag()).diag()
-    #     scale_matrix = (maT - maT.diag().diag())/scale + (maT/scale).log().diag().diag()
-    #     scale_matrix = scale_matrix.nan_to_num()
-    #     return scale_matrix @ scale_matrix.t()
 
     def _set_scale(self, covariance_vector : CovarianceVector) :
         var_mat = lower_triangular_vector_to_covariance_matrix(covariance_vector, covariance_vector.is_diagonal)
