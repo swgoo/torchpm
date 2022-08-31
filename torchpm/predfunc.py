@@ -37,7 +37,7 @@ class PredictionFunction(Module):
             if type(value) is ThetaInit :
                 theta_boundary = value.boundary
                 self.theta_boundaries.update({name: theta_boundary})
-                value = Theta(value.data.detach().clone(), fixed = value.fixed)
+                value = value.theta
             elif type(value) is Eta :
                 for id in self._ids : 
                     value.update({str(id): Parameter(tensor(0.1))})

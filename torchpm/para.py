@@ -76,6 +76,13 @@ class ThetaInit(Theta):
             fixed = False):
         self.fixed = fixed
         self.boundary = ThetaBoundary(*init_values)
+    
+    @property
+    @torch.no_grad()
+    def theta(self):
+        return Theta(
+                data= self.data.detach().clone(),
+                fixed= self.fixed)
 
 class Eta(ParameterDict) :
     pass
@@ -84,24 +91,71 @@ class Eps(ParameterDict):
     pass
 
 class CovarianceVector(Parameter):
-    @tc.no_grad()
-    def __init__(
-                self, 
-                data: Tensor, 
-                random_variable_names : Tuple[str, ...],
-                is_diagonal = True, 
-                fixed = False,
-                requires_grad = True) :
-        
-        self.random_variable_names = random_variable_names
 
-        dimension = get_dimension_of_lower_triangular_vector(data, is_diagonal)
-        if dimension != len(random_variable_names) :
+    def __new__(cls,
+            data: Tensor,
+            random_variable_names : Tuple[str, ...],
+            is_diagonal : bool = True,
+            fixed : bool = False,
+            requires_grad : bool = True):
+        obj = super().__new__(cls, data=data, requires_grad=requires_grad) # type: ignore
+        obj.random_variable_names = random_variable_names
+        obj.is_diagonal = is_diagonal
+        obj.fixed = fixed
+        dimension = get_dimension_of_lower_triangular_vector(obj.data, obj.is_diagonal)
+        if dimension != len(obj.random_variable_names) :
             raise Exception("lower_trangular_vector can't be converted to square matrix")
-
-        super().__init__(data, requires_grad = requires_grad)
-        self.fixed = fixed
+        return obj
+    
+    def __init__(self,
+            data: Tensor,
+            random_variable_names : Tuple[str, ...],
+            is_diagonal : bool = True,
+            fixed : bool = False,
+            requires_grad : bool = True):
+        self.data = self.data
+        self.random_variable_names = self.random_variable_names
         self.is_diagonal = is_diagonal
+        self.fixed = self.fixed
+        self.requires_grad = self.requires_grad
+
+        
+
+class CovarianceVectorInit(CovarianceVector) :
+    def __new__(cls,
+            init_values: Tuple[float, ...],
+            random_variable_names : Tuple[str, ...],
+            is_diagonal : bool = True,
+            fixed : bool = False,):
+        obj = super().__new__(cls,
+            data = tensor(init_values),
+            random_variable_names = random_variable_names,
+            is_diagonal = is_diagonal,
+            fixed = fixed,
+            requires_grad = True)
+        obj.scaler = CovarianceScaler(obj)
+        obj.data = tensor(0.1).repeat(len(init_values))
+        return obj
+    
+    def __init__(self,
+            init_values: Tuple[float, ...],
+            random_variable_names : Tuple[str, ...],
+            is_diagonal : bool = True,
+            fixed : bool = False,):
+        self.random_variable_names=self.random_variable_names
+        self.is_diagonal = self.is_diagonal
+        self.fixed  = self.fixed
+        self.scaler = self.scaler
+    
+    @property
+    @torch.no_grad()
+    def covariance_vector(self) -> CovarianceVector:
+        return CovarianceVector(
+                data= self.data.detach().clone(),
+                random_variable_names= self.random_variable_names,
+                is_diagonal= self.is_diagonal,
+                fixed= self.fixed,
+                requires_grad= self.requires_grad)
 
 class CovarianceVectorList(ParameterList) :
     def __init__(
@@ -117,24 +171,21 @@ class CovarianceVectorList(ParameterList) :
                 result = result + covariance_vector.random_variable_names
         return result
 
-@dataclass
-class CovarianceVectorInit :
-    init_values: List[float]
-    random_variable_names : Tuple[str, ...]
-    is_diagonal = True
-    fixed = False
+class CovarianceVectorInitList(CovarianceVectorList):
+    def __init__(
+            self,
+            covariance_vector_init_list: Iterable[CovarianceVectorInit]):
+        super().__init__(covariance_vector_init_list)
 
-class CovarianceBlockMatrix(nn.Module) :
-    def __init__(self) :
-        super().__init__()
-
-    def forward(self, covariance_vector_list : CovarianceVectorList) -> List[Tensor]:
-        m : List[Tensor] = []
-
-        for lower_triangular_vector in covariance_vector_list :
-            if type(lower_triangular_vector) is CovarianceVector :
-                m.append(lower_triangular_vector_to_covariance_matrix(lower_triangular_vector, diag = lower_triangular_vector.is_diagonal))
-        return m
+        scalers = []
+        for vector_init in self :
+            if type(vector_init) is CovarianceVectorInit:
+                scalers.append(vector_init.scaler)
+        self.scalers : CovarianceScalerList = CovarianceScalerList(scalers)
+    
+    @property
+    def covariance_list(self):
+        return CovarianceVectorList(self)
 
 class CovarianceScaler(nn.Module):
     
@@ -178,4 +229,16 @@ class CovarianceScalerList(nn.ModuleList):
                 m.append(covariance_scaler(covariance_vector))
         return m
 
+def get_covariance(covariance_vector_list : CovarianceVectorList, covariance_scaler_list : CovarianceScalerList):
+    covariance = []
+    # block_matrix_list = covariate_block_matrix(covariance_vector_list)
+    for scaler, vector in zip(covariance_scaler_list, covariance_vector_list) :
+        if scaler is not None :
+            block_matrix = lower_triangular_vector_to_covariance_matrix(vector, diag = vector.is_diagonal)
+            block_matrix = scaler(block_matrix)
+            covariance.append(block_matrix)
+        else :
+            block_matrix = lower_triangular_vector_to_covariance_matrix(vector, diag = vector.is_diagonal)
+            covariance.append(block_matrix)
+    return torch.block_diag(*covariance)
                 

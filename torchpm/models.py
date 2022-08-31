@@ -19,8 +19,8 @@ import pytorch_lightning as pl
 
 @dataclass(eq=True, frozen=True)
 class ModelConfig :
-    omega : Union[List[CovarianceVectorInit],Tuple[CovarianceVectorList,CovarianceScalerList]]
-    sigma : Union[List[CovarianceVectorInit],Tuple[CovarianceVectorList,CovarianceScalerList]]
+    omega : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
+    sigma : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
     objective_function : loss.ObjectiveFunction = loss.FOCEInterObjectiveFunction()
     optimal_design_creterion : loss.DesignOptimalFunction = loss.DOptimality()
 
@@ -45,19 +45,17 @@ class FOCEInter(pl.LightningModule) :
         self.model_config = model_config
         self.pred_function = pred_function
 
-        self.covariate_block_matrix = CovarianceBlockMatrix()
-
         self._scale_mode = True
 
         if type(model_config.omega) is Tuple[CovarianceVectorList, CovarianceScalerList] :
             self.omega_vector_list, self.omega_scaler_list = model_config.omega
-        elif type(model_config.omega) is List[CovarianceVectorInit] :
-            self.omega_vector_list, self.omega_scaler_list = self._set_covariance(model_config.omega)
+        elif type(model_config.omega) is CovarianceVectorInitList :
+            self.omega_vector_list, self.omega_scaler_list = model_config.omega.covariance_list, model_config.omega.scalers
         
         if type(model_config.sigma) is Tuple[CovarianceVectorList, CovarianceScalerList] :
             self.sigma_vector_list, self.sigma_scaler_list = model_config.sigma
-        elif type(model_config.sigma) is List[CovarianceVectorInit] :
-            self.sigma_vector_list, self.sigma_scaler_list = self._set_covariance(model_config.sigma)
+        elif type(model_config.sigma) is CovarianceVectorInitList :
+            self.sigma_vector_list, self.sigma_scaler_list = model_config.sigma.covariance_list, model_config.sigma.scalers
         
         self.objective_function = model_config.objective_function \
             if model_config.objective_function is not None else loss.FOCEInterObjectiveFunction()
@@ -68,33 +66,26 @@ class FOCEInter(pl.LightningModule) :
         self.eta_names = self.omega_vector_list.random_variable_names
         self.eps_names = self.sigma_vector_list.random_variable_names
 
-    @torch.no_grad()
-    def _set_covariance(self, covariance_init_vector_list : List[CovarianceVectorInit]):
-        vector_list = CovarianceVectorList()
-        scaler_list = CovarianceScalerList()
-        for vector_init  in covariance_init_vector_list :
-            vector = CovarianceVector(
-                    tensor(vector_init.init_values), 
-                    random_variable_names=vector_init.random_variable_names,
-                    is_diagonal=vector_init.is_diagonal,
-                    fixed=vector_init.fixed)
-            scaler = CovarianceScaler(vector)
-            scaler_list.append(scaler)
-            vector.data = tensor([0.1]*vector.size()[0])
-            vector_list.append(vector)
-        return vector_list, scaler_list
+    # @torch.no_grad()
+    # def _set_covariance(self, covariance_init_vector_list : List[CovarianceVectorInit]):
+    #     vector_list = CovarianceVectorList()
+    #     scaler_list = CovarianceScalerList()
+    #     for vector_init  in covariance_init_vector_list :
+    #         vector = vector_init.covariance_vector
+    #         scaler = vector_init.scaler
+    #         scaler_list.append(scaler)
+    #         vector.data = tensor([0.1]*vector.size()[0])
+    #         vector_list.append(vector)
+    #     return vector_list, scaler_list
 
     @property
     def omega(self):
-        return self._get_covariance(self.omega_vector_list, self.omega_scaler_list)
+        return get_covariance(self.omega_vector_list, self.omega_scaler_list)
 
     @property
     def sigma(self):
-        return self._get_covariance(self.sigma_vector_list, self.sigma_scaler_list)
+        return get_covariance(self.sigma_vector_list, self.sigma_scaler_list)
 
-    
-
-    
     @property
     def scale_mode(self):
         return self._scale_mode
@@ -132,17 +123,6 @@ class FOCEInter(pl.LightningModule) :
             self.omega_vector_list = turn_off(self.omega_vector_list, self.omega_scaler_list)
             self.sigma_vector_list = turn_off(self.sigma_vector_list, self.sigma_scaler_list)
             self._scale_mode = value
-    
-    def _get_covariance(self, covariance_vector_list : CovarianceVectorList, covariance_scaler_list : CovarianceScalerList):
-        covariance = []
-        block_matrix_list = self.covariate_block_matrix(covariance_vector_list)
-        for block_matrix, scaler, vector in zip(block_matrix_list, covariance_scaler_list, covariance_vector_list) :
-            if type(vector) is CovarianceVector and self.scale_mode and scaler is not None :
-                block_matrix = scaler(block_matrix)
-                covariance.append(block_matrix)
-            else :
-                covariance.append(block_matrix)
-        return torch.block_diag(*covariance)
 
     def get_unfixed_parameter_values(self) -> List[nn.Parameter]:  # type: ignore
         unfixed_parameter_values = []
