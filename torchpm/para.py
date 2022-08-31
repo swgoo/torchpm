@@ -65,13 +65,17 @@ class ThetaBoundary(nn.Module):
         else :
             raise ValueError("theta should be instance of torch.Tensor")
 
-class ThetaInit:
+class ThetaInit(Theta):
+    def __new__(cls , *init_values, fixed = False, requires_grad: bool = True) :
+        obj = super().__new__(cls, data = tensor(0.1),  requires_grad = requires_grad)  # type: ignore
+        return obj
+
     def __init__(
             self, 
             *init_values: float,
             fixed = False):
-        self.init_values = init_values
         self.fixed = fixed
+        self.boundary = ThetaBoundary(*init_values)
 
 class Eta(ParameterDict) :
     pass

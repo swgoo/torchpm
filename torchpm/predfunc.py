@@ -35,9 +35,9 @@ class PredictionFunction(Module):
     def __setattr__(self, name: str, value : Any) -> None:
         with tc.no_grad() :
             if type(value) is ThetaInit :
-                theta_boundary = ThetaBoundary(*value.init_values)
+                theta_boundary = value.boundary
                 self.theta_boundaries.update({name: theta_boundary})
-                value = Theta(tensor(0.1), fixed = value.fixed)
+                value = Theta(value.data.detach().clone(), fixed = value.fixed)
             elif type(value) is Eta :
                 for id in self._ids : 
                     value.update({str(id): Parameter(tensor(0.1))})
@@ -124,11 +124,13 @@ class PredictionFunction(Module):
         return start_index 
 
     def _reshape_dataset(self, dataset : Dict[str, Tensor]) -> Dict[str, Tensor]:
-        id = int(dataset[EssentialColumns.ID.value][0])
+        id_tensor = dataset[EssentialColumns.ID.value]
+        id = int(id_tensor[0])
 
         record_length = self._record_lengths[id]
     
         for key, para in dataset.items():
+            dataset[key] = para.to(device=id_tensor.device)
             if para.dim() == 0 or para.size()[0] == 1 :
                 dataset[key] = para.repeat([record_length])
         return dataset
@@ -149,11 +151,11 @@ class PredictionFunction(Module):
         return datasets
     
     @abstractmethod
-    def _calculate_parameters(self, input_columns : Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def parameter_fuction(self, input_columns : Dict[str, Tensor]) -> Dict[str, Tensor]:
         pass
     
     @abstractmethod
-    def _calculate_error(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
+    def error_function(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
     
     @abstractmethod
@@ -163,7 +165,7 @@ class PredictionFunction(Module):
 class SymbolicPredictionFunction(PredictionFunction):
 
     @abstractmethod
-    def _calculate_preds(self, t : tc.Tensor, dataset : Dict[str, tc.Tensor]) -> tc.Tensor:
+    def pred_function(self, t : tc.Tensor, dataset : Dict[str, tc.Tensor]) -> tc.Tensor:
         pass
 
     def forward(self, batch) :
@@ -172,12 +174,10 @@ class SymbolicPredictionFunction(PredictionFunction):
         
         output = []
         for dataset in datasets :
-            dataset = self._calculate_parameters(dataset)
+            amt_indice = self._get_amt_indice(dataset)
+            dataset = self.parameter_fuction(dataset)
             parameters = self._reshape_dataset(dataset)
             f = tc.zeros(dataset[EssentialColumns.ID.value].size()[0], device = dataset[EssentialColumns.ID.value].device)
-            amt_indice = self._get_amt_indice(dataset)
-            
-
             for i in range(len(amt_indice) - 1):
                 start_time_index = amt_indice[i]
 
@@ -194,10 +194,10 @@ class SymbolicPredictionFunction(PredictionFunction):
                 parameters_sliced[EssentialColumns.AMT.value] = amts
 
                 t = times - start_time
-                f_cur = self._calculate_preds(t, parameters_sliced)
+                f_cur = self.pred_function(t, parameters_sliced)
                 f = f + tc.cat([f_pre, f_cur], 0)
 
-            pred = self._calculate_error(f, parameters)
+            pred = self.error_function(f, parameters)
             post_forward_output = self._reshape_dataset(parameters)
             post_forward_output[self.PRED_COLUMN_NAME] = pred
             output.append(post_forward_output)
@@ -225,13 +225,8 @@ class NumericPredictionFunction(PredictionFunction):
     
 
     @abstractmethod
-    def _calculate_preds(self, t : Tensor, y: Tensor , parameters : Dict[str, Tensor]) -> Tensor:
+    def pred_function(self, t : Tensor, y: Tensor , parameters : Dict[str, Tensor]) -> Tensor:
         pass
-
-    # def _ode_function(self, t, y):
-    #     index = (self.t < t).sum() - 1
-    #     parameters_sliced = {k: v[index] for k, v in self.parameter_values.items()}
-    #     return self._calculate_preds(t, y, parameters_sliced) + self.infusion_rate * (self.infusion_end_time > t)
     
     def _generate_ode_function(
             self, 
@@ -242,13 +237,9 @@ class NumericPredictionFunction(PredictionFunction):
         if times.dim() != 1 :
             raise Exception("times' dim should be 1")
         def ode_function(t : Tensor, y : Tensor):
-            # nonlocal times
-            # nonlocal parameters
-            # nonlocal infusion_rate
-            # nonlocal infusion_end_time
             index = (times < t).sum() - 1
             parameters_sliced = {k: v[index] for k, v in parameters.items()}
-            return self._calculate_preds(t, y, parameters_sliced) + infusion_rate * (infusion_end_time > t)
+            return self.pred_function(t, y, parameters_sliced) + infusion_rate * (infusion_end_time > t)
         return ode_function
         
 
@@ -257,15 +248,17 @@ class NumericPredictionFunction(PredictionFunction):
         datasets = self._batch_to_datasets(batch)
         output = []
         for dataset in datasets :
-            dataset = self._calculate_parameters(dataset)
-            parameters = self._reshape_dataset(dataset)
-
             max_cmt = int(dataset[EssentialColumns.CMT.value].max())
-            y_pred_arr = []
-            y_init = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+
             infusion_rate = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
             infusion_end_time = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            
             amt_indice = self._get_amt_indice(dataset)
+            dataset = self.parameter_fuction(dataset)
+            parameters = self._reshape_dataset(dataset)
+
+            y_pred_arr = []
+            y_init = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
 
             for i in range(len(amt_indice) - 1):
                 amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
@@ -304,7 +297,7 @@ class NumericPredictionFunction(PredictionFunction):
                 else :
                     y_pred_arr.append(y_integrated[:-1])
 
-            pred = self._calculate_error(tc.cat(y_pred_arr), parameters)
+            pred = self.error_function(tc.cat(y_pred_arr), parameters)
 
             post_forward_output = self._reshape_dataset(parameters)
             post_forward_output[self.PRED_COLUMN_NAME] = pred

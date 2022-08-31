@@ -25,20 +25,20 @@ class BasementFunction(predfunc.SymbolicPredictionFunction) :
         self.eps_0 = Eps()
         self.eps_1 = Eps()
     
-    def _calculate_parameters(self, id, para):
+    def parameter_fuction(self, id, para):
         para['k_a'] = self.theta_0*tc.exp(self.eta_0[id])
         para['v'] = self.theta_1*tc.exp(self.eta_1[id])
         para['k_e'] = self.theta_2*tc.exp(self.eta_2[id])
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
-    def _calculate_preds(self, id, t, p):
+    def pred_function(self, id, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
         k_e = p['k_e']
         return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
-    def _calculate_error(self, id, y_pred, p):
+    def error_function(self, id, y_pred, p):
         p['v_v'] = p['v'] 
         return y_pred +  y_pred * self.eps_0[id] + self.eps_1[id]
 
@@ -59,20 +59,20 @@ class MultidoseBasementFunction(predfunc.SymbolicPredictionFunction) :
 
         self.amount = tc.tensor(320.)
     
-    def _calculate_parameters(self, id, para):
+    def parameter_fuction(self, id, para):
         para['k_a'] = self.theta_0*tc.exp(self.eta_0[id])
         para['v'] = self.theta_1*tc.exp(self.eta_1[id])
         para['k_e'] = self.theta_2*tc.exp(self.eta_2[id])
         para['AMT'] = self.amount
 
-    def _calculate_preds(self, t, p):
+    def pred_function(self, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
         k_e = p['k_e']
         return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
-    def _calculate_error(self, id, y_pred, p):
+    def error_function(self, id, y_pred, p):
         p['v_v'] = p['v'] 
         return y_pred +  y_pred * self.eps_0[id] + self.eps_1[id]
 
@@ -286,20 +286,20 @@ class BasementModelFIM(predfunc.SymbolicPredictionFunction) :
         self.eps_0 = Eps()
         
     
-    def _calculate_parameters(self, para):
+    def parameter_fuction(self, para):
         para['k_a'] = self.theta_0() * self.eta_0().exp()
         para['v'] = self.theta_1() * self.eta_1().exp()
         para['k_e'] = self.theta_2() * self.eta_2().exp()
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
-    def _calculate_preds(self, t, p):
+    def pred_function(self, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
         k_e = p['k_e']
         return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
-    def _calculate_error(self, y_pred, p):
+    def error_function(self, y_pred, p):
         p['v_v'] = p['v'] 
         return y_pred +  self.eps_0()
 
@@ -323,7 +323,7 @@ class AnnModel(predfunc.SymbolicPredictionFunction) :
         
         
     
-    def _calculate_parameters(self, para):
+    def parameter_fuction(self, para):
         
         lin_r = self.lin(para['BWT'].unsqueeze(-1)/70).t() 
         para['k_a'] = self.theta_0()*tc.exp(self.eta_0()+lin_r[0])
@@ -333,14 +333,14 @@ class AnnModel(predfunc.SymbolicPredictionFunction) :
 
         
 
-    def _calculate_preds(self, t, p):
+    def pred_function(self, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
         k_e = p['k_e']
         return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
         
-    def _calculate_error(self, y_pred, p):
+    def error_function(self, y_pred, p):
         p['v_v'] = p['v'] 
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
@@ -363,13 +363,13 @@ class AmtModel(predfunc.SymbolicPredictionFunction) :
 
         
         
-    def _calculate_parameters(self, para):
+    def parameter_fuction(self, para):
         para['k_a'] = 1.4901*tc.exp(self.eta_0())
         para['v'] = 32.4667*tc.exp(self.eta_1())
         para['k_e'] = 0.0873*tc.exp(self.eta_2())
         para['AMT'] = para['AMT']*self.theta_0()
 
-    def _calculate_preds(self, t, para):
+    def pred_function(self, t, para):
         dose = para['AMT'][0]
         k_a = para['k_a'] 
         v = para['v']
@@ -377,7 +377,7 @@ class AmtModel(predfunc.SymbolicPredictionFunction) :
         
         return (dose / v * k_a) / (k_a - k) * (tc.exp(-k*t) - tc.exp(-k_a*t))
     
-    def _calculate_error(self, y_pred, para) :
+    def error_function(self, y_pred, para) :
         return y_pred +  y_pred * self.eps_0() + self.eps_1()
 
 class NumericFunction(predfunc.NumericPredictionFunction) :
@@ -394,20 +394,20 @@ class NumericFunction(predfunc.NumericPredictionFunction) :
         self.eps_0 = Eps()
         self.eps_1 = Eps()
     
-    def _calculate_parameters(self, p):
-        p['k_a'] = self.theta_0()*tc.exp(self.eta_0())
-        p['v'] = self.theta_1()*tc.exp(self.eta_1())
-        p['k_e'] = self.theta_2()*tc.exp(self.eta_2())
+    def parameter_fuction(self, p):
+        p['k_a'] = self.theta_0*tc.exp(self.eta_0())
+        p['v'] = self.theta_1*tc.exp(self.eta_1())
+        p['k_e'] = self.theta_2*tc.exp(self.eta_2())
         p['AMT'] = p['AMT']*p['BWT']
     
-    def _calculate_preds(self, t, y, p) -> tc.Tensor :
+    def pred_function(self, t, y, p) -> tc.Tensor :
         mat = tc.zeros(2,2, device=y.device)
         mat[0,0] = -p['k_a']
         mat[1,0] = p['k_a']
         mat[1,1] = -p['k_e']
         return mat @ y
 
-    def _calculate_error(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
+    def error_function(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
         y = y_pred/parameters['v']
         return y +  y * self.eps_0() + self.eps_1()
         

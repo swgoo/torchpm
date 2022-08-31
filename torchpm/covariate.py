@@ -82,8 +82,8 @@ class CovariatePredictionFunctionDecorator :
                         setattr(self, dp_name + '_eta', Eta())
                 set_estimated_parameters(self, meta_self.covariates)
                 
-            def _calculate_parameters(self, parameters):
-                super()._calculate_parameters(parameters)
+            def parameter_fuction(self, parameters):
+                super().parameter_fuction(parameters)
                 for i, cov in enumerate(meta_self.covariates):
                     for dp_name in cov.dependent_parameter_names:
                         theta = getattr(self, dp_name)
