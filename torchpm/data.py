@@ -2,6 +2,8 @@ import enum
 from dataclasses import dataclass, asdict
 from typing import Dict, Iterable, List, Literal, Optional, OrderedDict, Set, Tuple, Type
 
+import numpy as np
+
 import torch
 from scipy import stats
 import pandas as pd
@@ -72,7 +74,7 @@ class PMDataset(Dataset):
             if col in EssentialColumns.int_column_names() :
                 dataframe[col] = dataframe[col].astype(int)
             else :
-                dataframe[col] = dataframe[col].astype(float)
+                dataframe[col] = dataframe[col].astype(np.float32)
         
         self.ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(axis = 0).unique().tolist()
         self.max_record_length = 0

@@ -4,14 +4,22 @@ from torch.nn import Module
 import abc
 from .misc import *
 
-class ObjectiveFunction(Module) :
-    
+
+
+class NonLinearMixedModelObjectiveFunction(Module):
     @abc.abstractmethod
-    def forward(self, dv, pred, g, h, eta, omega, sigma) -> Tensor:
+    def forward(self, *args, **kwargs) -> Tensor:
         pass
 
-class FOCEInterObjectiveFunction(ObjectiveFunction) :
-    def __call__(self, dv, pred, g, h, eta, omega, sigma) -> tc.Tensor:
+class FOCEInterObjectiveFunction(NonLinearMixedModelObjectiveFunction) :
+    def __call__(self, 
+            dv : Tensor, 
+            pred : Tensor, 
+            g : Tensor, 
+            h : Tensor, 
+            eta : Tensor, 
+            omega : Tensor, 
+            sigma : Tensor) -> tc.Tensor:
 
         res = dv - pred
         v = (h @ sigma @ h.t()).diag().diag()
@@ -34,7 +42,7 @@ class FOCEInterObjectiveFunction(ObjectiveFunction) :
 
         return tc.squeeze(term1 + term2 + term3 + term4 + term5)
 
-class FOCEObjectiveFunction(ObjectiveFunction) :
+class FOCEObjectiveFunction(NonLinearMixedModelObjectiveFunction) :
     def __call__(self, dv, pred, g, h, eta, omega, sigma) :
         v = (h @ sigma @ h.t()).diag().diag()
         res = dv - pred 
@@ -44,7 +52,7 @@ class FOCEObjectiveFunction(ObjectiveFunction) :
         return tc.squeeze(c_det_value + r.t() @ r)
     
 
-class DesignOptimalFunction(metaclass = abc.ABCMeta) :
+class DesignOptimalFunction(NonLinearMixedModelObjectiveFunction) :
     @abc.abstractmethod
     def __call__(self, fisher_information_matrix : tc.Tensor) -> tc.Tensor:
         pass

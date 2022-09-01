@@ -38,12 +38,12 @@ class PredictionFunction(Module):
                 theta_boundary = value.boundary
                 self.theta_boundaries.update({name: theta_boundary})
                 value = value.theta
-            elif type(value) is Eta :
+            elif type(value) is EtaDict :
                 for id in self._ids : 
-                    value.update({str(id): Parameter(tensor(0.1))})
-            elif type(value) is Eps :
+                    value.update({str(id): Eta(tensor(0.1))})
+            elif type(value) is EpsDict :
                 for id in self._ids :
-                    value.update({str(id): Parameter(tc.zeros(self._record_lengths[id]))})
+                    value.update({str(id): Eps(tc.zeros(self._record_lengths[id], requires_grad=True))})
         super().__setattr__(name, value)
 
     def __getattr__(self, name: str) -> Any:
@@ -102,7 +102,7 @@ class PredictionFunction(Module):
         for att_name in attributes :
             att = getattr(self, att_name)
             with tc.no_grad() :
-                if type(att) is Eps :
+                if type(att) is EpsDict :
                     for id in self._ids :
                         eps_value = tc.zeros_like(att[str(id)], requires_grad=True, device=att[str(id)].device)
                         att.update({str(id): Parameter(eps_value)})

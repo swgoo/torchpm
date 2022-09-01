@@ -30,7 +30,7 @@ class ThetaBoundary(nn.Module):
         if len(init_values) > 3 :
             raise Exception('it must be len(init_value) <= 3')
 
-        set_parameter = lambda x : Parameter(tensor(x), requires_grad=False)
+        set_parameter = lambda x : tensor(x, dtype=torch.float32)
 
         lb = 1.e-6
         iv = 0.
@@ -54,10 +54,10 @@ class ThetaBoundary(nn.Module):
                 ub = init_values[2]
             else :
                 raise Exception('init_values must increase in order.')
-        self.lb : Parameter = set_parameter(lb)
-        self.ub : Parameter = set_parameter(ub)
+        self.lb : Tensor = set_parameter(lb)
+        self.ub : Tensor = set_parameter(ub)
         alpha = 0.1 - tc.log((iv - self.lb)/(self.ub - self.lb)/(1 - (iv - self.lb)/(self.ub - self.lb)))
-        self.alpha : Parameter = set_parameter(float(alpha))
+        self.alpha : Tensor = set_parameter(float(alpha))
 
     def forward(self, theta: Theta) :
         if isinstance(theta, Tensor):
@@ -84,11 +84,39 @@ class ThetaInit(Theta):
                 data= self.data.detach().clone(),
                 fixed= self.fixed)
 
-class Eta(ParameterDict) :
-    pass
+class Eta(Parameter) :
+    def __new__(cls , data: Tensor, fixed = False, requires_grad: bool = True) :
+        if data.dim() != 0:
+            raise Exception("Eta's dim should be 0")
+        obj = super().__new__(cls, data = data,  requires_grad = requires_grad)  # type: ignore
+        return obj
 
-class Eps(ParameterDict):
-    pass
+    def __init__(self,  data: Tensor, fixed = False, requires_grad: bool = True) : 
+        self.fixed = fixed
+
+class Eps(Parameter) :
+    def __new__(cls , data: Tensor, fixed = False, requires_grad: bool = True) :
+        if data.dim() != 1:
+            raise Exception("Eps's dim should be 1")
+        obj = super().__new__(cls, data = data,  requires_grad = requires_grad)  # type: ignore
+        return obj
+
+    def __init__(self,  data: Tensor, fixed = False, requires_grad: bool = True) : 
+        self.fixed = fixed
+
+class EtaDict(ParameterDict) : 
+    def __init__(self, parameters : Optional[Dict[str, Eta]] = None) :
+        super().__init__(parameters=parameters)
+
+    def update(self, parameters: Dict[str, Eta]) -> None:
+        return super().update(parameters)
+
+class EpsDict(ParameterDict):
+    def __init__(self, parameters : Optional[Dict[str, Parameter]] = None) :
+        super().__init__(parameters= parameters)
+    
+    def update(self, parameters: Dict[str, Eps]) -> None:
+        return super().update(parameters)
 
 class CovarianceVector(Parameter):
 
@@ -163,7 +191,6 @@ class CovarianceVectorList(ParameterList) :
                 parameters: Optional[Iterable[CovarianceVector]] = None,) :
         super().__init__(parameters)
 
-    @property
     def random_variable_names(self) -> Tuple[str, ...]:
         result : Tuple[str, ...] = ()
         for covariance_vector in self :
@@ -176,22 +203,24 @@ class CovarianceVectorInitList(CovarianceVectorList):
             self,
             covariance_vector_init_list: Iterable[CovarianceVectorInit]):
         super().__init__(covariance_vector_init_list)
+    
+    def covariance_list(self):
+        vectors = [vector.covariance_vector for vector in self if type(vector) is CovarianceVectorInit]
+        return CovarianceVectorList(vectors)
 
+    def scaler_list(self) :
         scalers = []
         for vector_init in self :
             if type(vector_init) is CovarianceVectorInit:
                 scalers.append(vector_init.scaler)
-        self.scalers : CovarianceScalerList = CovarianceScalerList(scalers)
-    
-    @property
-    def covariance_list(self):
-        return CovarianceVectorList(self)
+        return CovarianceScalerList(scalers)
 
 class CovarianceScaler(nn.Module):
     
     def __init__(self, covariance_vector : CovarianceVector):
         super().__init__()
-        self.scale = Parameter(self._set_scale(covariance_vector), requires_grad=False)
+        self.scale = Parameter(self._set_scale(covariance_vector).detach().clone(), requires_grad=False)
+        self.scale.fixed = True
 
     def _get_descaled_matrix(self, scaled_matrix : Tensor):
         x = scaled_matrix * self.scale
@@ -222,16 +251,20 @@ class CovarianceScalerList(nn.ModuleList):
                 m.append(covariance_scaler(covariance_vector))
         return m
 
-def get_covariance(covariance_vector_list : CovarianceVectorList, covariance_scaler_list : CovarianceScalerList):
+def get_covariance(
+            covariance_vector_list : CovarianceVectorList, 
+            covariance_scaler_list : CovarianceScalerList, 
+            scale_mode : bool):
     covariance = []
-    # block_matrix_list = covariate_block_matrix(covariance_vector_list)
     for scaler, vector in zip(covariance_scaler_list, covariance_vector_list) :
-        if scaler is not None :
+        if scale_mode and scaler is not None and type(vector) is CovarianceVector:
             block_matrix = lower_triangular_vector_to_covariance_matrix(vector, diag = vector.is_diagonal)
             block_matrix = scaler(block_matrix)
             covariance.append(block_matrix)
-        else :
+        elif type(vector) is CovarianceVector:
             block_matrix = lower_triangular_vector_to_covariance_matrix(vector, diag = vector.is_diagonal)
             covariance.append(block_matrix)
+        else :
+            TypeError('the type of covriance_vector_list should be CovairianceVector')
     return torch.block_diag(*covariance)
                 

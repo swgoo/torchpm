@@ -79,7 +79,7 @@ class CovariatePredictionFunctionDecorator :
                 for i, cov in enumerate(meta_self.covariates):
                     for dp_name, init_value in zip(cov.dependent_parameter_names, meta_self.dependent_parameter_initial_values[i]) :
                         setattr(self, dp_name, ThetaInit(*init_value))
-                        setattr(self, dp_name + '_eta', Eta())
+                        setattr(self, dp_name + '_eta', EtaDict())
                 set_estimated_parameters(self, meta_self.covariates)
                 
             def parameter_fuction(self, parameters):

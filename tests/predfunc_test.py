@@ -12,16 +12,16 @@ if __name__ == '__main__' :
 class NumericFunction(predfunc.NumericPredictionFunction) :
     def __init__(self, dataset):
         super().__init__(dataset)
-        self.theta_0 = ThetaInit(0., 1.5, 10)
-        self.theta_1 = ThetaInit(0, 30, 100)
-        self.theta_2 = ThetaInit(0, 0.08, 1)
+        self.theta_0 = ThetaInit(0.1, 1.5, 10)
+        self.theta_1 = ThetaInit(0.1, 30, 100)
+        self.theta_2 = ThetaInit(0.1, 0.08, 1)
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.eta_0 = EtaDict()
+        self.eta_1 = EtaDict()
+        self.eta_2 = EtaDict()
 
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
+        self.eps_0 = EpsDict()
+        self.eps_1 = EpsDict()
     
     def parameter_fuction(self, p):
         p['k_a'] = self.theta_0*tc.exp(self.eta_0[get_id(p)])
@@ -40,25 +40,25 @@ class NumericFunction(predfunc.NumericPredictionFunction) :
         y = y_pred/parameters['v']
         return y +  y * self.eps_0[get_id(parameters)] + self.eps_1[get_id(parameters)]
 
-class BasementFunction(predfunc.SymbolicPredictionFunction) :
+class SymbolicFunction(predfunc.SymbolicPredictionFunction) :
 
     def __init__(self, dataset):
         super().__init__(dataset)
-        self.theta_0 = ThetaInit(0., 1.5, 10.)
-        self.theta_1 = ThetaInit(0., 30., 100.)
-        self.theta_2 = ThetaInit(0, 0.08, 1)
+        self.k_a = ThetaInit(0.1, 1.5, 10.)
+        self.v = ThetaInit(0.1, 80., 100.)
+        self.k_e = ThetaInit(0.01, 0.08, 1)
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.k_a_eta = EtaDict()
+        self.v_eta = EtaDict()
+        self.k_e_eta = EtaDict()
 
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
+        self.prop_err = EpsDict()
+        self.add_err = EpsDict()
     
     def parameter_fuction(self, para):
-        para['k_a'] = self.theta_0*tc.exp(self.eta_0[get_id(para)])
-        para['v'] = self.theta_1*tc.exp(self.eta_1[get_id(para)])
-        para['k_e'] = self.theta_2*tc.exp(self.eta_2[get_id(para)])
+        para['k_a'] = self.k_a*tc.exp(self.k_a_eta[get_id(para)])
+        para['v'] = self.v*tc.exp(self.v_eta[get_id(para)])
+        para['k_e'] = self.k_e*tc.exp(self.k_e_eta[get_id(para)])
         para['AMT'] = tc.tensor(320., device=para['ID'].device)
         return para
 
@@ -71,7 +71,7 @@ class BasementFunction(predfunc.SymbolicPredictionFunction) :
         
     def error_function(self, y_pred, p):
         p['v_v'] = p['v'] 
-        return y_pred +  y_pred * self.eps_0[get_id(p)] + self.eps_1[get_id(p)]
+        return y_pred +  y_pred * self.prop_err[get_id(p)] + self.add_err[get_id(p)]
 
 class PredFuncTest(unittest.TestCase) :
     def setUp(self) :
@@ -81,7 +81,7 @@ class PredFuncTest(unittest.TestCase) :
         self.numeric_dataset = PMDataset(dataframe)
 
     def test_simbolic_predfunc(self) :
-        function = BasementFunction(self.symbolic_dataset)
+        function = SymbolicFunction(self.symbolic_dataset)
         for batch in DataLoader(dataset=self.symbolic_dataset, batch_size=5) :
             result = function(batch)
             print(result)

@@ -18,12 +18,12 @@ class BasementFunction(predfunc.SymbolicPredictionFunction) :
         self.theta_1 = Theta(0., 30., 100.)
         self.theta_2 = Theta(0, 0.08, 1)
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.eta_0 = EtaDict()
+        self.eta_1 = EtaDict()
+        self.eta_2 = EtaDict()
 
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
+        self.eps_0 = EpsDict()
+        self.eps_1 = EpsDict()
     
     def parameter_fuction(self, id, para):
         para['k_a'] = self.theta_0*tc.exp(self.eta_0[id])
@@ -50,12 +50,12 @@ class MultidoseBasementFunction(predfunc.SymbolicPredictionFunction) :
         self.theta_1 = Theta(0., 30., 100.)
         self.theta_2 = Theta(0, 0.08/28, 1) #0.08이면 steady state 도달시간 48시간
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.eta_0 = EtaDict()
+        self.eta_1 = EtaDict()
+        self.eta_2 = EtaDict()
 
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
+        self.eps_0 = EpsDict()
+        self.eps_1 = EpsDict()
 
         self.amount = tc.tensor(320.)
     
@@ -279,11 +279,11 @@ class BasementModelFIM(predfunc.SymbolicPredictionFunction) :
         self.theta_1 = ThetaInit(0.01, 30., 40.)
         self.theta_2 = ThetaInit(0.01, 0.8, 1.)
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.eta_0 = EtaDict()
+        self.eta_1 = EtaDict()
+        self.eta_2 = EtaDict()
 
-        self.eps_0 = Eps()
+        self.eps_0 = EpsDict()
         
     
     def parameter_fuction(self, para):
@@ -311,12 +311,12 @@ class AnnModel(predfunc.SymbolicPredictionFunction) :
         self.theta_1 = ThetaInit(0., 30., 100.)
         self.theta_2 = ThetaInit(0, 0.08, 1)
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.eta_0 = EtaDict()
+        self.eta_1 = EtaDict()
+        self.eta_2 = EtaDict()
 
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
+        self.eps_0 = EpsDict()
+        self.eps_1 = EpsDict()
 
         self.lin = nn.Sequential(nn.Linear(1,3),
                                     nn.Linear(3,3))
@@ -354,12 +354,12 @@ class AmtModel(predfunc.SymbolicPredictionFunction) :
         super().__init__(dataset, output_column_names)
         self.theta_0 = ThetaInit(0, 100, 500)
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.eta_0 = EtaDict()
+        self.eta_1 = EtaDict()
+        self.eta_2 = EtaDict()
 
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
+        self.eps_0 = EpsDict()
+        self.eps_1 = EpsDict()
 
         
         
@@ -387,12 +387,12 @@ class NumericFunction(predfunc.NumericPredictionFunction) :
         self.theta_1 = ThetaInit(0, 30, 100)
         self.theta_2 = ThetaInit(0, 0.08/20, 1)
 
-        self.eta_0 = Eta()
-        self.eta_1 = Eta()
-        self.eta_2 = Eta()
+        self.eta_0 = EtaDict()
+        self.eta_1 = EtaDict()
+        self.eta_2 = EtaDict()
 
-        self.eps_0 = Eps()
-        self.eps_1 = Eps()
+        self.eps_0 = EpsDict()
+        self.eps_1 = EpsDict()
     
     def parameter_fuction(self, p):
         p['k_a'] = self.theta_0*tc.exp(self.eta_0())
