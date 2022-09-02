@@ -95,13 +95,13 @@ class Eta(Parameter) :
         self.fixed = fixed
 
 class Eps(Parameter) :
-    def __new__(cls , data: Tensor, fixed = False, requires_grad: bool = True) :
+    def __new__(cls , data: Tensor, fixed = True, requires_grad: bool = True) :
         if data.dim() != 1:
             raise Exception("Eps's dim should be 1")
         obj = super().__new__(cls, data = data,  requires_grad = requires_grad)  # type: ignore
         return obj
 
-    def __init__(self,  data: Tensor, fixed = False, requires_grad: bool = True) : 
+    def __init__(self,  data: Tensor, fixed = True, requires_grad: bool = True) : 
         self.fixed = fixed
 
 class EtaDict(ParameterDict) : 
@@ -220,7 +220,7 @@ class CovarianceScaler(nn.Module):
     def __init__(self, covariance_vector : CovarianceVector):
         super().__init__()
         self.scale = Parameter(self._set_scale(covariance_vector).detach().clone(), requires_grad=False)
-        self.scale.fixed = True
+        self.scale.fixed = True # type: ignore
 
     def _get_descaled_matrix(self, scaled_matrix : Tensor):
         x = scaled_matrix * self.scale

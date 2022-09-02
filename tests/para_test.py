@@ -12,7 +12,10 @@ class ParaTest(unittest.TestCase) :
     @classmethod
     def get_omega(cls):
         return CovarianceVectorInitList(
-            [CovarianceVectorInit((0.1,0.1,0.1),('k_a_eta','v_eta','k_e_eta'))])
+            [CovarianceVectorInit((
+                0.1,
+                0.05,0.1,
+                0.05,0.05,0.1),('k_a_eta','v_eta','k_e_eta'), is_diagonal=False)])
 
     @classmethod
     def get_sigma(cls):

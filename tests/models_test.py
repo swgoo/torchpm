@@ -9,7 +9,6 @@ from tests.para_test import *
 
 from torch.utils.data import DataLoader
 
-from tqdm.notebook import tqdm
 from pytorch_lightning.callbacks import TQDMProgressBar
 
 import pytorch_lightning as pl
@@ -37,6 +36,7 @@ class ModelsTest(unittest.TestCase) :
         dataloader = DataLoader(dataset=self.symbolic_dataset, batch_size=12)
 
         trainer = pl.Trainer(
+            log_every_n_steps=1,
             accelerator='gpu',
-            callbacks=[TQDMProgressBar(refresh_rate=1, process_position=1)])
+            callbacks=[TQDMProgressBar(process_position =0)])
         trainer.fit(model, train_dataloaders=dataloader)

@@ -45,7 +45,7 @@ class SymbolicFunction(predfunc.SymbolicPredictionFunction) :
     def __init__(self, dataset):
         super().__init__(dataset)
         self.k_a = ThetaInit(0.1, 1.5, 10.)
-        self.v = ThetaInit(0.1, 80., 100.)
+        self.v = ThetaInit(0.1, 30., 100.)
         self.k_e = ThetaInit(0.01, 0.08, 1)
 
         self.k_a_eta = EtaDict()

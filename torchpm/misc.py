@@ -29,7 +29,7 @@ def matrix_to_lower_triangular_vector(m : tc.Tensor):
     tril_indices = m.tril().nonzero().t()
     return m[tril_indices[0], tril_indices[1]]
 
-def cwres(y_true, y_pred, g, h, eta, omega, sigma) :    
+def get_cwres(y_true, y_pred, g, h, eta, omega, sigma) :    
     if eta.size()[-1] > 0:
         term1 = g @ omega @ g.t()
         term2 =  g @ eta
