@@ -284,6 +284,7 @@ class FOCEInter(pl.LightningModule) :
                 *outputs.theta.values(),
                 *self.omega_vector_list,
                 *self.sigma_vector_list]
+                
 
         for data in inputs:
             id = int(data[EssentialColumns.ID.value][0])
