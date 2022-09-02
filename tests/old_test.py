@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, models, ode, predfunc, loss
+from torchpm import covariate, lossfunc, models, ode, predfunc
 from torchpm import data
 from torchpm.data import PMDataset, OptimalDesignDataset
 from torchpm.para import *
@@ -196,7 +196,7 @@ class FisherInformationMatrixTest(unittest.TestCase):
                 eps_names= ['eps_0'], 
                 omega=omega, 
                 sigma=sigma,
-                optimal_design_creterion=loss.AOptimality())
+                optimal_design_creterion=lossfunc.AOptimality())
         model = models.FOCEInter(model_config).to(device)
 
         model.fit_population_FIM(model.parameters())

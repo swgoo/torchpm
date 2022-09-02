@@ -4,5 +4,5 @@ from . import models
 from . import ode
 from . import para
 from . import predfunc
-from . import loss
+from . import lossfunc
 from . import covariate

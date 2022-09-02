@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, models, ode, predfunc, loss
+from torchpm import covariate, lossfunc, models, ode, predfunc
 from torchpm import data
 from torchpm.data import PMDataset, EssentialColumns
 from torchpm.para import *
