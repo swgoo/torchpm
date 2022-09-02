@@ -1,5 +1,5 @@
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 from typing import Any, Callable, List, Dict, Optional
 import typing
@@ -27,12 +27,12 @@ class ModelConfig :
 
 @dataclass
 class OptimizationOutputs :
-    outputs : Dict[int, Dict[str, Tensor]] = {}
-    loss : Dict[int, Tensor] = {}
-    cwres : Dict[int,Tensor] = {}
-    theta : Dict[str, Theta] = {}
-    eta_dict : Dict[str, EtaDict] = {}
-    eps_dict : Dict[str, EpsDict] = {}
+    outputs : Dict[int, Dict[str, Tensor]] = field(default_factory= lambda : {})
+    loss : Dict[int, Tensor] = field(default_factory= lambda : {})
+    cwres : Dict[int,Tensor] = field(default_factory= lambda : {})
+    theta : Dict[str, Theta] = field(default_factory= lambda : {})
+    eta_dict : Dict[str, EtaDict] = field(default_factory= lambda : {})
+    eps_dict : Dict[str, EpsDict] = field(default_factory= lambda : {})
     omega : CovarianceVectorList = CovarianceVectorList()
     sigma : CovarianceVectorList = CovarianceVectorList()
     cov : Optional[Tensor] = None
@@ -76,16 +76,18 @@ class OptimizationOutputs :
 
 class FOCEInter(pl.LightningModule) :
    
-
     def __init__(self,
             model_config : ModelConfig,
             lr = 1.,
-            tolerance_change = 1e-5,
-            tolerance_grad = 1e-7,
-            max_iter = 20):
+            tolerance_change : float = 1e-5,
+            tolerance_grad : float = 1e-7,
+            max_iter : int = 20,
+            random_seed : int = 42):
 
         super().__init__()
         self.save_hyperparameters(ignore=['model_config'])
+
+        torch.manual_seed(self.hparams.random_seed) # type: ignore
 
         self.model_config = model_config
         self.pred_function = self.model_config.pred_function(self.model_config.dataset)
@@ -107,6 +109,9 @@ class FOCEInter(pl.LightningModule) :
 
         self.eta_names = self.omega_vector_list.random_variable_names()
         self.eps_names = self.sigma_vector_list.random_variable_names()
+
+        self.covariance_step = True
+        self.simulation_mode = False
 
     @property
     def omega(self):
@@ -269,6 +274,25 @@ class FOCEInter(pl.LightningModule) :
 
     def predict_step(self, batch : Dict[str, Tensor], batch_id) -> OptimizationOutputs :
         outputs = OptimizationOutputs()
+        state_dict = self.state_dict()
+        if self.simulation_mode :
+            
+            mvn_eta = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(len(outputs.eta_dict), device=batch[EssentialColumns.ID.value].device), self.omega)
+            simulated_etas = mvn_eta.rsample(torch.Size([self.pred_function.dataset.len])).t()
+            eta_names = self.omega_vector_list.random_variable_names()
+            eta_dict = self.pred_function.get_attr_dict(EtaDict)
+            for simulated_eta, name in zip(simulated_etas, eta_names) :
+                for i, id in enumerate(self.pred_function.dataset.ids) :
+                    eta_dict[name].update({str(id): simulated_eta[i]})
+
+            mvn_eps = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(len(outputs.eps_dict), device=batch[EssentialColumns.ID.value].device), self.omega)
+            simulated_epss = mvn_eps.rsample(torch.Size([self.pred_function.dataset.len, self.pred_function.dataset.max_record_length])).permute([2,0,1])
+            eps_names = self.sigma_vector_list.random_variable_names()
+            eps_dict = self.pred_function.get_attr_dict(EpsDict)
+            for simulated_eps, name in zip(simulated_epss, eps_names):
+                for i, id in enumerate(self.pred_function.dataset.ids):
+                    eps_dict[name].update({str(id): simulated_eps[i]})
+
         inputs = self._common_step(batch = batch, batch_idx = batch_id)
         outputs.theta = self.pred_function.get_attr_dict(Theta)
         outputs.eta_dict = self.pred_function.get_attr_dict(EtaDict)
@@ -284,7 +308,8 @@ class FOCEInter(pl.LightningModule) :
                 *outputs.theta.values(),
                 *self.omega_vector_list,
                 *self.sigma_vector_list]
-                
+
+        
 
         for data in inputs:
             id = int(data[EssentialColumns.ID.value][0])
@@ -296,19 +321,20 @@ class FOCEInter(pl.LightningModule) :
             
             outputs.loss[id] = data['LOSS']
 
-            gr = torch.autograd.grad(data['LOSS'], estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
-            gr = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr]
-            gr_cat = torch.concat(gr, dim=0)
+            if self.covariance_step :
+                gr = torch.autograd.grad(data['LOSS'], estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
+                gr = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr]
+                gr_cat = torch.concat(gr, dim=0)
             
-            s_mat.add_((gr_cat.detach().unsqueeze(1) @ gr_cat.detach().unsqueeze(0))/4)
+                s_mat.add_((gr_cat.detach().unsqueeze(1) @ gr_cat.detach().unsqueeze(0))/4)
             
-            for i, gr_cur in enumerate(gr_cat) :
-                hs = torch.autograd.grad(gr_cur, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
+                for i, gr_cur in enumerate(gr_cat) :
+                    hs = torch.autograd.grad(gr_cur, estimated_parameters, create_graph=True, retain_graph=True, allow_unused=True)
 
-                hs = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in hs]
-                hs_cat = torch.cat(hs)
-                for j, hs_elem in enumerate(hs_cat) :
-                    r_mat[i,j] = r_mat[i,j] + hs_elem.detach()/2
+                    hs = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in hs]
+                    hs_cat = torch.cat(hs)
+                    for j, hs_elem in enumerate(hs_cat) :
+                        r_mat[i,j] = r_mat[i,j] + hs_elem.detach()/2
 
             eta_dict = self.pred_function.get_attr_dict(EtaDict)
             eta = []
@@ -319,86 +345,25 @@ class FOCEInter(pl.LightningModule) :
             outputs.cwres[id] = get_cwres(y_true_masked, y_pred_masked, data['G'], data['H'], eta, self.omega, self.sigma)
             outputs.outputs[id] = data
         
-        invR = r_mat.inverse()
-        cov = invR @ s_mat @ invR
-        se = cov.diag().sqrt()
-        correl = covariance_to_correlation(cov)
-        ei_values, ei_vectors = torch.linalg.eigh(correl)
+        if self.covariance_step :
+            invR = r_mat.inverse()
+            cov = invR @ s_mat @ invR
+            se = cov.diag().sqrt()
+            correl = covariance_to_correlation(cov)
+            ei_values, ei_vectors = torch.linalg.eigh(correl)
 
-        ei_values_sorted, _ = ei_values.sort()
-        inv_cov = r_mat @ s_mat.inverse() @ r_mat
+            ei_values_sorted, _ = ei_values.sort()
+            inv_cov = r_mat @ s_mat.inverse() @ r_mat
 
-        outputs.cov = cov
-        outputs.se = se
-        outputs.correl = correl
-        outputs.inv_cov = inv_cov
-        outputs.ei_values = ei_values_sorted
-        outputs.r_mat = r_mat
-        outputs.s_mat = s_mat
+            outputs.cov = cov
+            outputs.se = se
+            outputs.correl = correl
+            outputs.inv_cov = inv_cov
+            outputs.ei_values = ei_values_sorted
+            outputs.r_mat = r_mat
+            outputs.s_mat = s_mat
 
         return outputs
-
-    # TODO predict를 여러 eta와 eps로 하면 됨?
-    def simulate(self, dataset : PMDataset, repeat : int) :
-        """
-        simulationg
-        Args:
-            dataset: model dataset for simulation
-            repeat : simulation times
-        """
-        omega = self.omega
-        sigma = self.sigma
-
-        eta_parameter_values = self.pred_function.get_eta_parameter_values()
-        eta_size = len(eta_parameter_values)
-        mvn_eta = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(eta_size, device=dataset.device), omega)
-        etas = mvn_eta.rsample(torch.Size((len(dataset), repeat)))
-        
-
-        eps_parameter_values = self.pred_function.get_eps_parameter_values()
-        eps_size = len(eps_parameter_values)
-        mvn_eps = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(eps_size, device=dataset.device), sigma)
-        epss = mvn_eps.rsample(torch.Size([len(dataset), repeat, self.pred_function._max_record_length]))
-
-        dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=0)
-
-        result : Dict[str, Dict[str, Union[Tensor, List[Tensor]]]] = {}
-        for i, (data, _) in enumerate(dataloader):
-            
-            id = str(int(data[:, self.pred_function._column_names.index(EssentialColumnNames.ID.value)][0]))
-            
-            etas_cur = etas[i,:,:]
-            epss_cur = epss[i,:,:]
-
-            time_data = data[:,self.pred_function._column_names.index(EssentialColumnNames.TIME.value)].t()
-
-            result[id] = {}
-            result_cur_id : Dict[str, Union[Tensor, List[Tensor]]] = result[id]
-            result_cur_id['time'] = time_data
-            result_cur_id['etas'] = etas_cur
-            result_cur_id['epss'] = epss_cur
-            result_cur_id['preds'] = []
-            for repeat_iter in range(repeat) :
-
-                with torch.no_grad() :
-                    eta_value = etas_cur[repeat_iter]
-                    eps_value = epss_cur[repeat_iter]
-
-                    for eta_i, name in enumerate(self.eta_names) :
-                        eta_parameter_values[name].update({str(int(id)): Parameter(eta_value[eta_i])}) # type: ignore
-
-                    for eps_i, name in enumerate(self.eps_names) :
-                        eps_parameter_values[name].update({str(int(id)): Parameter(eps_value[:data.size()[0],eps_i])}) # type: ignore
-
-                    r  = self.pred_function(data)
-                    y_pred = r['y_pred']
-
-                    result_cur_id['preds'].append(y_pred)
-                    for name, value in r['output_columns'].items() :
-                        if name not in result_cur_id.keys() :
-                            result_cur_id[name] = []
-                        result_cur_id[name].append(value) # type: ignore
-        return result
 
 class FOCEInterOptimalDesign(FOCEInter):
     # TODO
