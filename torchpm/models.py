@@ -254,7 +254,7 @@ class FOCEInter(pl.LightningModule) :
         total_loss = 0
         for dataset in datasets :
             total_loss += dataset['LOSS']
-            self.log('ofv', total_loss)
+            self.log('ofv', total_loss, reduce_fx=torch.sum)
         return total_loss
 
     def configure_optimizers(self):
@@ -271,6 +271,28 @@ class FOCEInter(pl.LightningModule) :
                 tolerance_grad= tolerance_grad,
                 line_search_fn='strong_wolfe')
         return [optimizer], []
+
+    @property
+    def num_of_parameters(self):
+        num = 0
+        theta = self.pred_function.get_attr_dict(Theta)
+        eta_dicts = self.pred_function.get_attr_dict(EtaDict)
+        eps_dicts = self.pred_function.get_attr_dict(EpsDict)
+        for para in [theta, eta_dicts, eps_dicts,]:
+            num += len(para)
+
+        for para in [self.omega_vector_list, self.sigma_vector_list]:
+            for vector in para : num += len(vector)
+        return num
+
+    @property
+    def num_of_population_parameters(self):
+        theta = self.pred_function.get_attr_dict(Theta)
+        num = len(theta)
+        for para in [self.omega_vector_list, self.sigma_vector_list]:
+            for vector in para : num += len(vector)
+        return num
+
 
     def predict_step(self, batch : Dict[str, Tensor], batch_id) -> OptimizationOutputs :
         outputs = OptimizationOutputs()
@@ -300,7 +322,7 @@ class FOCEInter(pl.LightningModule) :
         outputs.omega = self.omega_vector_list
         outputs.sigma = self.sigma_vector_list
 
-        cov_mat_dim = outputs.num_of_population_parameters
+        cov_mat_dim = self.num_of_population_parameters
 
         r_mat = torch.zeros(cov_mat_dim, cov_mat_dim, device=batch[EssentialColumns.ID.value].device)
         s_mat = torch.zeros(cov_mat_dim, cov_mat_dim, device=batch[EssentialColumns.ID.value].device)
@@ -308,8 +330,6 @@ class FOCEInter(pl.LightningModule) :
                 *outputs.theta.values(),
                 *self.omega_vector_list,
                 *self.sigma_vector_list]
-
-        
 
         for data in inputs:
             id = int(data[EssentialColumns.ID.value][0])
@@ -368,22 +388,23 @@ class FOCEInter(pl.LightningModule) :
 class FOCEInterOptimalDesign(FOCEInter):
     # TODO
     def train_step(self, batch, batch_idx):
-        theta_dict = self.pred_function.get_theta_parameter_values()
-        cov_mat_dim =  len(theta_dict)
-        for tensor in self.omega_vector_list :
-            cov_mat_dim += tensor.size()[0]
-        for tensor in self.sigma_vector_list :
-            cov_mat_dim += tensor.size()[0]
+        cov_mat_dim =  self.num_of_population_parameters
         
-        thetas = [theta_dict[key] for key in self.pred_function.get_attr_dict(Theta)]
+        thetas = [value for _, value in self.pred_function.get_attr_dict(Theta).items()]
 
-        fisher_information_matrix_total = torch.zeros(cov_mat_dim, cov_mat_dim, device = dataset.device)
-        for data, y_true in dataloader:
+        fisher_information_matrix_total = torch.zeros(cov_mat_dim, cov_mat_dim, device = batch[EssentialColumns.ID.value].device)
 
-            y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data, partial_differentiate_by_etas = False, partial_differentiate_by_epss = True)
+        outputs = self._common_step(batch, batch_idx)
 
-            y_pred_masked = y_pred.masked_select(mdv_mask)
+
+        for data in outputs:
+
+            # y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data, partial_differentiate_by_etas = False, partial_differentiate_by_epss = True)
+
+            mdv_mask = data[EssentialColumns.MDV.value] == 0
+            y_pred_masked = data[self.pred_function.PRED_COLUMN_NAME].masked_select(mdv_mask)
             
+            h = data['H']
             eps_size = h.size()[-1]
             if eps_size > 0:
                 h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
@@ -399,9 +420,9 @@ class FOCEInterOptimalDesign(FOCEInter):
             gr_theta = torch.stack(gr_theta, dim=0)
 
             #TODO sigma 개선?
-            v = gr_theta @ omega @ gr_theta.t() + (h @ sigma @ h.t()).diag().diag()
+            v = gr_theta @ self.omega @ gr_theta.t() + (h @ self.sigma @ h.t()).diag().diag()
             # v = gr_theta @ omega @ gr_theta.t() +  torch.eye(gr_theta.size()[0], device = dataset.device) * (sigma)
-            v = v + torch.eye(v.size()[0], device = dataset.device) * 1e-6
+            v = v + torch.eye(v.size()[0], device = y_pred_masked.device) * 1e-6
             v_inv = v.inverse()
 
             a_matrix = gr_theta.t() @ v_inv @ gr_theta
@@ -421,4 +442,4 @@ class FOCEInterOptimalDesign(FOCEInter):
             fisher_information_matrix = torch.block_diag(a_matrix, b_matrix/2)
 
             fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
-        return self.design_optimal_function(fisher_information_matrix_total)
+        return self.objective_function(fisher_information_matrix_total)

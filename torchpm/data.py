@@ -63,6 +63,7 @@ class EssentialColumns(enum.Enum) :
 class PMDataset(Dataset):
     def __init__(self, 
                  dataframe : pd.DataFrame,
+                 repeat : int = 1,
                  **kwargs):
         super().__init__(**kwargs)
         
@@ -75,8 +76,9 @@ class PMDataset(Dataset):
                 dataframe[col] = dataframe[col].astype(int)
             else :
                 dataframe[col] = dataframe[col].astype(np.float32)
-        
-        self.ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(axis = 0).unique().tolist()
+        self._ids_origin : List[int] = dataframe[EssentialColumns.ID.value].sort_values(axis = 0).unique().tolist()
+        self.repeat = repeat
+
         self.max_record_length = 0
         self.record_lengths : Dict[int, int] = {}
         self.datasets_by_id : Dict[int, Dict[str, Tensor]] = {}
@@ -104,6 +106,20 @@ class PMDataset(Dataset):
 
     def __len__(self):
         return self.len
+
+    @property
+    def repeat(self) :
+        return self._repeat
+    
+    @repeat.setter
+    def repeat(self, value : int) :
+        self._repeat = value
+        self._ids = self._ids_origin * self._repeat
+
+    @property
+    def ids(self) :
+        return self._ids
+
 
 @dataclass
 class PMRecord:

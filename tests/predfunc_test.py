@@ -4,6 +4,8 @@ from torchpm.para import *
 from torchpm.data import *
 from torchpm import predfunc
 
+from torch import nn
+
 from torch.utils.data import DataLoader
 
 if __name__ == '__main__' :
@@ -60,6 +62,62 @@ class SymbolicFunction(predfunc.SymbolicPredictionFunction) :
         para['v'] = self.v*tc.exp(self.v_eta[get_id(para)])
         para['k_e'] = self.k_e*tc.exp(self.k_e_eta[get_id(para)])
         para['AMT'] = tc.tensor(320., device=para['ID'].device)
+        return para
+
+    def pred_function(self, t, p):
+        dose = p['AMT'][0]
+        k_a = p['k_a']
+        v = p['v']
+        k_e = p['k_e']
+        return  (dose / v * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
+        
+    def error_function(self, y_pred, p):
+        p['v_v'] = p['v'] 
+        return y_pred +  y_pred * self.prop_err[get_id(p)] + self.add_err[get_id(p)]
+
+class TransformerSymbolicFunction(predfunc.SymbolicPredictionFunction) :
+
+    def __init__(self, dataset):
+        super().__init__(dataset)
+        self.k_a = ThetaInit(0.1, 1.5, 10.)
+        self.v = ThetaInit(0.1, 30., 100.)
+        self.k_e = ThetaInit(0.01, 0.08, 1)
+
+        self.k_a_eta = EtaDict()
+        self.v_eta = EtaDict()
+        self.k_e_eta = EtaDict()
+
+        self.prop_err = EpsDict()
+        self.add_err = EpsDict()
+        
+        self.transformer = nn.TransformerDecoderLayer(
+                d_model=1,
+                nhead=1,
+                dim_feedforward=1,
+                dropout=0,
+                batch_first=True,
+                norm_first=True)
+
+        self.attention = nn.MultiheadAttention(
+                embed_dim=1,
+                num_heads=1,)
+
+        # self.linear = nn.Sequential(nn.Linear(6,3), nn.Linear(3,3))
+
+    def parameter_fuction(self, para):
+
+        covariates = torch.stack([para['BWT'], para['bwt_cor_0.1'], para['bwt_cor_0.5'], para['bwt_cor_0.7'], para['zero'], para['normal']]).t().unsqueeze(-1)
+        pk_parameters = torch.stack([self.k_a, self.v, self.k_e]).repeat([para['ID'].size()[0],1]).unsqueeze(-1)
+
+        output = self.transformer(tgt = pk_parameters, memory=covariates)#.squeeze(-1).t()
+        output, attention = self.attention(output, covariates, covariates)
+        # output = self.linear(covariates)
+
+        para['k_a'] = output[0]*tc.exp(self.k_a_eta[get_id(para)])
+        para['v'] = output[1]*tc.exp(self.v_eta[get_id(para)])
+        para['k_e'] = output[2]*tc.exp(self.k_e_eta[get_id(para)])
+        para['AMT'] = tc.tensor(320., device=para['ID'].device)
+
         return para
 
     def pred_function(self, t, p):

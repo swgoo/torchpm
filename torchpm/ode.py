@@ -25,7 +25,6 @@ class DistributionMatrixes(DistributionMatrix, enum.Enum) :
     TWO_COMP_DIST   = ((True, True), (True, False))
     # THREE_COMP_DIST = ((True, True, True), (True, False, False), (True, False, False))
 
-# COMPARTMENT_DISTRIBUTION_MATRIX = {}
 
 @dataclass(frozen=True, eq=True)
 class DosageFormConfig :
