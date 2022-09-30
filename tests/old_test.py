@@ -1,7 +1,7 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, lossfunc, models, ode, predfunc
+from torchpm import lossfunc, models, ode, predfunc
 from torchpm import data
 from torchpm.data import PMDataset, OptimalDesignDataset
 from torchpm.para import *
@@ -98,7 +98,7 @@ class DatasetTest(unittest.TestCase) :
                 is_infusion=True)
         dataset = OptimalDesignDataset(
                 equation_config=equation_config,
-                column_names = column_names,
+                mean_of_column_dict = column_names,
                 dosing_interval= 12,
                 sampling_times_after_dosing_time=[8],
                 target_trough_concentration=10.,

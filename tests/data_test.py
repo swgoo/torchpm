@@ -1,9 +1,9 @@
 import unittest
 import torch as tc
 from torch import nn
-from torchpm import covariate, lossfunc, models, ode, predfunc
+from torchpm import lossfunc, models, ode, predfunc
 from torchpm import data
-from torchpm.data import PMDataset, EssentialColumns
+from torchpm.data import PMDataset, EssentialColumns, OptimalDesignDataset
 from torchpm.para import *
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,4 +23,15 @@ class DatasetTest(unittest.TestCase) :
         print(EssentialColumns.AMT.dtype)
         print(EssentialColumns.ID.value)
         print(EssentialColumns.ID.dtype)
+        pass
+
+    def test_optimal_design_dataset(self):
+        odd = OptimalDesignDataset(
+            mean_of_covariate={'BWT': 70.},
+            is_infusion = False,
+            dosing_interval = 12.,
+            sampling_times_after_dosing_time=[0,0.5,1],
+            target_trough_concentration=10.,
+            include_trough_before_dose = False,
+            include_last_trough=True)
         pass

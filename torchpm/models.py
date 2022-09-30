@@ -16,13 +16,12 @@ from .misc import *
 import pytorch_lightning as pl
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class ModelConfig :
-    dataset : PMDataset
     pred_function : Type[predfunc.PredictionFunction]
     omega : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
     sigma : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
-    objective_function : lossfunc.NonLinearMixedModelObjectiveFunction = lossfunc.FOCEInterObjectiveFunction()
+    objective_function : Optional[lossfunc.NonLinearMixedModelObjectiveFunction] = None
 
 
 @dataclass
@@ -78,6 +77,7 @@ class FOCEInter(pl.LightningModule) :
    
     def __init__(self,
             model_config : ModelConfig,
+            dataset : PMDataset,
             lr = 1.,
             tolerance_change : float = 1e-5,
             tolerance_grad : float = 1e-7,
@@ -90,7 +90,7 @@ class FOCEInter(pl.LightningModule) :
         torch.manual_seed(self.hparams.random_seed) # type: ignore
 
         self.model_config = model_config
-        self.pred_function = self.model_config.pred_function(self.model_config.dataset)
+        self.pred_function = self.model_config.pred_function(dataset)
 
         self._scale_mode = True
 
@@ -186,9 +186,9 @@ class FOCEInter(pl.LightningModule) :
         return self.pred_function(dataset)
 
     def _common_step(self, batch, batch_idx) -> List[Dict[str, Tensor]]:
-        datasets = self(batch)
+        output = self(batch)
         outputs = []
-        for dataset in datasets :
+        for dataset in output :
             id = str(int(dataset[EssentialColumns.ID.value][0]))
 
             eta_dict = self.pred_function.get_attr_dict(EtaDict)
@@ -382,20 +382,33 @@ class FOCEInter(pl.LightningModule) :
             outputs.ei_values = ei_values_sorted
             outputs.r_mat = r_mat
             outputs.s_mat = s_mat
-
         return outputs
 
 class FOCEInterOptimalDesign(FOCEInter):
+    def __init__(self,
+            model_config : ModelConfig,
+            dataset : PMDataset,
+            lr = 1.,
+            tolerance_change : float = 1e-5,
+            tolerance_grad : float = 1e-7,
+            max_iter : int = 20,
+            random_seed : int = 42):
+        super().__init__(
+                model_config=model_config,
+                dataset = dataset)
+        self.save_hyperparameters(ignore=['model_config'])
+        self.objective_function = model_config.objective_function \
+            if model_config.objective_function is not None else lossfunc.DesignOptimalFunction()
+
     # TODO
-    def train_step(self, batch, batch_idx):
+    def _common_step(self, batch, batch_idx):
         cov_mat_dim =  self.num_of_population_parameters
         
         thetas = [value for _, value in self.pred_function.get_attr_dict(Theta).items()]
 
         fisher_information_matrix_total = torch.zeros(cov_mat_dim, cov_mat_dim, device = batch[EssentialColumns.ID.value].device)
 
-        outputs = self._common_step(batch, batch_idx)
-
+        outputs = super()._common_step(batch, batch_idx)
 
         for data in outputs:
 
@@ -404,8 +417,8 @@ class FOCEInterOptimalDesign(FOCEInter):
             mdv_mask = data[EssentialColumns.MDV.value] == 0
             y_pred_masked = data[self.pred_function.PRED_COLUMN_NAME].masked_select(mdv_mask)
             
+            eps_size = len(self.pred_function.get_attr_dict(EtaDict))
             h = data['H']
-            eps_size = h.size()[-1]
             if eps_size > 0:
                 h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
 
@@ -422,7 +435,8 @@ class FOCEInterOptimalDesign(FOCEInter):
             #TODO sigma 개선?
             v = gr_theta @ self.omega @ gr_theta.t() + (h @ self.sigma @ h.t()).diag().diag()
             # v = gr_theta @ omega @ gr_theta.t() +  torch.eye(gr_theta.size()[0], device = dataset.device) * (sigma)
-            v = v + torch.eye(v.size()[0], device = y_pred_masked.device) * 1e-6
+            if torch.trace(v).eq(torch.zeros([], device=data[EssentialColumns.ID.value].device)) :
+                v = v + torch.eye(v.size()[0], device = y_pred_masked.device) * 1e-6
             v_inv = v.inverse()
 
             a_matrix = gr_theta.t() @ v_inv @ gr_theta
@@ -442,4 +456,11 @@ class FOCEInterOptimalDesign(FOCEInter):
             fisher_information_matrix = torch.block_diag(a_matrix, b_matrix/2)
 
             fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
-        return self.objective_function(fisher_information_matrix_total)
+
+        return fisher_information_matrix_total
+    
+    def training_step(self, batch, batch_idx):
+        fisher_information_matrix = self._common_step(batch, batch_idx)
+        loss = self.objective_function(fisher_information_matrix)
+        self.log('loss', loss)
+        return loss

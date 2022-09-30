@@ -5,4 +5,3 @@ from . import ode
 from . import para
 from . import predfunc
 from . import lossfunc
-from . import covariate

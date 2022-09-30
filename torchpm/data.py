@@ -1,11 +1,11 @@
+from copy import deepcopy
 import enum
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Dict, Iterable, List, Literal, Optional, OrderedDict, Set, Tuple, Type
 
 import numpy as np
 
 import torch
-from scipy import stats
 import pandas as pd
 
 from torch import Tensor, tensor
@@ -63,21 +63,21 @@ class EssentialColumns(enum.Enum) :
 class PMDataset(Dataset):
     def __init__(self, 
                  dataframe : pd.DataFrame,
-                 repeat : int = 1,
                  **kwargs):
         super().__init__(**kwargs)
         
         EssentialColumns.check_inclusion_of_names(dataframe.columns)
+        self._covariate_names : Set[str] = set([name for name in dataframe.columns]) - EssentialColumns.get_name_set()
 
         self.column_names = list(dataframe.columns)
+        self.mean_of_columns : Dict[str, float] = dict(dataframe.mean(axis=0, skipna=True))
         
         for col in dataframe.columns :
             if col in EssentialColumns.int_column_names() :
                 dataframe[col] = dataframe[col].astype(int)
             else :
                 dataframe[col] = dataframe[col].astype(np.float32)
-        self._ids_origin : List[int] = dataframe[EssentialColumns.ID.value].sort_values(axis = 0).unique().tolist()
-        self.repeat = repeat
+        self._ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(axis = 0).unique().tolist()
 
         self.max_record_length = 0
         self.record_lengths : Dict[int, int] = {}
@@ -106,15 +106,10 @@ class PMDataset(Dataset):
 
     def __len__(self):
         return self.len
-
-    @property
-    def repeat(self) :
-        return self._repeat
     
-    @repeat.setter
-    def repeat(self, value : int) :
-        self._repeat = value
-        self._ids = self._ids_origin * self._repeat
+    @property
+    def covariate_names(self) -> Set[str]:
+        return self._covariate_names
 
     @property
     def ids(self) :
@@ -123,50 +118,40 @@ class PMDataset(Dataset):
 
 @dataclass
 class PMRecord:
-
-    def __init__(self,
-            ID : int = 1,
-            TIME : float = 0,
-            AMT : float = 0,
-            RATE : float = 0,
-            DV : float = 0,
-            MDV : int = 0,
-            CMT : int = 0,
-            **covariates : float) -> None:
-
-        self.ID = ID
-        self.TIME = TIME
-        self.AMT = AMT
-        self.RATE = RATE
-        self.DV = DV
-        self.MDV = MDV
-        self.CMT = CMT
-        for name, value in covariates.items() :
-            setattr(self, name, value)
+    ID : int = 1
+    TIME : float = 0
+    AMT : float = 0
+    RATE : float = 0
+    DV : float = 0
+    MDV : int = 0
+    CMT : int = 0
 
 class OptimalDesignDataset(PMDataset):
-    from .ode import EquationConfig
-
     def __init__(self,  
-                equation_config : EquationConfig,
-                column_names : List[str],
+                is_infusion : bool,
                 dosing_interval : float,
+                mean_of_covariate : Dict[str, float] = dict(),
                 target_trough_concentration : float = 0.,
+                administrated_compartment_num : int = 0,
+                observed_compartment_num : int = 0,
                 sampling_times_after_dosing_time : List[float] = [],
                 include_trough_before_dose : bool = False,
                 include_last_trough : bool = False,
                 repeats : int = 10,
                 **kwargs):
 
-        covariate_name_list = set(column_names) - EssentialColumns.get_name_set()
+        covariate_name_list = set(mean_of_covariate.keys()) - EssentialColumns.get_name_set()
         covariate_name_list = list(covariate_name_list)
-        df_columns = EssentialColumns.get_name_list()+covariate_name_list
+        df_columns = EssentialColumns.get_name_list() + covariate_name_list
 
-        covariates = OrderedDict()
-        for name in covariate_name_list :
-            covariates[name] = 0.
+        for k in mean_of_covariate.keys() :
+            if k in EssentialColumns.get_name_set():
+                del mean_of_covariate[k]
         
         df = pd.DataFrame(columns=df_columns)
+        def add_row(record : PMRecord):
+            record_dose_dict = deepcopy(mean_of_covariate) | asdict(record)
+            return pd.concat([df,pd.DataFrame(record_dose_dict, index=[0])], ignore_index=True)
         
         for i in range(repeats) :
             dosing_time = dosing_interval*i
@@ -176,11 +161,10 @@ class OptimalDesignDataset(PMDataset):
                     TIME = dosing_time,
                     ID = 1,
                     AMT = 1,
-                    RATE = 1 if equation_config.is_infusion else 0,
-                    CMT=equation_config.administrated_compartment_num,
-                    MDV=1,
-                    **covariates)
-            df = df.append(asdict(record_dose), ignore_index=True)
+                    RATE = 1 if is_infusion else 0,
+                    CMT=administrated_compartment_num,
+                    MDV=1,)
+            df = add_row(record_dose)
             
             for sampling_time_after_dose in sampling_times_after_dosing_time :
                 cur_time = dosing_time + sampling_time_after_dose
@@ -191,35 +175,31 @@ class OptimalDesignDataset(PMDataset):
                             TIME = cur_time,
                             ID = 1,
                             AMT = 0,
-                            RATE = 1 if equation_config.is_infusion else 0,
-                            CMT=equation_config.observed_compartment_num,
-                            MDV=0,
-                            **covariates)
+                            RATE = 1 if is_infusion else 0,
+                            CMT=observed_compartment_num,
+                            MDV=0)
                     
-                    df = df.append(asdict(record_sampling), ignore_index=True)
+                    df = add_row(record_sampling)
             if include_trough_before_dose and i < repeats - 1 :
                 record_trough = PMRecord(
-                        ID = 1,
-                        AMT = 0,
-                        RATE = 1 if equation_config.is_infusion else 0,
-                        TIME=trough_sampling_times_after_dose - 1e-6,
-                        DV = target_trough_concentration,
-                        CMT=equation_config.observed_compartment_num,
-                        MDV=0,
-                        **covariates)
-                df = df.append(asdict(record_trough), ignore_index=True)
+                    ID = 1,
+                    AMT = 0,
+                    RATE = 1 if is_infusion else 0,
+                    TIME=trough_sampling_times_after_dose - 1e-6,
+                    DV = target_trough_concentration,
+                    CMT=observed_compartment_num,
+                    MDV=0)
+                df = add_row(record_trough)
                 
         if include_last_trough:
             record_trough = PMRecord(
-                    ID = 1,
-                    AMT = 1,
-                    RATE = 1 if equation_config.is_infusion else 0,
-                    TIME=dosing_interval*repeats,
-                    DV = target_trough_concentration,
-                    CMT=equation_config.observed_compartment_num,
-                    MDV=0,
-                    **covariates)
-            df = df.append(asdict(record_trough), ignore_index=True)
+                ID = 1,
+                AMT = 0,
+                RATE = 1 if is_infusion else 0,
+                TIME=dosing_interval*repeats,
+                DV = target_trough_concentration,
+                CMT=observed_compartment_num,
+                MDV=0,)
+            df = add_row(record_trough)
         
         super().__init__(df, **kwargs)
- 

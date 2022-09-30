@@ -1,6 +1,7 @@
+from abc import abstractclassmethod
+from ast import Call
+from typing import Any, Callable, Dict, Set, Tuple, Type, TypeVar
 from abc import abstractmethod
-from collections import ChainMap
-from typing import Any, Dict, Set, Tuple, Type, TypeVar
 
 import torch
 import torch.nn as nn
@@ -14,7 +15,7 @@ from .para import *
 
 from .data import EssentialColumns
 from torch.nn.parameter import Parameter
-from torch.nn import ParameterDict, ModuleDict
+from torch.nn import ParameterDict, ModuleDict, ModuleList
 
 T = TypeVar('T')
 
@@ -23,6 +24,9 @@ class PredictionFunction(Module):
 
     def __init__(self,
             dataset : data.PMDataset,
+            init_random_variable_functions : List[Callable[[Any], None]] = [],
+            parameter_fuctions : List[Callable[[Dict[str, Tensor]], Dict[str, Tensor]]] = [],
+            error_functions : List[Callable[[Tensor, Dict[str, Tensor]], Tensor]] = [],
             **kwargs):
         super().__init__(**kwargs)
         self.dataset = dataset
@@ -31,6 +35,17 @@ class PredictionFunction(Module):
         self._record_lengths = dataset.record_lengths
         self._theta_boundary_mode : bool = True
         self.theta_boundaries = ModuleDict()
+        self.init_random_variable_functions = init_random_variable_functions
+        self.init_random_variables()
+
+        self.parameter_fuctions = parameter_fuctions
+        self.error_functions = error_functions
+
+    
+    #TODO 
+    def init_random_variables(self) :
+        for init_f in self.init_random_variable_functions : 
+            init_f(self)
 
     def __setattr__(self, name: str, value : Any) -> None:
         with tc.no_grad() :
@@ -147,25 +162,41 @@ class PredictionFunction(Module):
                 id = dataset[EssentialColumns.ID.value][0]
                 length = self._record_lengths[int(id)]
                 for col_name, value in dataset.items() :
-                    dataset[col_name] = value[:length]   
+                    dataset[col_name] = value[:length]
         return datasets
     
     @abstractmethod
     def parameter_fuction(self, input_columns : Dict[str, Tensor]) -> Dict[str, Tensor]:
-        pass
+        for func in self.parameter_fuctions:
+            input_columns = func(input_columns)
+        return input_columns
     
     @abstractmethod
     def error_function(self, y_pred: tc.Tensor, parameters: Dict[str, tc.Tensor]) -> tc.Tensor:
-        pass
+        for func in self.error_functions :
+            y_pred = func(y_pred, parameters)
+        return y_pred
     
     @abstractmethod
     def forward(self, dataset):
         pass
 
-class SymbolicPredictionFunction(PredictionFunction):
+class SymbolicPredictionFunction(PredictionFunction):   
+
+    def __init__(self, 
+        dataset: data.PMDataset, 
+        init_random_variable_functions: List[Callable[[Any], None]] = [], 
+        parameter_fuctions: List[Callable[[Dict[str, Tensor]], Dict[str, Tensor]]] = [], 
+        pred_functions : List[Callable[[Tensor, Tensor, Dict[str, Tensor]], Tensor]] = [],
+        error_functions: List[Callable[[Tensor, Dict[str, Tensor]], Tensor]] = [], 
+        **kwargs):
+        super().__init__(dataset, init_random_variable_functions, parameter_fuctions, error_functions, **kwargs)
+        self.pred_functions = pred_functions
 
     @abstractmethod
-    def pred_function(self, t : tc.Tensor, dataset : Dict[str, tc.Tensor]) -> tc.Tensor:
+    def pred_function(self, t : tc.Tensor, y: Tensor, parameters : Dict[str, tc.Tensor]) -> tc.Tensor:
+        for pred_f in self.pred_functions:
+            y = pred_f(t, y, parameters)
         pass
 
     def forward(self, batch) :
@@ -194,7 +225,8 @@ class SymbolicPredictionFunction(PredictionFunction):
                 parameters_sliced[EssentialColumns.AMT.value] = amts
 
                 t = times - start_time
-                f_cur = self.pred_function(t, parameters_sliced)
+                #TODO y는 compartment의 갯수만큼 dimension을 갖도록?
+                f_cur = self.pred_function(t, f, parameters_sliced)
                 f = f + tc.cat([f_pre, f_cur], 0)
 
             pred = self.error_function(f, parameters)
@@ -222,6 +254,8 @@ class NumericPredictionFunction(PredictionFunction):
         super().__init__(dataset, **kwargs)
         self.rtol = rtol
         self.atol = atol
+
+        #TODO set compartment initial value
     
 
     @abstractmethod

@@ -86,11 +86,10 @@ class ModelsTest(unittest.TestCase) :
         omega = ParaTest.get_omega()
         sigma = ParaTest.get_sigma()
         model_config = ModelConfig(
-                dataset,
                 TransformerSymbolicFunction,
                 omega=omega,
                 sigma=sigma)
-        model = FOCEInter(model_config=model_config)
+        model = FOCEInter(model_config=model_config, dataset=dataset)
 
         dataloader = DataLoader(dataset=dataset, batch_size=12)
 

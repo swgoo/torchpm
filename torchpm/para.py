@@ -1,14 +1,17 @@
+import abc
 from dataclasses import dataclass
 from random import random
 from re import L
-from typing import Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 from numpy import diag
 from torch import nn
-from torch.nn import ParameterDict, ParameterList
+from torch.nn import ParameterDict, ParameterList, ModuleDict
 from torch import tensor, Tensor
 from torch.nn.parameter import Parameter
 import torch
+
+from torchpm.data import get_id
 
 from .misc import *
 
@@ -267,4 +270,3 @@ def get_covariance(
         else :
             TypeError('the type of covriance_vector_list should be CovairianceVector')
     return torch.block_diag(*covariance)
-                
