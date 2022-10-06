@@ -27,7 +27,6 @@ class ModelsTest(unittest.TestCase) :
         omega = ParaTest.get_omega()
         sigma = ParaTest.get_sigma()
         model_config = ModelConfig(
-                self.symbolic_dataset,
                 SymbolicFunction,
                 omega=omega,
                 sigma=sigma)

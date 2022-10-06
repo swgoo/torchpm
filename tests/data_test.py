@@ -18,20 +18,14 @@ class DatasetTest(unittest.TestCase) :
         dataset = PMDataset(dataframe)
         return dataset 
 
-    def test_essential_columns(self) :
-        print(EssentialColumns.AMT.value)
-        print(EssentialColumns.AMT.dtype)
-        print(EssentialColumns.ID.value)
-        print(EssentialColumns.ID.dtype)
-        pass
-
     def test_optimal_design_dataset(self):
         odd = OptimalDesignDataset(
             mean_of_covariate={'BWT': 70.},
             is_infusion = False,
             dosing_interval = 12.,
-            sampling_times_after_dosing_time=[0,0.5,1],
+            sampling_times_after_dosing_time=[],
             target_trough_concentration=10.,
             include_trough_before_dose = False,
-            include_last_trough=True)
+            include_last_trough=True,
+            repeats=10)
         pass

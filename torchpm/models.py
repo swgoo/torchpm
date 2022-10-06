@@ -18,7 +18,7 @@ import pytorch_lightning as pl
 
 @dataclass(frozen=True, eq=True)
 class ModelConfig :
-    pred_function : Type[predfunc.PredictionFunction]
+    pred_function : predfunc.PredictionFunction
     omega : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
     sigma : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
     objective_function : Optional[lossfunc.NonLinearMixedModelObjectiveFunction] = None
@@ -77,7 +77,6 @@ class FOCEInter(pl.LightningModule) :
    
     def __init__(self,
             model_config : ModelConfig,
-            dataset : PMDataset,
             lr = 1.,
             tolerance_change : float = 1e-5,
             tolerance_grad : float = 1e-7,
@@ -90,7 +89,7 @@ class FOCEInter(pl.LightningModule) :
         torch.manual_seed(self.hparams.random_seed) # type: ignore
 
         self.model_config = model_config
-        self.pred_function = self.model_config.pred_function(dataset)
+        self.pred_function = self.model_config.pred_function
 
         self._scale_mode = True
 

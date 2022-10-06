@@ -2,7 +2,7 @@ import abc
 from dataclasses import dataclass
 from random import random
 from re import L
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Tuple, Type, Union
 
 from numpy import diag
 from torch import nn
@@ -78,7 +78,7 @@ class ThetaInit(Theta):
             *init_values: float,
             fixed = False):
         self.fixed = fixed
-        self.boundary = ThetaBoundary(*init_values)
+        self.boundary : ThetaBoundary = ThetaBoundary(*init_values)
     
     @property
     @torch.no_grad()
@@ -87,6 +87,7 @@ class ThetaInit(Theta):
                 data= self.data.detach().clone(),
                 fixed= self.fixed)
 
+    
 class Eta(Parameter) :
     def __new__(cls , data: Tensor, fixed = False, requires_grad: bool = True) :
         if data.dim() != 0:
