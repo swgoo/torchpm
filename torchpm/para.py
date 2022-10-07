@@ -108,20 +108,6 @@ class Eps(Parameter) :
     def __init__(self,  data: Tensor, fixed = True, requires_grad: bool = True) : 
         self.fixed = fixed
 
-class EtaDict(ParameterDict) : 
-    def __init__(self, parameters : Optional[Dict[str, Eta]] = None) :
-        super().__init__(parameters=parameters)
-
-    def update(self, parameters: Dict[str, Eta]) -> None:
-        return super().update(parameters)
-
-class EpsDict(ParameterDict):
-    def __init__(self, parameters : Optional[Dict[str, Parameter]] = None) :
-        super().__init__(parameters= parameters)
-    
-    def update(self, parameters: Dict[str, Eps]) -> None:
-        return super().update(parameters)
-
 class CovarianceVector(Parameter):
 
     def __new__(cls,
@@ -150,8 +136,6 @@ class CovarianceVector(Parameter):
         self.is_diagonal = is_diagonal
         self.fixed = self.fixed
         self.requires_grad = self.requires_grad
-
-        
 
 class CovarianceVectorInit(CovarianceVector) :
     def __new__(cls,

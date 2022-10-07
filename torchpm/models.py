@@ -16,12 +16,12 @@ from .misc import *
 import pytorch_lightning as pl
 
 
-@dataclass(frozen=True, eq=True)
-class ModelConfig :
-    pred_function : predfunc.PredictionFunction
-    omega : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
-    sigma : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
-    objective_function : Optional[lossfunc.NonLinearMixedModelObjectiveFunction] = None
+# @dataclass(frozen=True, eq=True)
+# class ModelConfig :
+#     pred_function : predfunc.PredictionFunction
+#     omega : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
+#     sigma : Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]
+#     objective_function : Optional[lossfunc.NonLinearMixedModelObjectiveFunction] = None
 
 
 @dataclass
@@ -30,8 +30,8 @@ class OptimizationOutputs :
     loss : Dict[int, Tensor] = field(default_factory= lambda : {})
     cwres : Dict[int,Tensor] = field(default_factory= lambda : {})
     theta : Dict[str, Theta] = field(default_factory= lambda : {})
-    eta_dict : Dict[str, EtaDict] = field(default_factory= lambda : {})
-    eps_dict : Dict[str, EpsDict] = field(default_factory= lambda : {})
+    eta_dict : Dict[str, ParameterDict] = field(default_factory= lambda : {})
+    eps_dict : Dict[str, ParameterDict] = field(default_factory= lambda : {})
     omega : CovarianceVectorList = CovarianceVectorList()
     sigma : CovarianceVectorList = CovarianceVectorList()
     cov : Optional[Tensor] = None
@@ -76,7 +76,7 @@ class OptimizationOutputs :
 class FOCEInter(pl.LightningModule) :
    
     def __init__(self,
-            model_config : ModelConfig,
+            pred_function : predfunc.PredictionFunction,
             lr = 1.,
             tolerance_change : float = 1e-5,
             tolerance_grad : float = 1e-7,
@@ -84,27 +84,15 @@ class FOCEInter(pl.LightningModule) :
             random_seed : int = 42):
 
         super().__init__()
-        self.save_hyperparameters(ignore=['model_config'])
+        self.save_hyperparameters(ignore=['pred_function'])
 
         torch.manual_seed(self.hparams.random_seed) # type: ignore
 
-        self.model_config = model_config
-        self.pred_function = self.model_config.pred_function
+        self.pred_function = pred_function
 
         self._scale_mode = True
-
-        if type(model_config.omega) is Tuple[CovarianceVectorList, CovarianceScalerList] :
-            self.omega_vector_list, self.omega_scaler_list = model_config.omega
-        elif type(model_config.omega) is CovarianceVectorInitList :
-            self.omega_vector_list, self.omega_scaler_list = model_config.omega.covariance_list(), model_config.omega.scaler_list()
         
-        if type(model_config.sigma) is Tuple[CovarianceVectorList, CovarianceScalerList] :
-            self.sigma_vector_list, self.sigma_scaler_list = model_config.sigma
-        elif type(model_config.sigma) is CovarianceVectorInitList :
-            self.sigma_vector_list, self.sigma_scaler_list = model_config.sigma.covariance_list(), model_config.sigma.scaler_list()
-        
-        self.objective_function = model_config.objective_function \
-            if model_config.objective_function is not None else lossfunc.FOCEInterObjectiveFunction()
+        self.objective_function = lossfunc.FOCEInterObjectiveFunction()
 
         self.eta_names = self.omega_vector_list.random_variable_names()
         self.eps_names = self.sigma_vector_list.random_variable_names()
@@ -115,10 +103,26 @@ class FOCEInter(pl.LightningModule) :
     @property
     def omega(self):
         return get_covariance(self.omega_vector_list, self.omega_scaler_list, self.scale_mode)
-
+    
+    @omega.setter
+    def omega(self, value: Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]):
+        if type(value) is Tuple[CovarianceVectorList, CovarianceScalerList] :
+            self.omega_vector_list, self.omega_scaler_list = value
+        elif type(value) is CovarianceVectorInitList :
+            self.omega_vector_list, self.omega_scaler_list = value.covariance_list(), value.scaler_list()
+        
+        
     @property
     def sigma(self):
         return get_covariance(self.sigma_vector_list, self.sigma_scaler_list, self.scale_mode)
+    
+    @sigma.setter
+    def sigma(self, value: Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]):
+        if type(value) is Tuple[CovarianceVectorList, CovarianceScalerList] :
+            self.sigma_vector_list, self.sigma_scaler_list = value
+        elif type(value) is CovarianceVectorInitList :
+            self.sigma_vector_list, self.sigma_scaler_list = value.covariance_list(), value.scaler_list()
+
 
     @property
     def scale_mode(self):
@@ -383,83 +387,81 @@ class FOCEInter(pl.LightningModule) :
             outputs.s_mat = s_mat
         return outputs
 
-class FOCEInterOptimalDesign(FOCEInter):
-    def __init__(self,
-            model_config : ModelConfig,
-            dataset : PMDataset,
-            lr = 1.,
-            tolerance_change : float = 1e-5,
-            tolerance_grad : float = 1e-7,
-            max_iter : int = 20,
-            random_seed : int = 42):
-        super().__init__(
-                model_config=model_config,
-                dataset = dataset)
-        self.save_hyperparameters(ignore=['model_config'])
-        self.objective_function = model_config.objective_function \
-            if model_config.objective_function is not None else lossfunc.DesignOptimalFunction()
+# class FOCEInterOptimalDesign(FOCEInter):
+#     def __init__(self,
+#             lr = 1.,
+#             tolerance_change : float = 1e-5,
+#             tolerance_grad : float = 1e-7,
+#             max_iter : int = 20,
+#             random_seed : int = 42):
+#         super().__init__(
+#                 model_config=model_config,
+#                 dataset = dataset)
+#         self.save_hyperparameters(ignore=['model_config'])
+#         self.objective_function = model_config.objective_function \
+#             if model_config.objective_function is not None else lossfunc.DesignOptimalFunction()
 
-    # TODO
-    def _common_step(self, batch, batch_idx):
-        cov_mat_dim =  self.num_of_population_parameters
+#     # TODO
+#     def _common_step(self, batch, batch_idx):
+#         cov_mat_dim =  self.num_of_population_parameters
         
-        thetas = [value for _, value in self.pred_function.get_attr_dict(Theta).items()]
+#         thetas = [value for _, value in self.pred_function.get_attr_dict(Theta).items()]
 
-        fisher_information_matrix_total = torch.zeros(cov_mat_dim, cov_mat_dim, device = batch[EssentialColumns.ID.value].device)
+#         fisher_information_matrix_total = torch.zeros(cov_mat_dim, cov_mat_dim, device = batch[EssentialColumns.ID.value].device)
 
-        outputs = super()._common_step(batch, batch_idx)
+#         outputs = super()._common_step(batch, batch_idx)
 
-        for data in outputs:
+#         for data in outputs:
 
-            # y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data, partial_differentiate_by_etas = False, partial_differentiate_by_epss = True)
+#             # y_pred, eta, eps, g, h, omega, sigma, mdv_mask, parameters = self(data, partial_differentiate_by_etas = False, partial_differentiate_by_epss = True)
 
-            mdv_mask = data[EssentialColumns.MDV.value] == 0
-            y_pred_masked = data[self.pred_function.PRED_COLUMN_NAME].masked_select(mdv_mask)
+#             mdv_mask = data[EssentialColumns.MDV.value] == 0
+#             y_pred_masked = data[self.pred_function.PRED_COLUMN_NAME].masked_select(mdv_mask)
             
-            eps_size = len(self.pred_function.get_attr_dict(EtaDict))
-            h = data['H']
-            if eps_size > 0:
-                h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
+#             eps_size = len(self.pred_function.get_attr_dict(EtaDict))
+#             h = data['H']
+#             if eps_size > 0:
+#                 h = h.t().masked_select(mdv_mask).reshape((eps_size,-1)).t()
 
-            # y_true_masked = y_true.masked_select(mdv_mask)
-            # minus_2_loglikelihood = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
+#             # y_true_masked = y_true.masked_select(mdv_mask)
+#             # minus_2_loglikelihood = self.objective_function(y_true_masked, y_pred, g, h, eta, omega, sigma)
             
-            gr_theta = []
-            for y_elem in y_pred_masked:
-                gr_theta_elem = torch.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
-                gr_theta.append(torch.stack(gr_theta_elem))
-            gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
-            gr_theta = torch.stack(gr_theta, dim=0)
+#             gr_theta = []
+#             for y_elem in y_pred_masked:
+#                 gr_theta_elem = torch.autograd.grad(y_elem, thetas, create_graph=True, allow_unused=True, retain_graph=True)
+#                 gr_theta.append(torch.stack(gr_theta_elem))
+#             gr_theta = [grad.unsqueeze(0) if grad.dim() == 0 else grad for grad in gr_theta]
+#             gr_theta = torch.stack(gr_theta, dim=0)
 
-            #TODO sigma 개선?
-            v = gr_theta @ self.omega @ gr_theta.t() + (h @ self.sigma @ h.t()).diag().diag()
-            # v = gr_theta @ omega @ gr_theta.t() +  torch.eye(gr_theta.size()[0], device = dataset.device) * (sigma)
-            if torch.trace(v).eq(torch.zeros([], device=data[EssentialColumns.ID.value].device)) :
-                v = v + torch.eye(v.size()[0], device = y_pred_masked.device) * 1e-6
-            v_inv = v.inverse()
+#             #TODO sigma 개선?
+#             v = gr_theta @ self.omega @ gr_theta.t() + (h @ self.sigma @ h.t()).diag().diag()
+#             # v = gr_theta @ omega @ gr_theta.t() +  torch.eye(gr_theta.size()[0], device = dataset.device) * (sigma)
+#             if torch.trace(v).eq(torch.zeros([], device=data[EssentialColumns.ID.value].device)) :
+#                 v = v + torch.eye(v.size()[0], device = y_pred_masked.device) * 1e-6
+#             v_inv = v.inverse()
 
-            a_matrix = gr_theta.t() @ v_inv @ gr_theta
-            b_matrix = a_matrix * a_matrix
-            v_sqaure_inv = v_inv @ v_inv
-            c_vector = []
-            for i in range(gr_theta.size()[-1]):
-                c_vector.append(gr_theta[:,i].t() @ v_sqaure_inv @ gr_theta[:,i])
-            c_vector = torch.stack(c_vector, dim=0).unsqueeze(0)
+#             a_matrix = gr_theta.t() @ v_inv @ gr_theta
+#             b_matrix = a_matrix * a_matrix
+#             v_sqaure_inv = v_inv @ v_inv
+#             c_vector = []
+#             for i in range(gr_theta.size()[-1]):
+#                 c_vector.append(gr_theta[:,i].t() @ v_sqaure_inv @ gr_theta[:,i])
+#             c_vector = torch.stack(c_vector, dim=0).unsqueeze(0)
 
-            b_matrix = torch.cat([b_matrix, c_vector])
+#             b_matrix = torch.cat([b_matrix, c_vector])
 
-            d_scalar = torch.trace(v_sqaure_inv).unsqueeze(0).unsqueeze(0)
+#             d_scalar = torch.trace(v_sqaure_inv).unsqueeze(0).unsqueeze(0)
 
-            b_matrix = torch.cat([b_matrix, torch.cat([c_vector, d_scalar], dim=1).t()], dim=1)
+#             b_matrix = torch.cat([b_matrix, torch.cat([c_vector, d_scalar], dim=1).t()], dim=1)
 
-            fisher_information_matrix = torch.block_diag(a_matrix, b_matrix/2)
+#             fisher_information_matrix = torch.block_diag(a_matrix, b_matrix/2)
 
-            fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
+#             fisher_information_matrix_total = fisher_information_matrix_total + fisher_information_matrix
 
-        return fisher_information_matrix_total
+#         return fisher_information_matrix_total
     
-    def training_step(self, batch, batch_idx):
-        fisher_information_matrix = self._common_step(batch, batch_idx)
-        loss = self.objective_function(fisher_information_matrix)
-        self.log('loss', loss)
-        return loss
+#     def training_step(self, batch, batch_idx):
+#         fisher_information_matrix = self._common_step(batch, batch_idx)
+#         loss = self.objective_function(fisher_information_matrix)
+#         self.log('loss', loss)
+#         return loss

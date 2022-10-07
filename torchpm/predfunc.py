@@ -13,7 +13,7 @@ from torchpm import data
 from .misc import *
 from .para import *
 
-from .data import EssentialColumns
+from .data import EssentialColumns, PMDataset
 from torch.nn.parameter import Parameter
 from torch.nn import ParameterDict, ModuleDict, ModuleList
 
@@ -38,57 +38,52 @@ class PredFormula(Module) :
         theta : Dict[str, Tensor], 
         eta : Mapping [str, Tensor]) -> Tensor:
         raise NotImplementedError()
+
 class ErrorFunction(Module) :
     def forward(
         self, 
+        y_pred : Tensor,
         parameters : Dict[str, Tensor], 
         theta : Dict[str, Tensor], 
+        eta : Dict[str, Tensor],
         eps : Dict[str, Tensor]) -> Tensor : 
         raise NotImplementedError()
         
 class PredictionFunction(Module):
     PRED_COLUMN_NAME : str = 'PRED'
 
-    def __init__(self,
-            dataset : data.PMDataset,
-            parameter_fuctions : Iterable[ParameterFunction],
-            pred_formulae : Iterable[PredFormula],
-            error_functions : Iterable[ErrorFunction],
-            theta_Inits : Dict[str, ThetaInit],
-            eta : Set[str],
-            eps : Set[str],
-            **kwargs):
+    def __init__(
+        self,
+        **kwargs):
         super().__init__(**kwargs)
-        self.dataset = dataset
-        # self._column_names = dataset.column_names
-        # self._ids = dataset.ids
-        # self._record_lengths = dataset.record_lengths
         self._theta_boundary_mode : bool = True
         self._theta_boundaries = ModuleDict()
         self._theta = ParameterDict()
-        self.update_theta_boundaries(theta_Inits)
-        
-        self.eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
-        for name in eta : 
-            self.eta[name] = ParameterDict()
-            for id in self.dataset._ids :
-                eta_dict = self.eta[name]
-                if isinstance(eta_dict, ParameterDict): 
-                    eta_dict.update({str(id): Eta(tensor(0.1))})
-        
-        self.eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
-        for name in eps : 
-            self.eps[name] = ParameterDict()
-            for id in self.dataset._ids :
-                eps_dict = self.eps[name]
-                if isinstance(eps_dict, ParameterDict): 
-                    eps_dict.update({str(id): Eps(tc.zeros(self.dataset.record_lengths[id], requires_grad=True))})
-        
-        self.parameter_fuctions = ModuleList(parameter_fuctions)
-        self.pred_formulae = ModuleList(pred_formulae)
-        self.error_functions = ModuleList(error_functions)
+        self._eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
+        self._eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
 
-    def update_theta_boundaries(self, theta_inits : Dict[str, Optional[ThetaInit]]):
+    @property
+    def dataset(self):
+        return self._dataset
+    
+    @dataset.setter
+    def dataset(self, dataset: PMDataset):
+        self._dataset = dataset
+
+    @property
+    def theta(self):
+        theta_dict : Dict[str, Tensor] = {}
+        for k, v in self._theta.items() : 
+            if self.theta_boundary_mode :
+                v = self._theta_boundaries[k](v)
+            theta_dict[k] = v
+        return theta_dict
+    
+    @theta.setter
+    def theta(self, theta_dict : Dict[str, Theta]):
+        self._theta.update(theta_dict)
+    
+    def init_theta(self, theta_inits : Dict[str, Optional[ThetaInit]]):
         for k, v in theta_inits.items():
             self._theta[k] = Theta(data = tensor(0.1))
             if v is not None :
@@ -96,22 +91,89 @@ class PredictionFunction(Module):
             else :
                 del self._theta_boundaries[k]
 
-    @property
-    def theta(self):
-        theta_dict : Dict[str, Tensor] = {}
-        for k, v in self._theta.items() : 
-            theta_dict[k] = self._theta_boundaries[k](v)
-        return theta_dict
 
-    def pred_function(
+
+    @property
+    def eta(self): 
+        return self._eta
+    
+    @eta.setter
+    def eta(self, eta_dict : Dict[str, Dict[str, Eta]]):
+        self._eta.update(eta_dict)  # type: ignore
+
+    def init_eta_by_names(self, eta_names : Iterable[str]) :
+        self._eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
+        for name in eta_names : 
+            self._eta[name] = ParameterDict()
+            for id in self.dataset._ids :
+                eta_dict = self._eta[name]
+                if isinstance(eta_dict, ParameterDict): 
+                    eta_dict.update({str(id): Eta(tensor(1e-5))})
+
+
+    
+    @property
+    def eps(self):
+        return self._eps
+    
+    @eps.setter
+    def eps(self, eps_dict : Dict[str, Dict[str, Eps]]):
+        self._eps.update(eps_dict)  # type: ignore
+
+    def init_eps_by_names(self, eps_name : Iterable[str]) :
+        self._eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
+        for name in eps_name : 
+            self._eps[name] = ParameterDict()
+            for id in self.dataset._ids :
+                eps_dict = self.eps[name]
+                if isinstance(eps_dict, ParameterDict): 
+                    eps_dict.update({str(id): Eps(tc.zeros(self.dataset.record_lengths[id], requires_grad=True))})
+
+    
+    @property
+    def parameter_functions(self):
+        return self._parameter_functions
+    
+    @parameter_functions.setter
+    def parameter_functions(self, value : Iterable[ParameterFunction]):
+        if not isinstance(value, Iterable):
+            value = [value]
+        self._parameter_functions = ModuleList(value)
+    
+
+
+    @property
+    def pred_formulae(self):
+        return self._pred_formulae
+    
+    @pred_formulae.setter
+    def pred_formulae(self, pred_formulae : Iterable[PredFormula]):
+        if not isinstance(pred_formulae, Iterable):
+            pred_formulae = [pred_formulae]
+        self._pred_formulae = ModuleList(pred_formulae)
+
+    
+    
+    @property
+    def error_functions(self):
+        return self._error_functions
+
+    @error_functions.setter
+    def error_functions(self, error_functions : Iterable[ErrorFunction]) :
+        if not isinstance(error_functions, Iterable) : 
+            error_functions = [error_functions]
+        self._error_functions = ModuleList(error_functions)
+
+
+    def caculate_pred_function(
         self, 
         t : tc.Tensor, 
-        y: Tensor, 
+        y : Tensor, 
         parameters : Dict[str, tc.Tensor], 
         theta : Dict[str, Tensor], 
         eta : Dict[str, Tensor]) -> tc.Tensor:
         for pred_f in self.pred_formulae:
-            y = pred_f(t, y, parameters, theta, eta)
+            y = pred_f(y, t, parameters, theta, eta)
         return y
     
     @property
@@ -197,21 +259,21 @@ class PredictionFunction(Module):
         return datasets
     
     def get_random_variables(self, id: int) -> Tuple[Dict[str,Tensor],Dict[str,Tensor]]:
-        eta : Dict[str, Parameter] = {}
+        eta : Dict[str, Tensor] = {}
         for k, v in self.eta.items() :
             eta[k] = v[str(id)]
         
-        eps : Dict[str, Parameter] = {}
+        eps : Dict[str, Tensor] = {}
         for k, v in self.eps.items() :
             eps[k] = v[str(id)]
 
         return eta, eps
     
-    def parameter_fuction(self, 
+    def calculate_parameter_fuction(self, 
         parameters : Dict[str, Tensor],
         theta : Dict[str, Tensor],
         eta : Dict[str, Tensor],) -> Dict[str, Tensor]:
-        for func in self.parameter_fuctions:
+        for func in self._parameter_functions:
             parameters = func(parameters, theta, eta)
         return parameters
     
@@ -222,7 +284,7 @@ class PredictionFunction(Module):
         theta : Dict[str, Tensor], 
         eta : Dict[str, Tensor],
         eps : Dict[str, Tensor]) -> tc.Tensor:
-        for func in self.error_functions :
+        for func in self._error_functions :
             y_pred = func(y_pred, parameters, theta, eta, eps)
         return y_pred
     
@@ -232,9 +294,6 @@ class PredictionFunction(Module):
 
 class SymbolicPredictionFunction(PredictionFunction):   
 
-    def __init__(self, dataset: data.PMDataset, parameter_fuctions: Iterable[ParameterFunction], pred_formulae: Iterable[PredFormula], error_functions: Iterable[ErrorFunction], theta_Inits: Dict[str, ThetaInit], eta: Set[str], eps: Set[str], **kwargs):
-        super().__init__(dataset, parameter_fuctions, pred_formulae, error_functions, theta_Inits, eta, eps, **kwargs)
-    
     def forward(self, batch) :
 
         datasets = self._batch_to_datasets(batch)
@@ -246,7 +305,7 @@ class SymbolicPredictionFunction(PredictionFunction):
 
             eta, eps = self.get_random_variables(int(dataset[EssentialColumns.ID.value][0]))
 
-            dataset = self.parameter_fuction(dataset, self.theta, eta)
+            dataset = self.calculate_parameter_fuction(dataset, self.theta, eta)
             parameters = self._reshape_dataset(dataset)
             f = tc.zeros(dataset[EssentialColumns.ID.value].size()[0], device = dataset[EssentialColumns.ID.value].device)
             for i in range(len(amt_indice) - 1):
@@ -267,7 +326,7 @@ class SymbolicPredictionFunction(PredictionFunction):
                 f_sliced = f[start_time_index:]
 
                 t = times - start_time
-                f_cur = self.pred_function(t, f_sliced, parameters_sliced, self.theta, eta)
+                f_cur = self.caculate_pred_function(f_sliced, t, parameters_sliced, self.theta, eta)
                 f = f + tc.cat([f_pre, f_cur], 0)
 
             pred = self.error_function(f, parameters, theta, eta, eps)
@@ -287,12 +346,11 @@ class NumericPredictionFunction(PredictionFunction):
     """
     def __init__(
             self, 
-            dataset: data.PMDataset, 
             rtol : float = 1e-2,
             atol : float = 1e-2,
             **kwargs):
         
-        super().__init__(dataset, **kwargs)
+        super().__init__(**kwargs)
         self.rtol = rtol
         self.atol = atol
 
@@ -310,7 +368,7 @@ class NumericPredictionFunction(PredictionFunction):
         def ode_function(t : Tensor, y : Tensor):
             index = (times < t).sum() - 1
             parameters_sliced = {k: v[index] for k, v in parameters.items()}
-            return self.pred_function(t, y, parameters_sliced, self.theta, eta) + infusion_rate * (infusion_end_time > t)
+            return self.caculate_pred_function(t, y, parameters_sliced, self.theta, eta) + infusion_rate * (infusion_end_time > t)
         return ode_function
         
 
@@ -319,19 +377,21 @@ class NumericPredictionFunction(PredictionFunction):
         datasets = self._batch_to_datasets(batch)
         output = []
         for dataset in datasets :
-            max_cmt = int(dataset[EssentialColumns.CMT.value].max())
+            num_cmt = int(dataset[EssentialColumns.CMT.value].max()) + 1
 
-            infusion_rate = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
-            infusion_end_time = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            infusion_rate = tc.zeros(num_cmt, device = dataset[EssentialColumns.ID.value].device)
+            infusion_end_time = tc.zeros(num_cmt, device = dataset[EssentialColumns.ID.value].device)
 
             eta, eps = self.get_random_variables(int(dataset[EssentialColumns.ID.value][0]))
             
             amt_indice = self._get_amt_indice(dataset)
-            dataset = self.parameter_fuction(dataset, self.theta, eta)
+            dataset = self.calculate_parameter_fuction(dataset, self.theta, eta)
             parameters = self._reshape_dataset(dataset)
 
             y_pred_arr = []
-            y_init = tc.zeros(max_cmt+1, device = dataset[EssentialColumns.ID.value].device)
+            y_init = tc.zeros(num_cmt, device = dataset[EssentialColumns.ID.value].device)
+
+            #TODO Parameter 전처리 하는 과정에서 뭔가 문제가 생김. 아마 _reshape_datset쪽 문제일것으로 생각됨.
 
             for i in range(len(amt_indice) - 1):
                 amt_slice = slice(amt_indice[i], amt_indice[i+1]+1)
@@ -341,20 +401,20 @@ class NumericPredictionFunction(PredictionFunction):
                 times = parameters[EssentialColumns.TIME.value][amt_slice]
 
                 if  rate == 0 :                    
-                    bolus = tc.zeros(max_cmt + 1, device = dataset[EssentialColumns.ID.value].device)
+                    bolus = tc.zeros(num_cmt, device = dataset[EssentialColumns.ID.value].device)
                     bolus[cmt[0].to(tc.int64)] = amt
                     y_init = y_init + bolus
 
                 else :
                     time = times[0]
-                    mask = tc.ones(max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    mask = tc.ones(num_cmt, device = dataset[EssentialColumns.ID.value].device)
                     mask[cmt[0].to(tc.int64)] = 0
     
-                    rate_vector = tc.zeros(max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    rate_vector = tc.zeros(num_cmt, device = dataset[EssentialColumns.ID.value].device)
                     rate_vector[cmt[0].to(tc.int64)] = rate
 
                     infusion_rate = infusion_rate * mask + rate_vector
-                    infusion_end_time_vector = tc.zeros(max_cmt +1, device = dataset[EssentialColumns.ID.value].device)
+                    infusion_end_time_vector = tc.zeros(num_cmt, device = dataset[EssentialColumns.ID.value].device)
                     infusion_end_time_vector[cmt[0].to(tc.int64)] = time + amt / rate
                     infusion_end_time = infusion_end_time * mask + infusion_end_time_vector
                     

@@ -22,12 +22,32 @@ class ParaTest(unittest.TestCase) :
         return CovarianceVectorInitList(
             [CovarianceVectorInit((0.1,0.1),('prop_err','add_err'))])
 
+    @classmethod
+    def get_block_matrix(cls):
+        return  CovarianceVectorInitList(
+            [CovarianceVectorInit((
+                0.1,
+                0.05,0.1,
+                0.05,0.05,0.1),('k_a_eta','v_eta','k_e_eta'), is_diagonal=False),
+            CovarianceVectorInit((
+                0.1,0.1,0.1),('dummy1','dummy2','dummy3'), is_diagonal=True),])
+    
+    def test_block_matrix(self):
+        cov = self.get_block_matrix()
+        vector_list = cov.covariance_list()
+        scaler_list = cov.scaler_list()
+        covariance = get_covariance(vector_list, scaler_list, True)
+        print(covariance)
+        pass
+
 
     def test_covariance_vector_init_list(self) :
         cov = self.get_omega()
         vector_list = cov.covariance_list()
         scaler_list = cov.scaler_list()
         covariance = get_covariance(vector_list, scaler_list, True)
+        print(covariance)
+        pass
     
     def test_covariance_vector_list_and_scaler_list(self):
         cov = CovarianceVectorInitList(

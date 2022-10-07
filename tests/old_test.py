@@ -25,13 +25,13 @@ class BasementFunction(predfunc.SymbolicPredictionFunction) :
         self.eps_0 = EpsDict()
         self.eps_1 = EpsDict()
     
-    def parameter_fuction(self, id, para):
+    def calculate_parameter_fuction(self, id, para):
         para['k_a'] = self.theta_0*tc.exp(self.eta_0[id])
         para['v'] = self.theta_1*tc.exp(self.eta_1[id])
         para['k_e'] = self.theta_2*tc.exp(self.eta_2[id])
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
-    def pred_function(self, id, t, p):
+    def caculate_pred_function(self, id, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
@@ -59,13 +59,13 @@ class MultidoseBasementFunction(predfunc.SymbolicPredictionFunction) :
 
         self.amount = tc.tensor(320.)
     
-    def parameter_fuction(self, id, para):
+    def calculate_parameter_fuction(self, id, para):
         para['k_a'] = self.theta_0*tc.exp(self.eta_0[id])
         para['v'] = self.theta_1*tc.exp(self.eta_1[id])
         para['k_e'] = self.theta_2*tc.exp(self.eta_2[id])
         para['AMT'] = self.amount
 
-    def pred_function(self, t, p):
+    def caculate_pred_function(self, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
@@ -286,13 +286,13 @@ class BasementModelFIM(predfunc.SymbolicPredictionFunction) :
         self.eps_0 = EpsDict()
         
     
-    def parameter_fuction(self, para):
+    def calculate_parameter_fuction(self, para):
         para['k_a'] = self.theta_0() * self.eta_0().exp()
         para['v'] = self.theta_1() * self.eta_1().exp()
         para['k_e'] = self.theta_2() * self.eta_2().exp()
         para['AMT'] = tc.tensor(320., device=self.dataset.device)
 
-    def pred_function(self, t, p):
+    def caculate_pred_function(self, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
@@ -323,7 +323,7 @@ class AnnModel(predfunc.SymbolicPredictionFunction) :
         
         
     
-    def parameter_fuction(self, para):
+    def calculate_parameter_fuction(self, para):
         
         lin_r = self.lin(para['BWT'].unsqueeze(-1)/70).t() 
         para['k_a'] = self.theta_0()*tc.exp(self.eta_0()+lin_r[0])
@@ -333,7 +333,7 @@ class AnnModel(predfunc.SymbolicPredictionFunction) :
 
         
 
-    def pred_function(self, t, p):
+    def caculate_pred_function(self, t, p):
         dose = p['AMT'][0]
         k_a = p['k_a']
         v = p['v']
@@ -363,13 +363,13 @@ class AmtModel(predfunc.SymbolicPredictionFunction) :
 
         
         
-    def parameter_fuction(self, para):
+    def calculate_parameter_fuction(self, para):
         para['k_a'] = 1.4901*tc.exp(self.eta_0())
         para['v'] = 32.4667*tc.exp(self.eta_1())
         para['k_e'] = 0.0873*tc.exp(self.eta_2())
         para['AMT'] = para['AMT']*self.theta_0()
 
-    def pred_function(self, t, para):
+    def caculate_pred_function(self, t, para):
         dose = para['AMT'][0]
         k_a = para['k_a'] 
         v = para['v']
@@ -394,13 +394,13 @@ class NumericFunction(predfunc.NumericPredictionFunction) :
         self.eps_0 = EpsDict()
         self.eps_1 = EpsDict()
     
-    def parameter_fuction(self, p):
+    def calculate_parameter_fuction(self, p):
         p['k_a'] = self.theta_0*tc.exp(self.eta_0())
         p['v'] = self.theta_1*tc.exp(self.eta_1())
         p['k_e'] = self.theta_2*tc.exp(self.eta_2())
         p['AMT'] = p['AMT']*p['BWT']
     
-    def pred_function(self, t, y, p) -> tc.Tensor :
+    def caculate_pred_function(self, t, y, p) -> tc.Tensor :
         mat = tc.zeros(2,2, device=y.device)
         mat[0,0] = -p['k_a']
         mat[1,0] = p['k_a']
