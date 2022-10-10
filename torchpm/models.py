@@ -1,6 +1,8 @@
-
 from dataclasses import dataclass, field
+from re import S
+from torch.nn import Module
 import time
+from types import NoneType
 from typing import Any, Callable, List, Dict, Optional
 import typing
 import torch.distributed as dist
@@ -29,7 +31,7 @@ class OptimizationOutputs :
     outputs : Dict[int, Dict[str, Tensor]] = field(default_factory= lambda : {})
     loss : Dict[int, Tensor] = field(default_factory= lambda : {})
     cwres : Dict[int,Tensor] = field(default_factory= lambda : {})
-    theta : Dict[str, Theta] = field(default_factory= lambda : {})
+    theta : Dict[str, Tensor] = field(default_factory= lambda : {})
     eta_dict : Dict[str, ParameterDict] = field(default_factory= lambda : {})
     eps_dict : Dict[str, ParameterDict] = field(default_factory= lambda : {})
     omega : CovarianceVectorList = CovarianceVectorList()
@@ -77,6 +79,8 @@ class FOCEInter(pl.LightningModule) :
    
     def __init__(self,
             pred_function : predfunc.PredictionFunction,
+            omega,
+            sigma,
             lr = 1.,
             tolerance_change : float = 1e-5,
             tolerance_grad : float = 1e-7,
@@ -84,9 +88,13 @@ class FOCEInter(pl.LightningModule) :
             random_seed : int = 42):
 
         super().__init__()
-        self.save_hyperparameters(ignore=['pred_function'])
-
-        torch.manual_seed(self.hparams.random_seed) # type: ignore
+        # self.save_hyperparameters(ignore=['pred_function'])
+        self.lr = lr
+        self.tolerance_change = tolerance_change
+        self.tolerance_grad = tolerance_grad
+        self.max_iter = max_iter
+        self.random_seed = random_seed
+        torch.manual_seed(self.random_seed) # type: ignore
 
         self.pred_function = pred_function
 
@@ -94,42 +102,37 @@ class FOCEInter(pl.LightningModule) :
         
         self.objective_function = lossfunc.FOCEInterObjectiveFunction()
 
-        self.eta_names = self.omega_vector_list.random_variable_names()
-        self.eps_names = self.sigma_vector_list.random_variable_names()
-
         self.covariance_step = True
         self.simulation_mode = False
 
+        if type(omega) is Tuple[CovarianceVectorList, CovarianceScalerList] :
+            self._omega_vector_list, self._omega_scaler_list = omega
+            self.eta_names = self._omega_vector_list.random_variable_names()
+        elif type(omega) is CovarianceVectorInitList :
+            self._omega_vector_list, self._omega_scaler_list = omega.covariance_list(), omega.scaler_list()
+            self.eta_names = self._omega_vector_list.random_variable_names()
+        
+        if type(sigma) is Tuple[CovarianceVectorList, CovarianceScalerList] :
+            self.sigma_vector_list, self.sigma_scaler_list = sigma
+            self.eps_names = self.sigma_vector_list.random_variable_names()
+        elif type(sigma) is CovarianceVectorInitList :
+            self.sigma_vector_list, self.sigma_scaler_list = sigma.covariance_list(), sigma.scaler_list()
+            self.eps_names = self.sigma_vector_list.random_variable_names()
+
+
     @property
     def omega(self):
-        return get_covariance(self.omega_vector_list, self.omega_scaler_list, self.scale_mode)
-    
-    @omega.setter
-    def omega(self, value: Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]):
-        if type(value) is Tuple[CovarianceVectorList, CovarianceScalerList] :
-            self.omega_vector_list, self.omega_scaler_list = value
-        elif type(value) is CovarianceVectorInitList :
-            self.omega_vector_list, self.omega_scaler_list = value.covariance_list(), value.scaler_list()
-        
-        
+        return get_covariance(self._omega_vector_list, self._omega_scaler_list, self.scale_mode)
+
     @property
     def sigma(self):
         return get_covariance(self.sigma_vector_list, self.sigma_scaler_list, self.scale_mode)
-    
-    @sigma.setter
-    def sigma(self, value: Union[CovarianceVectorInitList,Tuple[CovarianceVectorList,CovarianceScalerList]]):
-        if type(value) is Tuple[CovarianceVectorList, CovarianceScalerList] :
-            self.sigma_vector_list, self.sigma_scaler_list = value
-        elif type(value) is CovarianceVectorInitList :
-            self.sigma_vector_list, self.sigma_scaler_list = value.covariance_list(), value.scaler_list()
-
 
     @property
     def scale_mode(self):
         return self._scale_mode
     
     @scale_mode.setter
-    @torch.no_grad()
     def scale_mode(self, value : bool):
         def turn_off(vector_list : CovarianceVectorList, scaler_list: CovarianceScalerList):
             new_vector_list = CovarianceVectorList()
@@ -152,20 +155,20 @@ class FOCEInter(pl.LightningModule) :
         # turn on
         if not self.scale_mode and value :
             self.pred_function.theta_boundary_mode = value
-            self.omega_vector_list, self.omega_scaler_list = turn_on(self.omega_vector_list, self.omega_scaler_list)
+            self._omega_vector_list, self._omega_scaler_list = turn_on(self._omega_vector_list, self._omega_scaler_list)
             self.sigma_vector_list, self.sigma_scaler_list = turn_on(self.sigma_vector_list, self.sigma_scaler_list)
             self._scale_mode = value
         # turn off
         elif self.scale_mode and not value :
             self.pred_function.theta_boundary_mode = value
-            self.omega_vector_list = turn_off(self.omega_vector_list, self.omega_scaler_list)
+            self._omega_vector_list = turn_off(self._omega_vector_list, self._omega_scaler_list)
             self.sigma_vector_list = turn_off(self.sigma_vector_list, self.sigma_scaler_list)
             self._scale_mode = value
 
     def get_unfixed_parameter_values(self) -> List[Parameter]:
         unfixed_parameter_values = []
 
-        for omega_vector in self.omega_vector_list:
+        for omega_vector in self._omega_vector_list:
             if type(omega_vector) is CovarianceVector and not omega_vector.fixed :
                 unfixed_parameter_values.append(omega_vector) 
         
@@ -194,8 +197,8 @@ class FOCEInter(pl.LightningModule) :
         for dataset in output :
             id = str(int(dataset[EssentialColumns.ID.value][0]))
 
-            eta_dict = self.pred_function.get_attr_dict(EtaDict)
-            eps_dict = self.pred_function.get_attr_dict(EpsDict)
+            eta_dict = self.pred_function.eta
+            eps_dict = self.pred_function.eps
 
             eta = []
             for eta_name in self.eta_names:
@@ -261,10 +264,10 @@ class FOCEInter(pl.LightningModule) :
         return total_loss
 
     def configure_optimizers(self):
-        lr : float = self.hparams.lr  # type: ignore
-        tolerance_change : float = self.hparams.tolerance_change  # type: ignore
-        tolerance_grad : float = self.hparams.tolerance_grad  # type: ignore
-        max_iter : int = self.hparams.max_iter # type: ignore
+        lr : float = self.lr  # type: ignore
+        tolerance_change : float = self.tolerance_change  # type: ignore
+        tolerance_grad : float = self.tolerance_grad  # type: ignore
+        max_iter : int = self.max_iter # type: ignore
 
         optimizer = torch.optim.LBFGS(
                 self.get_unfixed_parameter_values(), 
@@ -278,21 +281,21 @@ class FOCEInter(pl.LightningModule) :
     @property
     def num_of_parameters(self):
         num = 0
-        theta = self.pred_function.get_attr_dict(Theta)
-        eta_dicts = self.pred_function.get_attr_dict(EtaDict)
-        eps_dicts = self.pred_function.get_attr_dict(EpsDict)
+        theta = self.pred_function.theta
+        eta_dicts = self.pred_function.eta
+        eps_dicts = self.pred_function.eps
         for para in [theta, eta_dicts, eps_dicts,]:
             num += len(para)
 
-        for para in [self.omega_vector_list, self.sigma_vector_list]:
+        for para in [self._omega_vector_list, self.sigma_vector_list]:
             for vector in para : num += len(vector)
         return num
 
     @property
     def num_of_population_parameters(self):
-        theta = self.pred_function.get_attr_dict(Theta)
+        theta = self.pred_function.theta
         num = len(theta)
-        for para in [self.omega_vector_list, self.sigma_vector_list]:
+        for para in [self._omega_vector_list, self.sigma_vector_list]:
             for vector in para : num += len(vector)
         return num
 
@@ -304,8 +307,8 @@ class FOCEInter(pl.LightningModule) :
             
             mvn_eta = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(len(outputs.eta_dict), device=batch[EssentialColumns.ID.value].device), self.omega)
             simulated_etas = mvn_eta.rsample(torch.Size([self.pred_function.dataset.len])).t()
-            eta_names = self.omega_vector_list.random_variable_names()
-            eta_dict = self.pred_function.get_attr_dict(EtaDict)
+            eta_names = self._omega_vector_list.random_variable_names()
+            eta_dict = self.pred_function.eta
             for simulated_eta, name in zip(simulated_etas, eta_names) :
                 for i, id in enumerate(self.pred_function.dataset.ids) :
                     eta_dict[name].update({str(id): simulated_eta[i]})
@@ -313,16 +316,16 @@ class FOCEInter(pl.LightningModule) :
             mvn_eps = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(len(outputs.eps_dict), device=batch[EssentialColumns.ID.value].device), self.omega)
             simulated_epss = mvn_eps.rsample(torch.Size([self.pred_function.dataset.len, self.pred_function.dataset.max_record_length])).permute([2,0,1])
             eps_names = self.sigma_vector_list.random_variable_names()
-            eps_dict = self.pred_function.get_attr_dict(EpsDict)
+            eps_dict = self.pred_function.eps
             for simulated_eps, name in zip(simulated_epss, eps_names):
                 for i, id in enumerate(self.pred_function.dataset.ids):
                     eps_dict[name].update({str(id): simulated_eps[i]})
 
         inputs = self._common_step(batch = batch, batch_idx = batch_id)
-        outputs.theta = self.pred_function.get_attr_dict(Theta)
-        outputs.eta_dict = self.pred_function.get_attr_dict(EtaDict)
-        outputs.eps_dict = self.pred_function.get_attr_dict(EpsDict)
-        outputs.omega = self.omega_vector_list
+        outputs.theta = self.pred_function.theta
+        outputs.eta_dict = self.pred_function.eta
+        outputs.eps_dict = self.pred_function.eps
+        outputs.omega = self._omega_vector_list
         outputs.sigma = self.sigma_vector_list
 
         cov_mat_dim = self.num_of_population_parameters
@@ -331,7 +334,7 @@ class FOCEInter(pl.LightningModule) :
         s_mat = torch.zeros(cov_mat_dim, cov_mat_dim, device=batch[EssentialColumns.ID.value].device)
         estimated_parameters = [
                 *outputs.theta.values(),
-                *self.omega_vector_list,
+                *self._omega_vector_list,
                 *self.sigma_vector_list]
 
         for data in inputs:
@@ -359,7 +362,7 @@ class FOCEInter(pl.LightningModule) :
                     for j, hs_elem in enumerate(hs_cat) :
                         r_mat[i,j] = r_mat[i,j] + hs_elem.detach()/2
 
-            eta_dict = self.pred_function.get_attr_dict(EtaDict)
+            eta_dict = self.pred_function.eta
             eta = []
             for eta_name in self.eta_names:
                 eta.append(eta_dict[eta_name][str(id)])

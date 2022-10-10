@@ -26,12 +26,10 @@ class ModelsTest(unittest.TestCase) :
     def test_simbolic_predfunc(self) :
         omega = ParaTest.get_omega()
         sigma = ParaTest.get_sigma()
-        model_config = ModelConfig(
-                SymbolicFunction,
-                omega=omega,
-                sigma=sigma)
-        model = FOCEInter(model_config=model_config)
-
+        pred_function = PredFuncTest.get_simbolic_predfunc()
+        model = FOCEInter(pred_function, omega, sigma)
+        model.scale_mode
+        # del model.omega
         dataloader = DataLoader(dataset=self.symbolic_dataset, batch_size=12)
 
         trainer = pl.Trainer(

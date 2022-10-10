@@ -139,32 +139,41 @@ class PredFuncTest(unittest.TestCase) :
         self.symbolic_dataset = PMDataset(dataframe)
         dataframe = pd.read_csv('examples/THEO_ODE.csv')
         self.numeric_dataset = PMDataset(dataframe)
-
-    def test_simbolic_predfunc(self) :
+    
+    @classmethod
+    def get_simbolic_predfunc(cls):
         k_a = ThetaInit(0.1, 1.5, 10.)
         v = ThetaInit(0.1, 30., 100.)
         k_e = ThetaInit(0.01, 0.08, 1)
+
+        dataframe = pd.read_csv('examples/THEO.csv')
+        symbolic_dataset = PMDataset(dataframe)
+
         function = predfunc.SymbolicPredictionFunction()
-        function.dataset = self.symbolic_dataset
+        function.dataset = symbolic_dataset
         function.init_theta({'k_a': k_a, 'v': v, 'k_e': k_e})
         function.init_eps_by_names(['prop', 'add'])
         function.init_eta_by_names(['k_a', 'v', 'k_e'])
         function.parameter_functions = [Comp1GutParameterFunction()]
         function.pred_formulae = [SymbolicPredFomula()]
         function.error_functions = [PropAddErrorFunction()]
+        return function
         
+
+    def test_simbolic_predfunc(self) :
+        self.get_simbolic_predfunc()
+        function = self.get_simbolic_predfunc()
         for batch in DataLoader(dataset=self.symbolic_dataset, batch_size=5) :
             result = function(batch)
             print(result)
         pass
-        
 
     def test_numeric_predfunc(self) :
         k_a = ThetaInit(0.1, 1.5, 10.)
         v = ThetaInit(0.1, 30., 100.)
         k_e = ThetaInit(0.01, 0.08, 1)
         function = predfunc.NumericPredictionFunction()
-        function.dataset = self.symbolic_dataset
+        function.dataset = self.numeric_dataset
         function.init_theta({'k_a': k_a, 'v': v, 'k_e': k_e})
         function.init_eps_by_names(['prop', 'add'])
         function.init_eta_by_names(['k_a', 'v', 'k_e'])

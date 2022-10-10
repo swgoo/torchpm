@@ -86,7 +86,6 @@ class ThetaInit(Theta):
         return Theta(
                 data= self.data.detach().clone(),
                 fixed= self.fixed)
-
     
 class Eta(Parameter) :
     def __new__(cls , data: Tensor, fixed = False, requires_grad: bool = True) :

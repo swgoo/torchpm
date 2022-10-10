@@ -19,9 +19,10 @@ from torch.nn import ParameterDict, ModuleDict, ModuleList
 
 T = TypeVar('T')
 
-RandomVariableInitFunction = Callable[[Any], None]
-
 class ParameterFunction(Module) :
+    def init_parameters(self) -> Dict[str, Union[ThetaInit, Eta, Eps]]:
+        raise NotImplementedError()
+
     def forward(
         self, 
         parameters : Dict[str, Tensor], 
@@ -30,6 +31,9 @@ class ParameterFunction(Module) :
         raise NotImplementedError()
 
 class PredFormula(Module) :
+    def init_parameters(self) -> Dict[str, Union[ThetaInit, Eta, Eps]]:
+        raise NotImplementedError()
+
     def forward(
         self, 
         y : Tensor, 
@@ -40,6 +44,9 @@ class PredFormula(Module) :
         raise NotImplementedError()
 
 class ErrorFunction(Module) :
+    def init_parameters(self) -> Dict[str, Union[ThetaInit, Eta, Eps]]:
+        raise NotImplementedError()
+
     def forward(
         self, 
         y_pred : Tensor,
@@ -54,21 +61,23 @@ class PredictionFunction(Module):
 
     def __init__(
         self,
+        dataset : PMDataset,
+        parameter_functions : Iterable[ParameterFunction],
+        pred_formulae : Iterable[PredFormula],
+        error_functions : Iterable[ErrorFunction],
         **kwargs):
         super().__init__(**kwargs)
+        self.dataset = dataset
+
+        self.parameter_functions = ModuleList(parameter_functions)
+        self.pred_formulae = ModuleList(pred_formulae)
+        self.error_functions = ModuleList(error_functions)
+
         self._theta_boundary_mode : bool = True
         self._theta_boundaries = ModuleDict()
         self._theta = ParameterDict()
         self._eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
         self._eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
-
-    @property
-    def dataset(self):
-        return self._dataset
-    
-    @dataset.setter
-    def dataset(self, dataset: PMDataset):
-        self._dataset = dataset
 
     @property
     def theta(self):
@@ -80,8 +89,8 @@ class PredictionFunction(Module):
         return theta_dict
     
     @theta.setter
-    def theta(self, theta_dict : Dict[str, Theta]):
-        self._theta.update(theta_dict)
+    def theta(self, value):
+        self._theta = value
     
     def init_theta(self, theta_inits : Dict[str, Optional[ThetaInit]]):
         for k, v in theta_inits.items():
@@ -91,16 +100,6 @@ class PredictionFunction(Module):
             else :
                 del self._theta_boundaries[k]
 
-
-
-    @property
-    def eta(self): 
-        return self._eta
-    
-    @eta.setter
-    def eta(self, eta_dict : Dict[str, Dict[str, Eta]]):
-        self._eta.update(eta_dict)  # type: ignore
-
     def init_eta_by_names(self, eta_names : Iterable[str]) :
         self._eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
         for name in eta_names : 
@@ -109,61 +108,23 @@ class PredictionFunction(Module):
                 eta_dict = self._eta[name]
                 if isinstance(eta_dict, ParameterDict): 
                     eta_dict.update({str(id): Eta(tensor(1e-5))})
-
-
     
-    @property
-    def eps(self):
-        return self._eps
-    
-    @eps.setter
-    def eps(self, eps_dict : Dict[str, Dict[str, Eps]]):
-        self._eps.update(eps_dict)  # type: ignore
+    def reset_eta(self) : 
+        names = self._eta.keys()
+        self.init_eta_by_names(names)
 
     def init_eps_by_names(self, eps_name : Iterable[str]) :
         self._eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
         for name in eps_name : 
             self._eps[name] = ParameterDict()
             for id in self.dataset._ids :
-                eps_dict = self.eps[name]
+                eps_dict = self._eps[name]
                 if isinstance(eps_dict, ParameterDict): 
                     eps_dict.update({str(id): Eps(tc.zeros(self.dataset.record_lengths[id], requires_grad=True))})
-
     
-    @property
-    def parameter_functions(self):
-        return self._parameter_functions
-    
-    @parameter_functions.setter
-    def parameter_functions(self, value : Iterable[ParameterFunction]):
-        if not isinstance(value, Iterable):
-            value = [value]
-        self._parameter_functions = ModuleList(value)
-    
-
-
-    @property
-    def pred_formulae(self):
-        return self._pred_formulae
-    
-    @pred_formulae.setter
-    def pred_formulae(self, pred_formulae : Iterable[PredFormula]):
-        if not isinstance(pred_formulae, Iterable):
-            pred_formulae = [pred_formulae]
-        self._pred_formulae = ModuleList(pred_formulae)
-
-    
-    
-    @property
-    def error_functions(self):
-        return self._error_functions
-
-    @error_functions.setter
-    def error_functions(self, error_functions : Iterable[ErrorFunction]) :
-        if not isinstance(error_functions, Iterable) : 
-            error_functions = [error_functions]
-        self._error_functions = ModuleList(error_functions)
-
+    def reset_eps(self) :
+        names = self._eps.keys()
+        self.init_eps_by_names(names)
 
     def caculate_pred_function(
         self, 
@@ -205,16 +166,6 @@ class PredictionFunction(Module):
                     self._theta[k] = theta
             self._theta_boundary_mode = False
 
-    # def reset_epss(self) :
-    #     attributes = dir(self)
-    #     for att_name in attributes :
-    #         att = getattr(self, att_name)
-    #         with tc.no_grad() :
-    #             if type(att) is EpsDict :
-    #                 for id in self._ids :
-    #                     eps_value = tc.zeros_like(att[str(id)], requires_grad=True, device=att[str(id)].device)
-    #                     att.update({str(id): Parameter(eps_value)})
-
     def _get_amt_indice(self, dataset : Dict[str, Tensor]) :
         amts = dataset[EssentialColumns.AMT.value]
         end = amts.size()[0]
@@ -236,7 +187,7 @@ class PredictionFunction(Module):
         id = int(id_tensor[0])
 
         record_length = self.dataset.record_lengths[id]
-    
+        
         for key, para in dataset.items():
             dataset[key] = para.to(device=id_tensor.device)
             if para.dim() == 0 or para.size()[0] == 1 :
@@ -260,11 +211,11 @@ class PredictionFunction(Module):
     
     def get_random_variables(self, id: int) -> Tuple[Dict[str,Tensor],Dict[str,Tensor]]:
         eta : Dict[str, Tensor] = {}
-        for k, v in self.eta.items() :
+        for k, v in self._eta.items() :
             eta[k] = v[str(id)]
         
         eps : Dict[str, Tensor] = {}
-        for k, v in self.eps.items() :
+        for k, v in self._eps.items() :
             eps[k] = v[str(id)]
 
         return eta, eps
@@ -273,7 +224,7 @@ class PredictionFunction(Module):
         parameters : Dict[str, Tensor],
         theta : Dict[str, Tensor],
         eta : Dict[str, Tensor],) -> Dict[str, Tensor]:
-        for func in self._parameter_functions:
+        for func in self.parameter_functions:
             parameters = func(parameters, theta, eta)
         return parameters
     
@@ -284,7 +235,7 @@ class PredictionFunction(Module):
         theta : Dict[str, Tensor], 
         eta : Dict[str, Tensor],
         eps : Dict[str, Tensor]) -> tc.Tensor:
-        for func in self._error_functions :
+        for func in self.error_functions :
             y_pred = func(y_pred, parameters, theta, eta, eps)
         return y_pred
     

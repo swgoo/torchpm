@@ -15,12 +15,12 @@ class ParaTest(unittest.TestCase) :
             [CovarianceVectorInit((
                 0.1,
                 0.05,0.1,
-                0.05,0.05,0.1),('k_a_eta','v_eta','k_e_eta'), is_diagonal=False)])
+                0.05,0.05,0.1),('k_a','v','k_e'), is_diagonal=False)])
 
     @classmethod
     def get_sigma(cls):
         return CovarianceVectorInitList(
-            [CovarianceVectorInit((0.1,0.1),('prop_err','add_err'))])
+            [CovarianceVectorInit((0.1,0.1),('prop','add'))])
 
     @classmethod
     def get_block_matrix(cls):
