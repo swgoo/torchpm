@@ -86,15 +86,9 @@ class FOCEInter(pl.LightningModule) :
             tolerance_grad : float = 1e-7,
             max_iter : int = 20,
             random_seed : int = 42):
-
         super().__init__()
-        # self.save_hyperparameters(ignore=['pred_function'])
-        self.lr = lr
-        self.tolerance_change = tolerance_change
-        self.tolerance_grad = tolerance_grad
-        self.max_iter = max_iter
-        self.random_seed = random_seed
-        torch.manual_seed(self.random_seed) # type: ignore
+        self.save_hyperparameters(ignore=['pred_function', 'omega', 'sigma'])
+        torch.manual_seed(self.hparams.random_seed) # type: ignore
 
         self.pred_function = pred_function
 
@@ -191,7 +185,7 @@ class FOCEInter(pl.LightningModule) :
     def forward(self, dataset) :
         return self.pred_function(dataset)
 
-    def _common_step(self, batch, batch_idx) -> List[Dict[str, Tensor]]:
+    def _common_step(self, batch) -> List[Dict[str, Tensor]]:
         output = self(batch)
         outputs = []
         for dataset in output :
@@ -255,8 +249,8 @@ class FOCEInter(pl.LightningModule) :
             outputs.append(dataset)
         return outputs
 
-    def training_step(self, batch, batch_idx):
-        datasets = self._common_step(batch=batch, batch_idx=batch_idx)
+    def training_step(self, batch):
+        datasets = self._common_step(batch, None)
         total_loss = 0
         for dataset in datasets :
             total_loss += dataset['LOSS']
@@ -264,10 +258,10 @@ class FOCEInter(pl.LightningModule) :
         return total_loss
 
     def configure_optimizers(self):
-        lr : float = self.lr  # type: ignore
-        tolerance_change : float = self.tolerance_change  # type: ignore
-        tolerance_grad : float = self.tolerance_grad  # type: ignore
-        max_iter : int = self.max_iter # type: ignore
+        lr : float = self.hparams.lr  # type: ignore
+        tolerance_change : float = self.hparams.tolerance_change  # type: ignore
+        tolerance_grad : float = self.hparams.tolerance_grad  # type: ignore
+        max_iter : int = self.hparams.max_iter # type: ignore
 
         optimizer = torch.optim.LBFGS(
                 self.get_unfixed_parameter_values(), 
@@ -321,7 +315,7 @@ class FOCEInter(pl.LightningModule) :
                 for i, id in enumerate(self.pred_function.dataset.ids):
                     eps_dict[name].update({str(id): simulated_eps[i]})
 
-        inputs = self._common_step(batch = batch, batch_idx = batch_id)
+        inputs = self._common_step(batch, None)
         outputs.theta = self.pred_function.theta
         outputs.eta_dict = self.pred_function.eta
         outputs.eps_dict = self.pred_function.eps

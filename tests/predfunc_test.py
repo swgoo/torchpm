@@ -21,11 +21,22 @@ class NumericPredFormula(predfunc.PredFormula):
         return mat @ y
 
 class PropAddErrorFunction(predfunc.ErrorFunction):
+    def init_parameters(self) -> Tuple[Dict[str, ThetaInit | None], Iterable[str], Iterable[str]]:
+        eps = ['prop', 'add']
+        return {}, [], eps
+
     def forward(self, y_pred: Tensor, parameters: Dict[str, Tensor], theta: Dict[str, Tensor], eta: Dict[str, Tensor], eps: Dict[str, Tensor]) -> Tensor:
         y = y_pred/parameters['v']
         return y +  y * eps['prop'] + eps['add']
 
 class Comp1GutParameterFunction(predfunc.ParameterFunction):
+    def init_parameters(self) -> Tuple[Dict[str, ThetaInit | None], Iterable[str], Iterable[str]]:
+        theta : Dict[str, ThetaInit|None] = {'k_a' : ThetaInit(0.1, 1.5, 10.),
+            'v' : ThetaInit(0.1, 30., 100.),
+            'k_e' : ThetaInit(0.01, 0.08, 1)}
+        eta = ['k_a', 'v', 'k_e']
+        return theta, eta, []
+
     def forward(self, para: Dict[str, Tensor], theta: Dict[str, Tensor], eta: Dict[str, Tensor]) -> Dict[str, Tensor]:
         para['k_a'] = theta['k_a']*tc.exp(eta['k_a'])
         para['v'] = theta['v']*tc.exp(eta['v'])
@@ -44,7 +55,6 @@ class SymbolicPredFomula(predfunc.PredFormula):
     def forward(self, y: Tensor, t: Tensor, p: Dict[str, Tensor], theta: Dict[str, Tensor], eta: Mapping[str, Tensor]) -> Tensor:
         dose = p['AMT'][0]
         k_a = p['k_a']
-        v = p['v']
         k_e = p['k_e']
         # TODO y로 누적을 할것인가 아닌가 결정해야함.
         return  (dose * k_a) / (k_a - k_e) * (tc.exp(-k_e*t) - tc.exp(-k_a*t))
@@ -142,21 +152,17 @@ class PredFuncTest(unittest.TestCase) :
     
     @classmethod
     def get_simbolic_predfunc(cls):
-        k_a = ThetaInit(0.1, 1.5, 10.)
-        v = ThetaInit(0.1, 30., 100.)
-        k_e = ThetaInit(0.01, 0.08, 1)
+        
 
         dataframe = pd.read_csv('examples/THEO.csv')
         symbolic_dataset = PMDataset(dataframe)
 
-        function = predfunc.SymbolicPredictionFunction()
-        function.dataset = symbolic_dataset
-        function.init_theta({'k_a': k_a, 'v': v, 'k_e': k_e})
-        function.init_eps_by_names(['prop', 'add'])
-        function.init_eta_by_names(['k_a', 'v', 'k_e'])
-        function.parameter_functions = [Comp1GutParameterFunction()]
-        function.pred_formulae = [SymbolicPredFomula()]
-        function.error_functions = [PropAddErrorFunction()]
+        function = predfunc.SymbolicPredictionFunction(
+            dataset= symbolic_dataset,
+            parameter_functions=[Comp1GutParameterFunction()],
+            pred_formulae= [SymbolicPredFomula()],
+            error_functions=[PropAddErrorFunction()]
+        )
         return function
         
 
@@ -169,17 +175,12 @@ class PredFuncTest(unittest.TestCase) :
         pass
 
     def test_numeric_predfunc(self) :
-        k_a = ThetaInit(0.1, 1.5, 10.)
-        v = ThetaInit(0.1, 30., 100.)
-        k_e = ThetaInit(0.01, 0.08, 1)
-        function = predfunc.NumericPredictionFunction()
-        function.dataset = self.numeric_dataset
-        function.init_theta({'k_a': k_a, 'v': v, 'k_e': k_e})
-        function.init_eps_by_names(['prop', 'add'])
-        function.init_eta_by_names(['k_a', 'v', 'k_e'])
-        function.parameter_functions = [NumericComp1GutParameterFunction()]
-        function.pred_formulae = [NumericPredFormula()]
-        function.error_functions = [PropAddErrorFunction()]
+        function = predfunc.NumericPredictionFunction(
+            dataset=self.numeric_dataset,
+            parameter_functions=[NumericComp1GutParameterFunction()],
+            pred_formulae=  [NumericPredFormula()],
+            error_functions= [PropAddErrorFunction()]
+        )
         
         for batch in DataLoader(dataset=self.numeric_dataset, batch_size = 5) :
             result = function(batch)

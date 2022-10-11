@@ -9,7 +9,7 @@ from tests.para_test import *
 
 from torch.utils.data import DataLoader
 
-from pytorch_lightning.callbacks import TQDMProgressBar
+from pytorch_lightning.callbacks import TQDMProgressBar # type: ignore
 
 import pytorch_lightning as pl
 

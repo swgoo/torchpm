@@ -20,8 +20,8 @@ from torch.nn import ParameterDict, ModuleDict, ModuleList
 T = TypeVar('T')
 
 class ParameterFunction(Module) :
-    def init_parameters(self) -> Dict[str, Union[ThetaInit, Eta, Eps]]:
-        raise NotImplementedError()
+    def init_parameters(self) -> Tuple[Dict[str, ThetaInit | None], Iterable[str], Iterable[str]] :
+        return {}, [], []
 
     def forward(
         self, 
@@ -31,8 +31,8 @@ class ParameterFunction(Module) :
         raise NotImplementedError()
 
 class PredFormula(Module) :
-    def init_parameters(self) -> Dict[str, Union[ThetaInit, Eta, Eps]]:
-        raise NotImplementedError()
+    def init_parameters(self) -> Tuple[Dict[str, ThetaInit | None], Iterable[str], Iterable[str]] :
+        return {}, [], []
 
     def forward(
         self, 
@@ -44,8 +44,8 @@ class PredFormula(Module) :
         raise NotImplementedError()
 
 class ErrorFunction(Module) :
-    def init_parameters(self) -> Dict[str, Union[ThetaInit, Eta, Eps]]:
-        raise NotImplementedError()
+    def init_parameters(self) -> Tuple[Dict[str, ThetaInit | None], Iterable[str], Iterable[str]] :
+        return {}, [], []
 
     def forward(
         self, 
@@ -69,9 +69,9 @@ class PredictionFunction(Module):
         super().__init__(**kwargs)
         self.dataset = dataset
 
-        self.parameter_functions = ModuleList(parameter_functions)
-        self.pred_formulae = ModuleList(pred_formulae)
-        self.error_functions = ModuleList(error_functions)
+        self.parameter_functions : Iterable[ParameterFunction] = ModuleList(parameter_functions)  # type: ignore
+        self.pred_formulae : Iterable[PredFormula] = ModuleList(pred_formulae)  # type: ignore
+        self.error_functions : Iterable[ErrorFunction] = ModuleList(error_functions)  # type: ignore
 
         self._theta_boundary_mode : bool = True
         self._theta_boundaries = ModuleDict()
@@ -79,6 +79,20 @@ class PredictionFunction(Module):
         self._eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
         self._eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
 
+        self._init_paramers_from_module_list(self.parameter_functions)
+        self._init_paramers_from_module_list(self.pred_formulae)
+        self._init_paramers_from_module_list(self.error_functions)
+    
+    def _init_paramers_from_module_list(self, modue_list : ModuleList ):
+        for module in modue_list :
+            if isinstance(module, (ParameterFunction, PredFormula, ErrorFunction)) :
+                theta, eta, eps = module.init_parameters()
+                self.init_theta(theta)
+                self.init_eta_by_names(eta)
+                self.init_eps_by_names(eps)
+            else : 
+                raise ValueError('init_parameters method must return Dict[str, Union[ThetaInit, Eta, Eps]]')
+                
     @property
     def theta(self):
         theta_dict : Dict[str, Tensor] = {}
@@ -98,29 +112,43 @@ class PredictionFunction(Module):
             if v is not None :
                 self._theta_boundaries[k] = v.boundary
             else :
+                del self._theta[k]
                 del self._theta_boundaries[k]
 
+    @property
+    def eta(self):
+        return self._eta
+
     def init_eta_by_names(self, eta_names : Iterable[str]) :
-        self._eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
+        # self._eta : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
         for name in eta_names : 
             self._eta[name] = ParameterDict()
             for id in self.dataset._ids :
                 eta_dict = self._eta[name]
                 if isinstance(eta_dict, ParameterDict): 
                     eta_dict.update({str(id): Eta(tensor(1e-5))})
+    #TODO
+    def del_eta_by_names(self, eta_names : Iterable[str]): ...
     
     def reset_eta(self) : 
         names = self._eta.keys()
         self.init_eta_by_names(names)
+    
+    @property
+    def eps(self) :
+        return self._eps
 
     def init_eps_by_names(self, eps_name : Iterable[str]) :
-        self._eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
+        # self._eps : Dict[str, ParameterDict] = ModuleDict()  # type: ignore
         for name in eps_name : 
             self._eps[name] = ParameterDict()
             for id in self.dataset._ids :
                 eps_dict = self._eps[name]
                 if isinstance(eps_dict, ParameterDict): 
                     eps_dict.update({str(id): Eps(tc.zeros(self.dataset.record_lengths[id], requires_grad=True))})
+    
+    #TODO
+    def del_eps_by_names(self, eta_names : Iterable[str]): ...
     
     def reset_eps(self) :
         names = self._eps.keys()
@@ -277,7 +305,7 @@ class SymbolicPredictionFunction(PredictionFunction):
                 f_sliced = f[start_time_index:]
 
                 t = times - start_time
-                f_cur = self.caculate_pred_function(f_sliced, t, parameters_sliced, self.theta, eta)
+                f_cur = self.caculate_pred_function(t, f_sliced, parameters_sliced, self.theta, eta)
                 f = f + tc.cat([f_pre, f_cur], 0)
 
             pred = self.error_function(f, parameters, theta, eta, eps)
@@ -296,12 +324,15 @@ class NumericPredictionFunction(PredictionFunction):
         atol: absolute tolerance about ordinary differential equation integration
     """
     def __init__(
-            self, 
-            rtol : float = 1e-2,
-            atol : float = 1e-2,
-            **kwargs):
-        
-        super().__init__(**kwargs)
+        self, 
+        dataset: PMDataset, 
+        parameter_functions: Iterable[ParameterFunction], 
+        pred_formulae: Iterable[PredFormula], 
+        error_functions: Iterable[ErrorFunction],
+        rtol : float = 1e-2,
+        atol : float = 1e-2, 
+        **kwargs):
+        super().__init__(dataset, parameter_functions, pred_formulae, error_functions, **kwargs)
         self.rtol = rtol
         self.atol = atol
 
