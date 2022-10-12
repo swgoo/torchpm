@@ -30,8 +30,6 @@ class ModelsTest(unittest.TestCase) :
         pred_function = PredFuncTest.get_simbolic_predfunc()
         return FOCEInter(pred_function, omega, sigma)
 
-        
-
     def test_simbolic_predfunc(self) :
         model = self.get_simbolic_model()
         dataloader = DataLoader(dataset=self.symbolic_dataset, batch_size=12)

@@ -108,7 +108,7 @@ class PredictionFunction(Module):
     
     def init_theta(self, theta_inits : Dict[str, Optional[ThetaInit]]):
         for k, v in theta_inits.items():
-            self._theta[k] = Theta(data = tensor(0.1))
+            self._theta[k] = Theta(data = tensor(0.1), fixed=v.fixed)
             if v is not None :
                 self._theta_boundaries[k] = v.boundary
             else :

@@ -270,19 +270,19 @@ class FOCEInter(NLMEModel) :
             eta_size = len(eta)
             eps_size = len(eps)
 
-            h = torch.zeros(pred.size()[0], eps_size, device = pred.device)
-            for i_h, y_pred_elem in enumerate(pred) :
-                if eps_size > 0 :
-                    for i_eps, cur_eps in enumerate(eps):
-                        h_elem = torch.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
-                        h[i_h,i_eps] = h_elem[0][i_h]
-
             g = torch.zeros(pred.size()[0], eta_size, device = pred.device)
             for i_g, y_pred_elem in enumerate(pred) :
                 if eta_size > 0 :
                     for i_eta, cur_eta in enumerate(eta) :
                         g_elem = torch.autograd.grad(y_pred_elem, cur_eta, create_graph=True, allow_unused=True, retain_graph=True)
                         g[i_g, i_eta] = g_elem[0]
+            
+            h = torch.zeros(pred.size()[0], eps_size, device = pred.device)
+            for i_h, y_pred_elem in enumerate(pred) :
+                if eps_size > 0 :
+                    for i_eps, cur_eps in enumerate(eps):
+                        h_elem = torch.autograd.grad(y_pred_elem, cur_eps, create_graph=True, allow_unused=True, retain_graph=True)
+                        h[i_h,i_eps] = h_elem[0][i_h]
 
             eta = torch.stack(eta)
             eps = torch.stack(eps)

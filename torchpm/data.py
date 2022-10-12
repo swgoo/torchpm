@@ -64,7 +64,7 @@ class PMDataset(Dataset):
     def __init__(self, 
                  dataframe : pd.DataFrame,
                  **kwargs):
-        super().__init__(**kwargs)
+        super().__init__()
         
         EssentialColumns.check_inclusion_of_names(dataframe.columns)
         self._covariate_names : Set[str] = set([name for name in dataframe.columns]) - EssentialColumns.get_name_set()

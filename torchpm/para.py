@@ -71,6 +71,7 @@ class ThetaBoundary(nn.Module):
 class ThetaInit(Theta):
     def __new__(cls , *init_values, fixed = False, requires_grad: bool = True) :
         obj = super().__new__(cls, data = tensor(0.1),  requires_grad = requires_grad)  # type: ignore
+        obj.fixed = fixed
         return obj
 
     def __init__(
