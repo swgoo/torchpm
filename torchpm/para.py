@@ -148,6 +148,7 @@ class CovarianceVectorInit(CovarianceVector) :
             is_diagonal = is_diagonal,
             fixed = fixed,
             requires_grad = True)
+        obj.init_values = init_values
         obj.scaler = CovarianceScaler(obj)
         obj.data = tensor(0.1).repeat(len(init_values))
         return obj
@@ -157,6 +158,7 @@ class CovarianceVectorInit(CovarianceVector) :
             random_variable_names : Tuple[str, ...],
             is_diagonal : bool = True,
             fixed : bool = False,):
+        self.init_values = self.init_values
         self.random_variable_names=self.random_variable_names
         self.is_diagonal = self.is_diagonal
         self.fixed  = self.fixed

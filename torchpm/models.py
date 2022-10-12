@@ -75,29 +75,25 @@ class OptimizationOutputs :
     def aic(self):
         return self.total_loss + self.num_of_parameters
 
-class FOCEInter(pl.LightningModule) :
-   
-    def __init__(self,
-            pred_function : predfunc.PredictionFunction,
-            omega,
-            sigma,
-            lr = 1.,
-            tolerance_change : float = 1e-5,
-            tolerance_grad : float = 1e-7,
-            max_iter : int = 20,
-            random_seed : int = 42):
-        super().__init__()
+class NLMEModel(pl.LightningModule): 
+    def __init__(self, 
+        pred_function : predfunc.PredictionFunction,
+        omega,
+        sigma,
+        random_seed : int = 42,
+        *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
         self.save_hyperparameters(ignore=['pred_function', 'omega', 'sigma'])
-        torch.manual_seed(self.hparams.random_seed) # type: ignore
 
         self.pred_function = pred_function
 
         self._scale_mode = True
         
         self.objective_function = lossfunc.FOCEInterObjectiveFunction()
+        
+        torch.manual_seed(self.hparams.random_seed) # type: ignore
 
-        self.covariance_step = True
-        self.simulation_mode = False
 
         if type(omega) is Tuple[CovarianceVectorList, CovarianceScalerList] :
             self._omega_vector_list, self._omega_scaler_list = omega
@@ -112,8 +108,10 @@ class FOCEInter(pl.LightningModule) :
         elif type(sigma) is CovarianceVectorInitList :
             self.sigma_vector_list, self.sigma_scaler_list = sigma.covariance_list(), sigma.scaler_list()
             self.eps_names = self.sigma_vector_list.random_variable_names()
-
-
+        
+        self.covariance_step = True
+        self.simulation_mode = False
+    
     @property
     def omega(self):
         return get_covariance(self._omega_vector_list, self._omega_scaler_list, self.scale_mode)
@@ -181,6 +179,71 @@ class FOCEInter(pl.LightningModule) :
                 unfixed_parameter_values.append(para)
         
         return unfixed_parameter_values
+    
+    def configure_optimizers(self):
+        lr : float = self.hparams.lr  # type: ignore
+        tolerance_change : float = self.hparams.tolerance_change  # type: ignore
+        tolerance_grad : float = self.hparams.tolerance_grad  # type: ignore
+        max_iter : int = self.hparams.max_iter # type: ignore
+
+        optimizer = torch.optim.LBFGS(
+                self.get_unfixed_parameter_values(), 
+                lr=lr, 
+                tolerance_change= tolerance_change,
+                max_iter= max_iter,
+                tolerance_grad= tolerance_grad,
+                line_search_fn='strong_wolfe')
+        return [optimizer], []
+    
+    @property
+    def num_of_population_parameters(self):
+        theta = self.pred_function.theta
+        num = len(theta)
+        for para in [self._omega_vector_list, self.sigma_vector_list]:
+            for vector in para : num += len(vector)
+        return num
+    
+    @property
+    def num_of_parameters(self):
+        num = 0
+        theta = self.pred_function.theta
+        eta_dicts = self.pred_function.eta
+        eps_dicts = self.pred_function.eps
+        for para in [theta, eta_dicts, eps_dicts,]:
+            num += len(para)
+
+        for para in [self._omega_vector_list, self.sigma_vector_list]:
+            for vector in para : num += len(vector)
+        return num
+    
+
+
+class FOCEInter(NLMEModel) :
+   
+    def __init__(self,
+            pred_function : predfunc.PredictionFunction,
+            omega,
+            sigma,
+            lr = 1.,
+            tolerance_change : float = 1e-5,
+            tolerance_grad : float = 1e-7,
+            max_iter : int = 20,
+            *args, **kwargs):
+        super().__init__(pred_function, omega, sigma, *args, **kwargs)
+
+        # if type(omega) is Tuple[CovarianceVectorList, CovarianceScalerList] :
+        #     self._omega_vector_list, self._omega_scaler_list = omega
+        #     self.eta_names = self._omega_vector_list.random_variable_names()
+        # elif type(omega) is CovarianceVectorInitList :
+        #     self._omega_vector_list, self._omega_scaler_list = omega.covariance_list(), omega.scaler_list()
+        #     self.eta_names = self._omega_vector_list.random_variable_names()
+        
+        # if type(sigma) is Tuple[CovarianceVectorList, CovarianceScalerList] :
+        #     self.sigma_vector_list, self.sigma_scaler_list = sigma
+        #     self.eps_names = self.sigma_vector_list.random_variable_names()
+        # elif type(sigma) is CovarianceVectorInitList :
+        #     self.sigma_vector_list, self.sigma_scaler_list = sigma.covariance_list(), sigma.scaler_list()
+        #     self.eps_names = self.sigma_vector_list.random_variable_names()
         
     def forward(self, dataset) :
         return self.pred_function(dataset)
@@ -250,49 +313,12 @@ class FOCEInter(pl.LightningModule) :
         return outputs
 
     def training_step(self, batch):
-        datasets = self._common_step(batch, None)
+        datasets = self._common_step(batch)
         total_loss = 0
         for dataset in datasets :
             total_loss += dataset['LOSS']
             self.log('ofv', total_loss, reduce_fx=torch.sum)
         return total_loss
-
-    def configure_optimizers(self):
-        lr : float = self.hparams.lr  # type: ignore
-        tolerance_change : float = self.hparams.tolerance_change  # type: ignore
-        tolerance_grad : float = self.hparams.tolerance_grad  # type: ignore
-        max_iter : int = self.hparams.max_iter # type: ignore
-
-        optimizer = torch.optim.LBFGS(
-                self.get_unfixed_parameter_values(), 
-                lr=lr, 
-                tolerance_change= tolerance_change,
-                max_iter= max_iter,
-                tolerance_grad= tolerance_grad,
-                line_search_fn='strong_wolfe')
-        return [optimizer], []
-
-    @property
-    def num_of_parameters(self):
-        num = 0
-        theta = self.pred_function.theta
-        eta_dicts = self.pred_function.eta
-        eps_dicts = self.pred_function.eps
-        for para in [theta, eta_dicts, eps_dicts,]:
-            num += len(para)
-
-        for para in [self._omega_vector_list, self.sigma_vector_list]:
-            for vector in para : num += len(vector)
-        return num
-
-    @property
-    def num_of_population_parameters(self):
-        theta = self.pred_function.theta
-        num = len(theta)
-        for para in [self._omega_vector_list, self.sigma_vector_list]:
-            for vector in para : num += len(vector)
-        return num
-
 
     def predict_step(self, batch : Dict[str, Tensor], batch_id) -> OptimizationOutputs :
         outputs = OptimizationOutputs()
@@ -315,7 +341,7 @@ class FOCEInter(pl.LightningModule) :
                 for i, id in enumerate(self.pred_function.dataset.ids):
                     eps_dict[name].update({str(id): simulated_eps[i]})
 
-        inputs = self._common_step(batch, None)
+        inputs = self._common_step(batch)
         outputs.theta = self.pred_function.theta
         outputs.eta_dict = self.pred_function.eta
         outputs.eps_dict = self.pred_function.eps
