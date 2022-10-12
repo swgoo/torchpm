@@ -216,6 +216,33 @@ class NLMEModel(pl.LightningModule):
             for vector in para : num += len(vector)
         return num
     
+    def on_predict_start(self) -> None:
+        super().on_predict_start()
+        torch.set_grad_enabled(True)
+        for para in self.pred_function._theta.values() :
+            para.requires_grad = True
+
+        for para_dict in self.pred_function._eta.values() :
+            for para in para_dict.values() :
+                para.requires_grad = True
+        for para_dict in self.pred_function._eps.values() :
+            for para in para_dict.values() :
+                para.requires_grad = True
+
+    # def on_predict_batch_start(self, batch: Any, batch_idx: int, dataloader_idx: int) -> None:
+    #     super().on_predict_batch_start(batch, batch_idx, dataloader_idx)
+    #     # for para_dict in self.pred_function._eta.values() :
+    #     #     for para in para_dict.values() :
+    #     #         para.requires_grad = True
+    #     # for para_dict in self.pred_function._eps.values() :
+    #     #     for para in para_dict.values() :
+    #     #         para.requires_grad = True
+    #     self.requires_grad_ = True
+
+    def on_predict_batch_end(self, outputs: Optional[Any], batch: Any, batch_idx: int, dataloader_idx: int) -> None:
+        super().on_predict_batch_end(outputs, batch, batch_idx, dataloader_idx)
+        self.zero_grad()
+    
 
 
 class FOCEInter(NLMEModel) :
@@ -306,8 +333,12 @@ class FOCEInter(NLMEModel) :
             dv : Tensor = dataset[EssentialColumns.DV.value]
             dv_masked = dv.masked_select(mdv_mask)
             loss_value = self.objective_function(dv_masked, pred_masked, g_masked, h_masked, eta, self.omega, self.sigma)
-            dataset['G'] = g
-            dataset['H'] = h
+            
+            # TODO 버그 발생할 수 있는 위치
+            dataset['G'] = g_masked
+            dataset['H'] = h_masked
+            
+            
             dataset['LOSS'] = loss_value
             outputs.append(dataset)
         return outputs
@@ -320,6 +351,7 @@ class FOCEInter(NLMEModel) :
             self.log('ofv', total_loss, reduce_fx=torch.sum)
         return total_loss
 
+    #TODO cov step batch 별로 누적하여 epoch 단위로 제공.
     def predict_step(self, batch : Dict[str, Tensor], batch_id) -> OptimizationOutputs :
         outputs = OptimizationOutputs()
         state_dict = self.state_dict()
@@ -345,15 +377,17 @@ class FOCEInter(NLMEModel) :
         outputs.theta = self.pred_function.theta
         outputs.eta_dict = self.pred_function.eta
         outputs.eps_dict = self.pred_function.eps
-        outputs.omega = self._omega_vector_list
-        outputs.sigma = self.sigma_vector_list
+        outputs.omega = self.omega
+        outputs.sigma = self.sigma
+
+
 
         cov_mat_dim = self.num_of_population_parameters
 
         r_mat = torch.zeros(cov_mat_dim, cov_mat_dim, device=batch[EssentialColumns.ID.value].device)
         s_mat = torch.zeros(cov_mat_dim, cov_mat_dim, device=batch[EssentialColumns.ID.value].device)
         estimated_parameters = [
-                *outputs.theta.values(),
+                *self.pred_function._theta.values(),
                 *self._omega_vector_list,
                 *self.sigma_vector_list]
 
