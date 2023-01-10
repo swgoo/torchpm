@@ -43,6 +43,15 @@ class ModelsTest(unittest.TestCase) :
     def test_simulate(self) :
         pass
 
+    def test_scale_mode(self) :
+        model = self.get_simbolic_model()
+        model.scale_mode = False
+        model.omega
+        pass
+        model.scale_mode = True
+        model.omega
+        pass
+
     def add_columns_and_normalize(self, df: pd.DataFrame, rng) :
         ids = df['ID'].unique()
 

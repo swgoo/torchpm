@@ -97,8 +97,7 @@ class PredictionFunction(Module):
     def theta(self):
         theta_dict : Dict[str, Tensor] = {}
         for k, v in self._theta.items() : 
-            if self.theta_boundary_mode :
-                v = self._theta_boundaries[k](v)
+            v = v if self._theta_boundaries[k] is None or not self.theta_boundary_mode else self._theta_boundaries[k](v)
             theta_dict[k] = v
         return theta_dict
     
@@ -106,14 +105,18 @@ class PredictionFunction(Module):
     def theta(self, value):
         self._theta = value
     
+    @torch.no_grad()
     def init_theta(self, theta_inits : Dict[str, Optional[ThetaInit]]):
         for k, v in theta_inits.items():
-            self._theta[k] = Theta(data = tensor(0.1), fixed=v.fixed)
-            if v is not None :
-                self._theta_boundaries[k] = v.boundary
-            else :
+            if v is None :
                 del self._theta[k]
                 del self._theta_boundaries[k]
+            else :
+                if self.theta_boundary_mode :
+                    self._theta[k] = Theta(data = tensor(0.1), fixed=v.fixed)
+                else :
+                    self._theta[k] = Theta(data = v.boundary(tensor(0.1)), fixed=v.fixed)
+                self._theta_boundaries[k] = v.boundary
 
     @property
     def eta(self):

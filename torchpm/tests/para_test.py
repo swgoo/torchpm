@@ -11,20 +11,20 @@ class ParaTest(unittest.TestCase) :
 
     @classmethod
     def get_omega(cls):
-        return CovarianceVectorInitList(
+        return CovarianceInitList(
             [CovarianceVectorInit((
-                0.1,
-                0.05,0.1,
-                0.05,0.05,0.1),('k_a','v','k_e'), is_diagonal=False)])
+                0.101,
+                0.05,0.101,
+                0.05,0.05,0.101),('k_a','v','k_e'), is_diagonal=False)])
 
     @classmethod
     def get_sigma(cls):
-        return CovarianceVectorInitList(
-            [CovarianceVectorInit((0.1,0.1),('prop','add'))])
+        return CovarianceInitList(
+            [CovarianceVectorInit((0.101,0.101),('prop','add'))])
 
     @classmethod
     def get_block_matrix(cls):
-        return  CovarianceVectorInitList(
+        return  CovarianceInitList(
             [CovarianceVectorInit((
                 0.1,
                 0.05,0.1,
@@ -50,7 +50,7 @@ class ParaTest(unittest.TestCase) :
         pass
     
     def test_covariance_vector_list_and_scaler_list(self):
-        cov = CovarianceVectorInitList(
+        cov = CovarianceInitList(
             [CovarianceVectorInit((1.,),('eta1',)),CovarianceVectorInit((1.,0.2,1.1),('eta2','eta3'),is_diagonal=False)])
         vector_list = cov.covariance_list()
         scaler_list = cov.scaler_list()

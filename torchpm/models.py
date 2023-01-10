@@ -94,67 +94,116 @@ class NLMEModel(pl.LightningModule):
         
         torch.manual_seed(self.hparams.random_seed) # type: ignore
 
+        # self._omega_vector_list : CovarianceVectorList
+        # self._omega_scaler_list : CovarianceScalerList
+        # self._sigma_vector_list : CovarianceVectorList
+        # self._sigma_scaler_list : CovarianceScalerList
 
         if type(omega) is Tuple[CovarianceVectorList, CovarianceScalerList] :
             self._omega_vector_list, self._omega_scaler_list = omega
             self.eta_names = self._omega_vector_list.random_variable_names()
-        elif type(omega) is CovarianceVectorInitList :
-            self._omega_vector_list, self._omega_scaler_list = omega.covariance_list(), omega.scaler_list()
-            self.eta_names = self._omega_vector_list.random_variable_names()
+        elif type(omega) is CovarianceInitList :
+            self.init_omega_by_covariance_vector_init_list(omega)
         
         if type(sigma) is Tuple[CovarianceVectorList, CovarianceScalerList] :
-            self.sigma_vector_list, self.sigma_scaler_list = sigma
-            self.eps_names = self.sigma_vector_list.random_variable_names()
-        elif type(sigma) is CovarianceVectorInitList :
-            self.sigma_vector_list, self.sigma_scaler_list = sigma.covariance_list(), sigma.scaler_list()
-            self.eps_names = self.sigma_vector_list.random_variable_names()
+            self._sigma_vector_list, self._sigma_scaler_list = sigma
+            self.eps_names = self._sigma_vector_list.random_variable_names()
+        elif type(sigma) is CovarianceInitList :
+            self.init_sigma_by_covariance_vector_init_list(sigma)
         
         self.covariance_step = True
         self.simulation_mode = False
     
+    def init_omega_by_covariance_vector_init_list(self, 
+        covariance_vector_init_list : CovarianceInitList) :
+        scale_mode_cur = self.scale_mode
+        self.scale_mode = True
+        self._omega_vector_list = covariance_vector_init_list.covariance_list()
+        self._omega_scaler_list = covariance_vector_init_list.scaler_list()
+
+        for vector in self._omega_vector_list:
+            if isinstance(vector, CovarianceVector) and vector.fixed :
+                for name in vector.random_variable_names :
+                    for eta in self.pred_function._eta[name].values():
+                        eta.fixed = True
+
+        self.eta_names = self._omega_vector_list.random_variable_names()
+        self.scale_mode = scale_mode_cur
+
+    def init_sigma_by_covariance_vector_init_list(self, 
+        covariance_vector_init_list : CovarianceInitList) :
+        scale_mode_cur = self.scale_mode
+        self.scale_mode = True
+        self._sigma_vector_list = covariance_vector_init_list.covariance_list()
+        self._sigma_scaler_list = covariance_vector_init_list.scaler_list()
+
+        for vector in self._sigma_vector_list:
+            if isinstance(vector, CovarianceVector) and vector.fixed :
+                for name in vector.random_variable_names :
+                    for eps in self.pred_function._eps[name].values():
+                        eps.fixed = True
+
+        self.eps_names = self._sigma_vector_list.random_variable_names()
+        self.scale_mode = scale_mode_cur
+
     @property
     def omega(self):
         return get_covariance(self._omega_vector_list, self._omega_scaler_list, self.scale_mode)
 
     @property
     def sigma(self):
-        return get_covariance(self.sigma_vector_list, self.sigma_scaler_list, self.scale_mode)
+        return get_covariance(self._sigma_vector_list, self._sigma_scaler_list, self.scale_mode)
 
     @property
     def scale_mode(self):
         return self._scale_mode
     
     @scale_mode.setter
+    @torch.no_grad()
+
     def scale_mode(self, value : bool):
         def turn_off(vector_list : CovarianceVectorList, scaler_list: CovarianceScalerList):
             new_vector_list = CovarianceVectorList()
             for vector, scaler in zip(vector_list, scaler_list):
-                if scaler is not None :
-                    new_vector_list.append(scaler(vector))
+                if scaler is not None and isinstance(vector, CovarianceVector):
+                    matrix = lower_triangular_vector_to_covariance_matrix(vector, vector.is_diagonal)
+                    new_vector = matrix_to_lower_triangular_vector(scaler(matrix))
+                    vector.data = new_vector
+                    new_vector_list.append(vector)
                 else :
                     new_vector_list.append(vector)
             return new_vector_list
-        def turn_on(vector_list : CovarianceVectorList, scaler_list: CovarianceScalerList):
-            new_vector_list = CovarianceVectorList()
-            new_scaler_list = CovarianceScalerList()
+
+        def get_cov_init_list(vector_list : CovarianceVectorList, scaler_list: CovarianceScalerList):
+            covariance_vector_init_list = []
             for vector, scaler in zip(vector_list, scaler_list):
                 if scaler is not None and type(vector) is CovarianceVector :
-                    new_scaler = CovarianceScaler(vector)
-                    new_scaler_list.append(new_scaler)
-                    vector.data = tensor([0.1]*vector.size()[0])
-                    new_vector_list.append(vector)
-            return new_vector_list, new_scaler_list
+                    new_cov_vector_init = CovarianceVectorInit(
+                        vector.clone().detach(), 
+                        vector.random_variable_names,
+                        vector.is_diagonal,
+                        vector.fixed)
+                    covariance_vector_init_list.append(new_cov_vector_init)
+            return CovarianceInitList(covariance_vector_init_list)
+
         # turn on
         if not self.scale_mode and value :
             self.pred_function.theta_boundary_mode = value
-            self._omega_vector_list, self._omega_scaler_list = turn_on(self._omega_vector_list, self._omega_scaler_list)
-            self.sigma_vector_list, self.sigma_scaler_list = turn_on(self.sigma_vector_list, self.sigma_scaler_list)
+
+            omega_init_list = get_cov_init_list(self._omega_vector_list, self._omega_scaler_list)
+            self._omega_vector_list = omega_init_list.covariance_list()
+            self._omega_scaler_list = omega_init_list.scaler_list()
+
+            sigma_init_list = get_cov_init_list(self._sigma_vector_list, self._sigma_scaler_list)
+            self._sigma_vector_list = sigma_init_list.covariance_list()
+            self._sigma_scaler_list = sigma_init_list.scaler_list()
+            
             self._scale_mode = value
         # turn off
         elif self.scale_mode and not value :
             self.pred_function.theta_boundary_mode = value
             self._omega_vector_list = turn_off(self._omega_vector_list, self._omega_scaler_list)
-            self.sigma_vector_list = turn_off(self.sigma_vector_list, self.sigma_scaler_list)
+            self._sigma_vector_list = turn_off(self._sigma_vector_list, self._sigma_scaler_list)
             self._scale_mode = value
 
     def get_unfixed_parameter_values(self) -> List[Parameter]:
@@ -164,7 +213,7 @@ class NLMEModel(pl.LightningModule):
             if type(omega_vector) is CovarianceVector and not omega_vector.fixed :
                 unfixed_parameter_values.append(omega_vector) 
         
-        for sigma_vector in self.sigma_vector_list:
+        for sigma_vector in self._sigma_vector_list:
             if type(sigma_vector) is CovarianceVector and not sigma_vector.fixed :
                 unfixed_parameter_values.append(sigma_vector) 
         
@@ -199,7 +248,7 @@ class NLMEModel(pl.LightningModule):
     def num_of_population_parameters(self):
         theta = self.pred_function.theta
         num = len(theta)
-        for para in [self._omega_vector_list, self.sigma_vector_list]:
+        for para in [self._omega_vector_list, self._sigma_vector_list]:
             for vector in para : num += len(vector)
         return num
     
@@ -212,7 +261,7 @@ class NLMEModel(pl.LightningModule):
         for para in [theta, eta_dicts, eps_dicts,]:
             num += len(para)
 
-        for para in [self._omega_vector_list, self.sigma_vector_list]:
+        for para in [self._omega_vector_list, self._sigma_vector_list]:
             for vector in para : num += len(vector)
         return num
     
@@ -257,20 +306,6 @@ class FOCEInter(NLMEModel) :
             max_iter : int = 20,
             *args, **kwargs):
         super().__init__(pred_function, omega, sigma, *args, **kwargs)
-
-        # if type(omega) is Tuple[CovarianceVectorList, CovarianceScalerList] :
-        #     self._omega_vector_list, self._omega_scaler_list = omega
-        #     self.eta_names = self._omega_vector_list.random_variable_names()
-        # elif type(omega) is CovarianceVectorInitList :
-        #     self._omega_vector_list, self._omega_scaler_list = omega.covariance_list(), omega.scaler_list()
-        #     self.eta_names = self._omega_vector_list.random_variable_names()
-        
-        # if type(sigma) is Tuple[CovarianceVectorList, CovarianceScalerList] :
-        #     self.sigma_vector_list, self.sigma_scaler_list = sigma
-        #     self.eps_names = self.sigma_vector_list.random_variable_names()
-        # elif type(sigma) is CovarianceVectorInitList :
-        #     self.sigma_vector_list, self.sigma_scaler_list = sigma.covariance_list(), sigma.scaler_list()
-        #     self.eps_names = self.sigma_vector_list.random_variable_names()
         
     def forward(self, dataset) :
         return self.pred_function(dataset)
@@ -367,7 +402,7 @@ class FOCEInter(NLMEModel) :
 
             mvn_eps = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(len(outputs.eps_dict), device=batch[EssentialColumns.ID.value].device), self.omega)
             simulated_epss = mvn_eps.rsample(torch.Size([self.pred_function.dataset.len, self.pred_function.dataset.max_record_length])).permute([2,0,1])
-            eps_names = self.sigma_vector_list.random_variable_names()
+            eps_names = self._sigma_vector_list.random_variable_names()
             eps_dict = self.pred_function.eps
             for simulated_eps, name in zip(simulated_epss, eps_names):
                 for i, id in enumerate(self.pred_function.dataset.ids):
@@ -389,7 +424,7 @@ class FOCEInter(NLMEModel) :
         estimated_parameters = [
                 *self.pred_function._theta.values(),
                 *self._omega_vector_list,
-                *self.sigma_vector_list]
+                *self._sigma_vector_list]
 
         for data in inputs:
             id = int(data[EssentialColumns.ID.value][0])

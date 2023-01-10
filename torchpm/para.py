@@ -139,7 +139,7 @@ class CovarianceVector(Parameter):
 
 class CovarianceVectorInit(CovarianceVector) :
     def __new__(cls,
-            init_values: Tuple[float, ...],
+            init_values: Union[Tuple[float, ...], Tensor],
             random_variable_names : Tuple[str, ...],
             is_diagonal : bool = True,
             fixed : bool = False,):
@@ -188,7 +188,7 @@ class CovarianceVectorList(ParameterList) :
                 result = result + covariance_vector.random_variable_names
         return result
 
-class CovarianceVectorInitList(CovarianceVectorList):
+class CovarianceInitList(CovarianceVectorList):
     def __init__(
             self,
             covariance_vector_init_list: Iterable[CovarianceVectorInit]):
@@ -213,6 +213,7 @@ class CovarianceScaler(nn.Module):
         self.scale.fixed = True # type: ignore
 
     def _get_descaled_matrix(self, scaled_matrix : Tensor):
+        # TODO dot product로 수정함. 주의!
         x = scaled_matrix * self.scale
         diag_part = scaled_matrix.diag().exp() * self.scale.diag()
         maT = tc.tril(x) - x.diag().diag() + diag_part.diag()
@@ -242,18 +243,15 @@ class CovarianceScalerList(nn.ModuleList):
         return m
 
 def get_covariance(
-            covariance_vector_list : CovarianceVectorList, 
-            covariance_scaler_list : CovarianceScalerList, 
-            scale_mode : bool):
-    covariance = []
-    for scaler, vector in zip(covariance_scaler_list, covariance_vector_list) :
-        if scale_mode and scaler is not None and type(vector) is CovarianceVector:
-            block_matrix = lower_triangular_vector_to_covariance_matrix(vector, diag = vector.is_diagonal)
-            block_matrix = scaler(block_matrix)
-            covariance.append(block_matrix)
-        elif type(vector) is CovarianceVector:
-            block_matrix = lower_triangular_vector_to_covariance_matrix(vector, diag = vector.is_diagonal)
-            covariance.append(block_matrix)
-        else :
-            TypeError('the type of covriance_vector_list should be CovairianceVector')
-    return torch.block_diag(*covariance)
+        covariance_vector_list : CovarianceVectorList, 
+        covariance_scaler_list : CovarianceScalerList, 
+        scale_mode : bool):
+        covariance = []
+        for scaler, vector in zip(covariance_scaler_list, covariance_vector_list) :
+            if type(vector) is CovarianceVector:
+                block_matrix = lower_triangular_vector_to_covariance_matrix(vector, diag = vector.is_diagonal)
+                block_matrix = block_matrix if scaler is None or not scale_mode else scaler(block_matrix)
+                covariance.append(block_matrix)
+            else :
+                TypeError('the type of covriance_vector_list should be CovairianceVector')
+        return torch.block_diag(*covariance)
