@@ -1,205 +1,197 @@
-from copy import deepcopy
-import enum
-from dataclasses import dataclass, asdict, field
-from typing import Dict, Iterable, List, Literal, Optional, OrderedDict, Set, Tuple, Type
-
+from dataclasses import asdict, dataclass, field, fields
+from pathlib import Path
+from queue import Queue
+import re
+from typing import Dict, List, Literal, Mapping, Sequence, Tuple
+from lightning import LightningDataModule
 import numpy as np
-
-import torch
 import pandas as pd
+from torch import Tensor, tensor, zeros
+import torch
+from torch.utils.data import DataLoader, Dataset, random_split
+from re import Pattern
 
-from torch import Tensor, tensor
-from torch.nn import functional as F
-
-from torch.utils.data import Dataset
-
-def get_id(dataset : Dict[str, Tensor]) -> str:
-    return str(int(dataset[EssentialColumns.ID.value][0]))
-
-class EssentialColumnDtypes(enum.Enum) :
-    ID = int
-    TIME = float
-    AMT = float
-    RATE = float
-    DV = float
-    MDV = int
-    CMT = int
-
-@enum.unique
-class EssentialColumns(enum.Enum) :
-
-    def __init__(self, value) :
-        self.dtype = EssentialColumnDtypes[self.name].value
-
-    ID = 'ID'
-    TIME = 'TIME'
-    AMT = 'AMT'
-    RATE = 'RATE'
-    DV = 'DV'
-    MDV = 'MDV'
-    CMT = 'CMT'
-
-    @classmethod
-    def get_name_set(cls) -> Set[str] :
-        return set(cls.get_name_list())
-
-    @classmethod
-    def get_name_list(cls) -> List[str] :
-        return [elem.value for elem in cls]
+#TODO automatic TAD
+def read_from_nonmem_csv(csv_path : Path, na_values: str = '.', as_same_time_limit: float = 0.11,) -> pd.DataFrame :
+    ESSENTIAL_COLUMN_PATTERN : Pattern = r"^ID$|^TIME$|^DV$|^AMT$|^CMT$|^MDV$"
     
-    @classmethod
-    def check_inclusion_of_names(cls, column_names: Iterable[str]) -> None:
-        if len(set(EssentialColumns.get_name_set()) - set(column_names)) > 0 :
-            raise Exception('column_names must contain EssentialColumns')
+    data_frame = pd.read_csv(csv_path, na_values=na_values)
+    data_frame.columns = data_frame.columns.str.upper()
+    assert as_same_time_limit > 0
+    essential_col_num = f"{ESSENTIAL_COLUMN_PATTERN}".count('|') + 1
+    assert essential_col_num == data_frame.filter(regex=ESSENTIAL_COLUMN_PATTERN,axis=1).columns.__len__()
+    max_cmt = max(data_frame['CMT'])
     
-    @classmethod
-    def int_column_names(cls) -> List[str]:
-        return list([elem.value for elem in cls if elem.dtype is int])
+    mdv_mask = data_frame['MDV'] == 1
+    data_frame.loc[mdv_mask, 'DV'] = pd.NA
 
-    @classmethod
-    def float_column_names(cls):
-        return list([elem.value for elem in cls if elem.dtype is float])
+    dv_scalar_tensor = torch.tensor(data_frame['DV']).unsqueeze(-1)
+    dv_one_hot = torch.nn.functional.one_hot(torch.tensor((data_frame['CMT']-1).to_numpy()), num_classes = max_cmt).to(torch.float)
+    dv_one_hot[dv_one_hot == 0] = torch.nan
+    dv=(dv_scalar_tensor*dv_one_hot).t().numpy()
+    dv_col_names = [f"DV{i}" for i in range(max_cmt)]
+    data_frame = data_frame.drop(['DV','MDV','CMT'], axis=1)
+    data_frame = data_frame.assign(**{k: v for k,v in zip(dv_col_names, dv)})
 
-class PMDataset(Dataset):
-    def __init__(self, 
-                 dataframe : pd.DataFrame,
-                 **kwargs):
-        super().__init__()
-        
-        EssentialColumns.check_inclusion_of_names(dataframe.columns)
-        self._covariate_names : Set[str] = set([name for name in dataframe.columns]) - EssentialColumns.get_name_set()
+    def _individual_pm_record_to_pm_train_dataset(data:pd.DataFrame):
+        data = data.reset_index(drop=True)
+        for i, r in data[::-1].iterrows():
+            if i == 0 : break
+            pre_r = data.loc[i-1]
+            if abs(r['TIME'] - pre_r['TIME']) < as_same_time_limit :
+                cur_dv = r.filter(regex  = r"^DV\d+$")
+                for row_index, v in cur_dv.items():
+                    if not np.isnan(cur_dv[row_index]) :
+                        data.loc[i-1, row_index] = v
+                if np.isnan(data['AMT'][i-1]) :
+                    data.loc[i-1, 'AMT'] = data['AMT'][i]
+                data = data.drop(i, axis=0)
+        return data
 
-        self.column_names = list(dataframe.columns)
-        self.mean_of_columns : Dict[str, float] = dict(dataframe.mean(axis=0, skipna=True))
-        
-        for col in dataframe.columns :
-            if col in EssentialColumns.int_column_names() :
-                dataframe[col] = dataframe[col].astype(int)
-            else :
-                dataframe[col] = dataframe[col].astype(np.float32)
-        self._ids : List[int] = dataframe[EssentialColumns.ID.value].sort_values(axis = 0).unique().tolist()
+    data_frame_output = None
+    for id,df in data_frame.groupby("ID", sort=True,) :
 
-        self.max_record_length = 0
-        self.record_lengths : Dict[int, int] = {}
-        self.datasets_by_id : Dict[int, Dict[str, Tensor]] = {}
-        for id in self.ids :
-            id_mask = dataframe[EssentialColumns.ID.value] == id
-            dataset_by_id = dataframe.loc[id_mask]
-            self.datasets_by_id[id] = {}
-            length = len(dataset_by_id)
-            self.max_record_length = max(length, self.max_record_length)
-            self.record_lengths[id] = length
-
-        for id in self.ids :
-            for col in dataframe.columns :
-                id_mask = dataframe[EssentialColumns.ID.value] == id
-                dataset_by_id = dataframe.loc[id_mask]
-                length = self.record_lengths[id]
-                t = tensor(dataset_by_id[col].values)
-                self.datasets_by_id[id][col] = F.pad(t, (0, self.max_record_length - length))
-                self.datasets_by_id[id][col] = self.datasets_by_id[id][col]
-        self.len = len(self.datasets_by_id.keys())
-
-    def __getitem__(self, idx) -> Dict[str, Tensor]:
-        id = self.ids[idx]
-        return self.datasets_by_id[id]
-
-    def __len__(self):
-        return self.len
-    
-    @property
-    def covariate_names(self) -> Set[str]:
-        return self._covariate_names
-
-    @property
-    def ids(self) :
-        return self._ids
-
+        dfo = _individual_pm_record_to_pm_train_dataset(df)
+        if data_frame_output is None :
+            data_frame_output = dfo
+        else :
+            data_frame_output = pd.concat([data_frame_output, dfo], axis=0, ignore_index=True)
+    return data_frame_output
 
 @dataclass
-class PMRecord:
-    ID : int = 1
-    TIME : float = 0
-    AMT : float = 0
-    RATE : float = 0
-    DV : float = 0
-    MDV : int = 0
-    CMT : int = 0
+class MixedEffectsTimeData:
+    id: Tensor
+    dv: Tensor
+    iv: Tensor
+    time: Tensor
+    init: Tensor
 
-class OptimalDesignDataset(PMDataset):
-    def __init__(self,  
-                is_infusion : bool,
-                dosing_interval : float,
-                mean_of_covariate : Dict[str, float] = dict(),
-                target_trough_concentration : float = 0.,
-                administrated_compartment_num : int = 0,
-                observed_compartment_num : int = 0,
-                sampling_times_after_dosing_time : List[float] = [],
-                include_trough_before_dose : bool = False,
-                include_last_trough : bool = False,
-                repeats : int = 10,
-                **kwargs):
+@dataclass
+class MixedEffectsTimeDatasetConfig:
+    dv_column_names: Tuple[str,...] = ('DV',)
+    iv_column_names: Tuple[str,...] | None = None
+    init_column_names: Tuple[str,...] = ('AMT',)
+    id_column_name: str = 'ID'
+    time_column_name: str = 'TIME'
 
-        covariate_name_list = set(mean_of_covariate.keys()) - EssentialColumns.get_name_set()
-        covariate_name_list = list(covariate_name_list)
-        df_columns = EssentialColumns.get_name_list() + covariate_name_list
+    def __post_init__(self):
+        assert len(self.dv_column_names) == len(self.init_column_names)
 
-        for k in mean_of_covariate.keys() :
-            if k in EssentialColumns.get_name_set():
-                del mean_of_covariate[k]
+class MixedEffectsTimeDataset(Dataset):
+    def __init__(
+            self,
+            data_frame: pd.DataFrame,
+            config: MixedEffectsTimeDatasetConfig):  
         
-        df = pd.DataFrame(columns=df_columns)
-        def add_row(record : PMRecord):
-            record_dose_dict = deepcopy(mean_of_covariate) | asdict(record)
-            return pd.concat([df,pd.DataFrame(record_dose_dict, index=[0])], ignore_index=True)
-        
-        for i in range(repeats) :
-            dosing_time = dosing_interval*i
-            trough_sampling_times_after_dose = dosing_interval * (i+1) - 1e-6
-            
-            record_dose = PMRecord(
-                    TIME = dosing_time,
-                    ID = 1,
-                    AMT = 1,
-                    RATE = 1 if is_infusion else 0,
-                    CMT=administrated_compartment_num,
-                    MDV=1,)
-            df = add_row(record_dose)
-            
-            for sampling_time_after_dose in sampling_times_after_dosing_time :
-                cur_time = dosing_time + sampling_time_after_dose
-                if cur_time >= trough_sampling_times_after_dose :
-                    break
-                else :
-                    record_sampling = PMRecord(
-                            TIME = cur_time,
-                            ID = 1,
-                            AMT = 0,
-                            RATE = 1 if is_infusion else 0,
-                            CMT=observed_compartment_num,
-                            MDV=0)
-                    
-                    df = add_row(record_sampling)
-            if include_trough_before_dose and i < repeats - 1 :
-                record_trough = PMRecord(
-                    ID = 1,
-                    AMT = 0,
-                    RATE = 1 if is_infusion else 0,
-                    TIME=trough_sampling_times_after_dose - 1e-6,
-                    DV = target_trough_concentration,
-                    CMT=observed_compartment_num,
-                    MDV=0)
-                df = add_row(record_trough)
-                
-        if include_last_trough:
-            record_trough = PMRecord(
-                ID = 1,
-                AMT = 0,
-                RATE = 1 if is_infusion else 0,
-                TIME=dosing_interval*repeats,
-                DV = target_trough_concentration,
-                CMT=observed_compartment_num,
-                MDV=0,)
-            df = add_row(record_trough)
-        
-        super().__init__(df, **kwargs)
+        for f in fields(MixedEffectsTimeData):
+            setattr(self, f.name, [])
+
+        df_by_id = data_frame.groupby(config.id_column_name, sort=True)
+        for _, d in df_by_id:
+            d = d.reset_index(drop=True)
+
+            id = tensor(d[config.id_column_name][0], dtype = torch.int64)
+            self.id.append(id)
+
+            time = tensor(d[config.time_column_name].to_numpy(), dtype=torch.float)
+            self.time.append(time)
+
+            dv = d.filter(config.dv_column_names, axis=1).to_numpy()
+            dv = tensor(dv, dtype=torch.float)
+            self.dv.append(dv.t())
+
+            iv = d.filter(config.iv_column_names, axis=1).to_numpy()
+            iv = tensor(iv, dtype=torch.float).nan_to_num()
+            self.iv.append(iv.t())
+
+            init = d.filter(config.init_column_names, axis=1).to_numpy()
+            init = tensor(init, dtype=torch.float).nan_to_num()
+            self.init.append(init.t())
+
+    def __len__(self):
+        return len(self.id)
+    
+    def __getitem__(self, index) -> Mapping[str,Tensor]:
+        return {f.name:getattr(self, f.name)[index] for f in fields(MixedEffectsTimeData)}
+
+class MixedEffectsTimeDataCollator:
+    @torch.no_grad()
+    def __call__(self, samples: List[Dict[str, Tensor]]):
+        batch : Dict[str, List[Tensor]] = {}
+        for s in samples :
+            for k, value in s.items():
+                vs = batch.get(k, [])
+                vs.append(value)
+                batch.update({k: vs})
+        output : Dict[str, Tensor] = {}
+        for key, value in batch.items():
+            match key:
+                case "id" :
+                    output[key] = torch.stack(value)
+                case "time" :
+                    time = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan'))
+                    max_time = time.max(dim=-1).values
+                    for i, d_t in enumerate(time) :
+                        start = d_t.isnan().logical_not().sum()
+                        max_time = d_t.nan_to_num(0).max()
+                        for j,k in enumerate(range(start,len(d_t))):
+                            d_t[k] = max_time.clone().detach() + j*0.1 + 0.1
+                        time[i] = d_t
+                    output[key] = time
+                case "dv":
+                    value = [v.t() for v in value]
+                    output[key] = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan')).permute(0, 2, 1)
+                case _ :
+                    value = [v.t() for v in value]
+                    output[key] = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan')).permute(0, 2, 1)
+        return output
+
+class MixedEffectsTimeDataModule(LightningDataModule):
+    def __init__(
+        self,
+        dataset_config: MixedEffectsTimeDatasetConfig,
+        train_csv_path: Path,
+        valid_csv_path: Path | None = None,
+        pred_csv_path: Path | None = None,
+        test_csv_path: Path | None = None,
+        batch_size: int = 100,
+        num_workers: int = 0,
+        na_values: str = '.',
+    ) -> None:
+        super().__init__()
+        self.dataset_config = dataset_config
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.na_values = na_values
+        self.train_df = self._read_csv(train_csv_path)
+        self.valid_df = self._read_csv(valid_csv_path if valid_csv_path else train_csv_path)
+        self.pred_df = self._read_csv(pred_csv_path if pred_csv_path else train_csv_path)
+        self.test_df = self._read_csv(test_csv_path if test_csv_path else train_csv_path)
+        self._collater = MixedEffectsTimeDataCollator()
+    
+    def _read_csv(self, csv_path: Path):
+        return pd.read_csv(csv_path, na_values=self.na_values, skip_blank_lines=True)
+
+    def setup(self, stage: str) -> None:        
+        match stage:
+            case 'fit' | 'validate':
+                self.train_dataset = MixedEffectsTimeDataset(self.train_df, self.dataset_config)
+                self.valid_dataset = MixedEffectsTimeDataset(self.valid_df, self.dataset_config)
+            case 'predict':
+                self.pred_dataset = MixedEffectsTimeDataset(self.pred_df, self.dataset_config)
+            case 'test':
+                self.test_dataset = MixedEffectsTimeDataset(self.test_df, self.dataset_config)
+    
+    def train_dataloader(self):
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self._collater)
+    
+    def val_dataloader(self):
+        return DataLoader(self.valid_dataset, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self._collater)
+    
+    def predict_dataloader(self):
+        return DataLoader(self.pred_dataset, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self._collater)
+
+    def test_dataloader(self):
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self._collater)
+
+

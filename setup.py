@@ -6,7 +6,7 @@ setuptools.setup(
     author="Sungwoo Goo",
     author_email="yeoun9@gmail.com",
     description="Pharmacometrics in PyTorch.",
-    url="https://github.com/yeoun9/torchpm",
+    url="https://github.com/swgoo/torchpm",
     packages=setuptools.find_packages(),
     install_requires=['torch>=1.3.0', 'numpy>=1.19.5', 'torchdiffeq>=0.2.1', 'sympy>=1.7.1','sympytorch>=0.1.1'],
     python_requires='~=3.6',
