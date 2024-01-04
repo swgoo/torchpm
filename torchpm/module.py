@@ -17,6 +17,7 @@ class ODESolver(LightningModule):
         self, 
         atol=1e-6, 
         rtol=1e-3,
+        batch_first = False,
         *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         #ODE solver
@@ -25,6 +26,7 @@ class ODESolver(LightningModule):
         step_size_controller = torchode.IntegralController(atol=atol, rtol=rtol, term=term)
         solver = torchode.AutoDiffAdjoint(step_method, step_size_controller)
         self.ode_solver = torch.compile(solver)
+        self.batch_first = batch_first
 
     @abc.abstractmethod
     def ode(self, t:Tensor, y:Tensor, kwargs:Dict[str,Tensor]):...
@@ -42,7 +44,10 @@ class ODESolver(LightningModule):
 
         ys = []
         time = time.T #[batch, time] -> [time, batch]
-        init = init.permute([1,0,2]) # [batch, time, dim] -> [time, batch, dim]
+        if self.batch_first :
+            init = init.permute([2,0,1]) # [batch, dim, time] -> [time, batch, dim]
+        else :
+            init = init.permute([2,1,0]) # [dim, batch, time] -> [time, batch, dim]
 
         pre_times = time[0]
         pre_ys = init[0]
@@ -64,7 +69,10 @@ class ODESolver(LightningModule):
             ys.append(cur_zs) 
             pre_ys = cur_zs
             pre_times = cur_times
-        return torch.stack(ys).permute([1,0,2]) # [Time, batch, dim] -> [batch,Time,dim]
+        if self.batch_first :
+            return torch.stack(ys).permute([1,2,0]) # [Time, batch, dim] -> [batch,dim,Time]
+        else :
+            return torch.stack(ys).permute([2,1,0]) # [Time, batch, dim] -> [dim,batch,Time]
 
 class BoundaryFixedEffect(LightningModule) :
     def __init__(

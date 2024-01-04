@@ -115,6 +115,9 @@ class MixedEffectsTimeDataset(Dataset):
         return {f.name:getattr(self, f.name)[index] for f in fields(MixedEffectsTimeData)}
 
 class MixedEffectsTimeDataCollator:
+    def __init__(self, batch_first : bool = False):
+        self.batch_first = batch_first
+
     @torch.no_grad()
     def __call__(self, samples: List[Dict[str, Tensor]]):
         batch : Dict[str, List[Tensor]] = {}
@@ -137,13 +140,18 @@ class MixedEffectsTimeDataCollator:
                         for j,k in enumerate(range(start,len(d_t))):
                             d_t[k] = max_time.clone().detach() + j*0.1 + 0.1
                         time[i] = d_t
-                    output[key] = time
-                case "dv":
-                    value = [v.t() for v in value]
-                    output[key] = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan')).permute(0, 2, 1)
+                    if self.batch_first :
+                        output[key] = time
+                    else :
+                        output[key] = time.t()
                 case _ :
                     value = [v.t() for v in value]
-                    output[key] = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan')).permute(0, 2, 1)
+                    value = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan'))
+                    if self.batch_first :
+                        output[key] = value.permute(0, 2, 1) # batch, time, dim -> batch, dim, time
+                    else :
+                        output[key] = value.permute(2,0,1) # batch, time, dim -> dim, batch, time
+
         return output
 
 class MixedEffectsTimeDataModule(LightningDataModule):
@@ -157,6 +165,7 @@ class MixedEffectsTimeDataModule(LightningDataModule):
         batch_size: int = 100,
         num_workers: int = 0,
         na_values: str = '.',
+        batch_first: bool = False,
     ) -> None:
         super().__init__()
         self.dataset_config = dataset_config
@@ -167,7 +176,7 @@ class MixedEffectsTimeDataModule(LightningDataModule):
         self.valid_df = self._read_csv(valid_csv_path if valid_csv_path else train_csv_path)
         self.pred_df = self._read_csv(pred_csv_path if pred_csv_path else train_csv_path)
         self.test_df = self._read_csv(test_csv_path if test_csv_path else train_csv_path)
-        self._collater = MixedEffectsTimeDataCollator()
+        self._collater = MixedEffectsTimeDataCollator(batch_first=batch_first)
     
     def _read_csv(self, csv_path: Path):
         return pd.read_csv(csv_path, na_values=self.na_values, skip_blank_lines=True)
