@@ -77,12 +77,12 @@ class ODESolver(LightningModule):
 class BoundaryFixedEffect(LightningModule) :
     def __init__(
             self,
-            init_values: Tuple[float, ...] | float, 
-            lower_boundary : Tuple[float, ...] | float | None,
-            upper_boundary : Tuple[float, ...] | float | None):
+            init_value: Tuple[float, ...] | float, 
+            lower_boundary: Tuple[float, ...] | float | None = None,
+            upper_boundary: Tuple[float, ...] | float | None = None):
         super().__init__()
 
-        self.register_buffer('iv', tensor(init_values, dtype=float))
+        self.register_buffer('iv', tensor(init_value, dtype=float))
         assert self.iv.dim() == 0 | self.iv.dim() == 1
 
         if lower_boundary is None :    
@@ -103,23 +103,27 @@ class BoundaryFixedEffect(LightningModule) :
     def forward(self) :
         return torch.exp(self.var - self.alpha)/(torch.exp(self.var - self.alpha) + 1)*(self.ub - self.lb) + self.lb
 
+@dataclass
+class RandomEffectConfig:
+    dim: int
+    covariance: bool = False
 
 class RandomEffect(LightningModule):
     def __init__(
             self,
-            num_id : int,
-            dim: int, 
+            config: RandomEffectConfig,
+            num_id: int,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.config = config
         self.num_id = num_id
-        self.dim = dim
-        self.random_effects_emb = nn.Embedding(num_id + 1, dim, padding_idx = 0)
+        self.random_effects_emb = nn.Embedding(self.num_id + 1, self.config.dim, padding_idx = 0)
         nn.init.zeros_(self.random_effects_emb.weight)
     
     def forward(self, id: Tensor, simulation: bool):
         if simulation :
-            loc = torch.zeros(self.dim, dtype=float, device=id.device)
-            random_effects = torch.distributions.Normal(loc, self.standard_deviation()).sample(id.size()[:-1])
+            loc = torch.zeros(self.config.dim, dtype=float, device=id.device)
+            random_effects = torch.distributions.MultivariateNormal(loc, self.covariance_matrix()).sample(id.size()[:-1])
         else :
             mask = (id != 0).unsqueeze(-1)
             random_effects = self.random_effects_emb(id) * mask
@@ -128,12 +132,57 @@ class RandomEffect(LightningModule):
     def regularize(self, id : Tensor) -> Tensor:
         rv : Tensor = self.random_effects_emb(id)
         rv = rv.unsqueeze(-2)
-        loss : Tensor =  rv @ (self.standard_deviation().diag().inverse()) @ rv.permute(0,2,1)
+        loss : Tensor =  rv @ (self.covariance_matrix().inverse()) @ rv.permute(0,2,1)
         return loss.squeeze().sum()
     
-    def standard_deviation(self, eps : float = 1e-6) -> Tensor :
-        return self.random_effects_emb.weight[1:].t().std(-1) + eps * torch.ones(self.dim, dtype=float, device=self.device)
-    
+    def covariance_matrix(self, eps : float = 1e-6) -> Tensor :
+        if self.config.covariance :
+            return self.random_effects_emb.weight[1:].t().cov() + (eps * torch.ones(self.config.dim, dtype=float, device=self.device)).diag()
+        else :
+            return self.random_effects_emb.weight[1:].t().std(-1).diag() + (eps * torch.ones(self.config.dim, dtype=float, device=self.device)).diag()
+
+
+@dataclass
+class FFNConfig:
+    # Feed Forward Net Configuration
+    dims : Tuple[int,...] = (1, 1)
+    hidden_norm_layer : bool = True
+    hidden_act_fn : str | None = 'SiLU'
+    output_act_fn : str | None = None
+    dropout : float = 0.2
+
+class FFN(nn.Module):
+    def __init__(
+            self,
+            config : FFNConfig, 
+            *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.config = config
+        self.register_buffer('output_mask', config.output_mask)
+        
+        net = []
+        pre_dim = config.dims[0]
+        for next_dim in config.dims[1:]:
+            lin = nn.Linear(pre_dim, next_dim)
+            net.append(lin)
+            if config.hidden_norm_layer :
+                norm = nn.LayerNorm(next_dim)
+                net.append(norm)
+            if config.hidden_act_fn is not None:
+                act_f = getattr(nn, config.hidden_act_fn, nn.SiLU)()
+                net.append(act_f)
+            net.append(nn.Dropout(config.dropout))
+            pre_dim = next_dim
+        
+        if config.output_act_fn is not None :
+            output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
+            net.append(output_act_f)
+        self.net = nn.Sequential(*net)
+
+    def forward(self, input : Tensor):
+        return self.net(input)
+        
+
 @dataclass
 class MaskedFFNConfig:
     # Feed Forward Net Configuration
@@ -150,7 +199,8 @@ class MaskedFFNConfig:
         if not isinstance(self.output_mask, Tensor) :
             self.output_mask = tensor(self.output_mask, dtype=float)
 
-class MaskedFFN(LightningModule):   
+
+class MaskedFFN(nn.Module):   
     # Feed Forward Net
     def __init__(
             self,
@@ -187,19 +237,49 @@ class MaskedFFN(LightningModule):
         output = output.reshape(*output.size()[:-1], *self.output_mask.size())
         return output * self.output_mask
 
+@dataclass
+class CovariateRegulatorConfig :
+    input_dim : int
+    hidden_state_dims : Tuple[int,...] = (1, 1)
+    hidden_norm_layer : bool = True
+    hidden_act_fn : str | None = 'SiLU'
+    dropout : float = 0.2
+
+class CovariateRegulator(LightningModule):
+    def __init__(
+            self, 
+            config: CovariateRegulatorConfig,
+            *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.config = config
+        ffn_config = FFNConfig(
+            dims=(config.input_dim, *config.hidden_state_dims, config.input_dim),
+            dropout=config.dropout,
+            hidden_act_fn=config.hidden_act_fn,
+            hidden_norm_layer=config.hidden_norm_layer,
+            output_act_fn="Sigmoid",
+        )
+        self.ffn =  FFN(ffn_config)
+    
+    def forward(self, input):
+        return self.ffn(input) * input
+
+
 class MixedEffectsModel(LightningModule):
     def __init__(self,
+            random_effect_configs : List[RandomEffectConfig],
             num_id : int = 1,
-            random_effects_dim : int = (1),
-            loss_fn : str = "MSELoss",
             lr: float = 3e-4,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
-        self.loss_fn = getattr(nn, loss_fn)()
-        self.random_effect = RandomEffect(num_id=num_id, dim= random_effects_dim)
+        self.error_fn = nn.MSELoss(reduction='none')
+        random_effects = []
+        for conf in random_effect_configs :
+            random_effects.append(RandomEffect(config=conf, num_id=num_id))
+        self.redom_effects = nn.ModuleList(random_effects)
         self.register_buffer("_loss_regulization", tensor(1, dtype=float))
-        self.register_buffer("_total_residuals_train", tensor([], dtype=torch.float))
+        self.register_buffer("_total_residuals_train", tensor([], dtype=float))
 
     @abc.abstractmethod
     def forward(self, init:Tensor, time:Tensor, iv:Tensor, id : Tensor, simulation: bool = False) -> Tensor: ...
@@ -215,7 +295,7 @@ class MixedEffectsModel(LightningModule):
         
     @torch.no_grad()
     def on_train_epoch_end(self) -> None:
-        self._loss_regulization = self._total_residuals_train.mean(0) + 1e-5
+        self._loss_regulization = self._total_residuals_train.mean() + 1e-6
 
     def training_step(self, batch, batch_idx):
         input = MixedEffectsTimeData(**batch)
@@ -229,13 +309,14 @@ class MixedEffectsModel(LightningModule):
         mask = y_true.isnan().logical_not()
         y_true = torch.masked_select(y_true, mask)
         y_pred = torch.masked_select(y_pred, mask)
-        residual = self.loss_fn(y_pred, y_true)
+        residual = self.error_fn(y_pred, y_true)
 
-        loss = residual/self._loss_regulization
+        loss = residual.mean()/self._loss_regulization
         
-        loss += self.random_effect.regularize(input.id)
+        for random_effect in self.random_effects :
+            loss += random_effect.regularize(input.id)
+        
         self.log('train_loss', loss, prog_bar=True)
-        
         return {"loss": loss, "residual": residual}
     
     # random_effect로 인한 과적합 확인 목적
@@ -253,7 +334,7 @@ class MixedEffectsModel(LightningModule):
         y_true = torch.masked_select(y_true, mask)
         y_pred = torch.masked_select(y_pred, mask)
 
-        loss = self.loss_fn(y_pred, y_true)
+        loss = self.error_fn(y_pred, y_true).mean()
         self.log('valid_loss', loss, prog_bar=True)
         return loss
     
@@ -269,7 +350,6 @@ class MixedEffectsModel(LightningModule):
     # simulation
     def test_step(self, batch, batch_idx):
         input = MixedEffectsTimeData(**batch)
-        
         return self.forward(
             init = input.init,
             time = input.time,
