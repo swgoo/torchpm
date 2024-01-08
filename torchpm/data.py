@@ -93,19 +93,19 @@ class MixedEffectsTimeDataset(Dataset):
             id = tensor(d[config.id_column_name][0], dtype = torch.int64)
             self.id.append(id)
 
-            time = tensor(d[config.time_column_name].to_numpy(), dtype=torch.float)
+            time = tensor(d[config.time_column_name].to_numpy(), dtype=torch.float32)
             self.time.append(time)
 
             dv = d.filter(config.dv_column_names, axis=1).to_numpy()
-            dv = tensor(dv, dtype=torch.float)
+            dv = tensor(dv, dtype=torch.float32)
             self.dv.append(dv.t())
 
             iv = d.filter(config.iv_column_names, axis=1).to_numpy()
-            iv = tensor(iv, dtype=torch.float).nan_to_num()
+            iv = tensor(iv, dtype=torch.float32).nan_to_num()
             self.iv.append(iv.t())
 
             init = d.filter(config.init_column_names, axis=1).to_numpy()
-            init = tensor(init, dtype=torch.float).nan_to_num()
+            init = tensor(init, dtype=torch.float32).nan_to_num()
             self.init.append(init.t())
 
     def __len__(self):
@@ -146,7 +146,7 @@ class MixedEffectsTimeDataCollator:
                         output[key] = time.t()
                 case _ :
                     value = [v.t() for v in value]
-                    value = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan'))
+                    value = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=0.) #FIXME
                     if self.batch_first :
                         output[key] = value.permute(0, 2, 1) # batch, time, dim -> batch, dim, time
                     else :

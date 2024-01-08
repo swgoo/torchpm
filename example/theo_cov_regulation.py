@@ -10,10 +10,11 @@ from lightning import Trainer
 
 from torchpm.module import RandomEffectConfig
 
-correlations = [i*0.2 for i in range(1,5)]
+correlations = [0.2, 0.4, 0.6, 0.8]
 iv_column_names = ['BWT']
 iv_column_names.append("BWT0")
-iv_column_names.extend([f'BWT0_{cor}' for cor in correlations])
+iv_column_names.extend([f'BWT0_{int(cor*10)}' for cor in correlations])
+iv_column_names.append('zero')
 
 def make_dataset(rng : np.random.Generator):
     theo_df = pd.read_csv('example/THEO.csv', na_values='.')
@@ -42,46 +43,46 @@ class TheoModel(MixedEffectsModel) :
             lr: float = 0.0003, 
             *args, **kwargs) -> None:
         super().__init__(random_effect_configs, num_id, lr, *args, **kwargs)
-        self.v = BoundaryFixedEffect([10], [0.1], [100])
-        self.k_a = BoundaryFixedEffect([1], [0.01], [5])
-        self.k_e = BoundaryFixedEffect([1], [0.01], [10])
+        self.v = BoundaryFixedEffect([50], [0.1], [100])
+        self.k_a = BoundaryFixedEffect([1.], [0.01], [5])
+        self.k_e = BoundaryFixedEffect([0.6], [0.01], [10])
 
         #bwt, fixed, random, 0.2,0.4,0.6,0.8,
         iv_dim = 7
-        self.v_cov_regulation = BoundaryFixedEffect((0.5)*iv_dim, (0.)*iv_dim, (1.)*iv_dim)
-        self.k_a_cov_regulation = BoundaryFixedEffect((0.5)*iv_dim, (0.)*iv_dim, (1.)*iv_dim)
-        self.k_e_cov_regulation = BoundaryFixedEffect((0.5)*iv_dim, (0.)*iv_dim, (1.)*iv_dim)
+        self.v_cov_regulation = BoundaryFixedEffect((0.5,)*iv_dim, (0.,)*iv_dim, (1.,)*iv_dim)
+        self.k_a_cov_regulation = BoundaryFixedEffect((0.5,)*iv_dim, (0.,)*iv_dim, (1.,)*iv_dim)
+        self.k_e_cov_regulation = BoundaryFixedEffect((0.5,)*iv_dim, (0.,)*iv_dim, (1.,)*iv_dim)
 
         ffn_dims = (iv_dim, iv_dim, 1)
         self.v_ffn = FFN(FFNConfig(ffn_dims, output_act_fn="Sigmoid"))
         self.k_a_ffn = FFN(FFNConfig(ffn_dims, output_act_fn="Sigmoid"))
         self.k_e_ffn = FFN(FFNConfig(ffn_dims, output_act_fn="Sigmoid"))
     
-    def forward(self, init: Tensor, time: Tensor, iv: Tensor, id: Tensor, simulation: bool = False) -> Tensor:
+    def forward(self, init: Tensor, time: Tensor, iv: Tensor, id: Tensor) -> Tensor:
         iv = iv.permute(1,2,0)
-        v_cov = self.v_ffn(iv * self.v_cov_regulation())
-        k_a_cov = self.k_a_ffn(iv * self.k_a_cov_regulation())
-        k_e_cov = self.k_e_ffn(iv * self.k_e_cov_regulation())
+        v_cov = self.v_ffn(iv * self.v_cov_regulation()).squeeze(-1)
+        k_a_cov = self.k_a_ffn(iv * self.k_a_cov_regulation()).squeeze(-1)
+        k_e_cov = self.k_e_ffn(iv * self.k_e_cov_regulation()).squeeze(-1)
         
-        v = self.v*self.random_effects[0](id, simulation = simulation)[0].exp() * v_cov.exp()
-        k_a = self.k_a*self.random_effects[0](id, simulation = simulation)[1].exp() * k_a_cov.exp()
-        k_e = self.k_e*self.random_effects[0](id, simulation = simulation)[2].exp() * k_e_cov.exp()
+        v = ((self.v()*self.random_effects[0](id)[0].exp()) * v_cov.t().exp())
+        k_a = ((self.k_a()*self.random_effects[0](id)[1].exp()) * k_a_cov.t().exp())
+        k_e = ((self.k_e()*self.random_effects[0](id)[2].exp()) * k_e_cov.t().exp())
 
-        return (320 / v * k_a) / (k_a - k_e) * ((-k_e*time).exp() - (-k_a*time).exp())
+        return ((320 / v * k_a) / (k_a - k_e + 1e-6) * ((-k_e*time).exp() - (-k_a*time).exp())).t()
     
     def training_step(self, batch, batch_idx):
         output = super().training_step(batch, batch_idx)
         loss = output['loss']
-        num_batch = batch['id'].size()
+        num_batch = batch['id'].size(0)
         loss += 3.84 * num_batch/self.num_id * self.v_cov_regulation().sum()
         loss += 3.84 * num_batch/self.num_id * self.k_a_cov_regulation().sum()
         loss += 3.84 * num_batch/self.num_id * self.k_e_cov_regulation().sum()
         output['loss'] = loss
-        return loss
+        return output
 
 if __name__ == "__main__": 
     rng = np.random.default_rng(42)
-
+    f = open('example/regulation.txt', 'w')
     for i in range(100):
         df = make_dataset(rng)
         
@@ -97,8 +98,14 @@ if __name__ == "__main__":
             train_data=df
         )
 
+        model = TheoModel(lr=1e-3)
+        trainer = Trainer(max_epochs=1000)
+        trainer.fit(model, datamodule=datamodule)
+        model.eval()
+        f.write(str(model.v_cov_regulation().detach().numpy()))
+        f.write(str(model.k_a_cov_regulation().detach().numpy()))
+        f.write(str(model.k_e_cov_regulation().detach().numpy()))
+        f.write('\n')
 
-        trainer = Trainer()
-        trainer.fit(TheoModel(), datamodule=datamodule)
 
     

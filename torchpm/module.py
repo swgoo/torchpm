@@ -82,19 +82,19 @@ class BoundaryFixedEffect(LightningModule) :
             upper_boundary: Tuple[float, ...] | float | None = None):
         super().__init__()
 
-        self.register_buffer('iv', tensor(init_value, dtype=float))
+        self.register_buffer('iv', tensor(init_value, dtype=torch.float32))
         assert self.iv.dim() == 0 or self.iv.dim() == 1
 
         if lower_boundary is None :    
             self.register_buffer('lb', 1.e-6 * torch.ones_like(self.iv))
         else :
-            self.register_buffer('lb', tensor(lower_boundary, dtype=float))
+            self.register_buffer('lb', tensor(lower_boundary, dtype=torch.float32))
             assert self.iv.size() == self.lb.size()
         
         if upper_boundary is None :
             self.register_buffer('ub', 1.e6 * torch.ones_like(self.iv))
         else :
-            self.register_buffer('ub', tensor(upper_boundary, dtype=float))
+            self.register_buffer('ub', tensor(upper_boundary, dtype=torch.float32))
             assert self.iv.size() == self.ub.size()
         
         self.register_buffer('alpha', 0.1 - torch.log((self.iv - self.lb)/(self.ub - self.lb)/(1 - (self.iv - self.lb)/(self.ub - self.lb))))
@@ -118,16 +118,16 @@ class RandomEffect(LightningModule):
         super().__init__(*args, **kwargs)
         self.config = config
         self.num_id = num_id
-        self.random_effects_emb = nn.Embedding(self.num_id + 1, self.config.dim, padding_idx = 0)
+        self.emb = nn.Embedding(self.num_id + 1, self.config.dim, padding_idx = 0)
         self.batch_first = batch_first
-        nn.init.zeros_(self.random_effects_emb.weight)
+        nn.init.normal_(self.emb.weight)
         
     def forward(self, id: Tensor):
         mask = (id != 0).unsqueeze(-1) # if id == 0 -> random_variable = 0
         if self.training:
-            random_effects = self.random_effects_emb(id) * mask
+            random_effects = self.emb(id) * mask
         else :
-            loc = torch.zeros(self.config.dim, dtype=float, device=id.device)
+            loc = torch.zeros(self.config.dim, dtype=torch.float32, device=id.device)
             random_effects = torch.distributions.MultivariateNormal(loc, self.covariance_matrix()).sample(id.size()[:-1])
             random_effects = random_effects * mask
             
@@ -137,16 +137,16 @@ class RandomEffect(LightningModule):
             return random_effects.t()
     
     def regularize(self, id : Tensor) -> Tensor:
-        rv : Tensor = self.random_effects_emb(id)
+        rv : Tensor = self.emb(id)
         rv = rv.unsqueeze(-2)
         loss : Tensor =  rv @ (self.covariance_matrix().inverse()) @ rv.permute(0,2,1)
         return loss.squeeze().sum()
     
     def covariance_matrix(self, eps : float = 1e-6) -> Tensor :
         if self.config.covariance :
-            return self.random_effects_emb.weight[1:].t().cov() + (eps * torch.ones(self.config.dim, dtype=float, device=self.device)).diag()
+            return self.emb.weight[1:].t().cov() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
         else :
-            return self.random_effects_emb.weight[1:].t().std(-1).diag() + (eps * torch.ones(self.config.dim, dtype=float, device=self.device)).diag()
+            return self.emb.weight[1:].t().std(-1).diag() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
 
 
 @dataclass
@@ -165,7 +165,6 @@ class FFN(nn.Module):
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config = config
-        self.register_buffer('output_mask', config.output_mask)
         
         net = []
         pre_dim = config.dims[0]
@@ -264,7 +263,7 @@ class MixedEffectsModel(LightningModule):
         self.register_buffer("_total_residuals_train", tensor([], dtype=float))
 
     @abc.abstractmethod
-    def forward(self, init:Tensor, time:Tensor, iv:Tensor, id : Tensor, simulation: bool = False) -> Tensor: ...
+    def forward(self, init:Tensor, time:Tensor, iv:Tensor, id : Tensor) -> Tensor: ...
     
     @torch.no_grad()
     def on_train_batch_end(self, outputs, batch: Any, batch_idx: int) -> None:
