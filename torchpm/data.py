@@ -158,10 +158,10 @@ class MixedEffectsTimeDataModule(LightningDataModule):
     def __init__(
         self,
         dataset_config: MixedEffectsTimeDatasetConfig,
-        train_csv_path: Path,
-        valid_csv_path: Path | None = None,
-        pred_csv_path: Path | None = None,
-        test_csv_path: Path | None = None,
+        train_data: Path | pd.DataFrame | str,
+        valid_data: Path | pd.DataFrame | str | None = None,
+        pred_data: Path | pd.DataFrame | str | None = None,
+        test_csv_path: Path | pd.DataFrame | str | None = None,
         batch_size: int = 100,
         num_workers: int = 0,
         na_values: str = '.',
@@ -172,14 +172,19 @@ class MixedEffectsTimeDataModule(LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.na_values = na_values
-        self.train_df = self._read_csv(train_csv_path)
-        self.valid_df = self._read_csv(valid_csv_path if valid_csv_path else train_csv_path)
-        self.pred_df = self._read_csv(pred_csv_path if pred_csv_path else train_csv_path)
-        self.test_df = self._read_csv(test_csv_path if test_csv_path else train_csv_path)
+        self.train_df = self._load_dataset(train_data)
+        self.valid_df = self._load_dataset(valid_data if valid_data else train_data)
+        self.pred_df = self._load_dataset(pred_data if pred_data else train_data)
+        self.test_df = self._load_dataset(test_csv_path if test_csv_path else train_data)
         self._collater = MixedEffectsTimeDataCollator(batch_first=batch_first)
     
-    def _read_csv(self, csv_path: Path):
-        return pd.read_csv(csv_path, na_values=self.na_values, skip_blank_lines=True)
+    def _load_dataset(self, data: Path | pd.DataFrame):
+        if isinstance(data, (Path, str)) :
+            return pd.read_csv(data, na_values=self.na_values, skip_blank_lines=True)
+        elif isinstance(data, pd.DataFrame) :
+            return data
+        else :
+            raise RuntimeError(f'Data Type must be {Path.__name__} or {pd.DataFrame.__name__}')
 
     def setup(self, stage: str) -> None:        
         match stage:

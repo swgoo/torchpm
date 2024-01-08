@@ -13,5 +13,5 @@ def theo_dataset_config() -> MixedEffectsTimeDatasetConfig:
 def theo_datamodule(theo_dataset_config) -> MixedEffectsTimeDataModule:
     return MixedEffectsTimeDataModule(
             dataset_config=theo_dataset_config,
-            train_csv_path='test/THEO.csv')
+            train_data='test/THEO.csv')
 
