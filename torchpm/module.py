@@ -120,7 +120,7 @@ class RandomEffect(LightningModule):
         self.num_id = num_id
         self.emb = nn.Embedding(self.num_id + 1, self.config.dim, padding_idx = 0)
         self.batch_first = batch_first
-        nn.init.normal_(self.emb.weight)
+        nn.init.normal_(self.emb.weight, std=0.5)
         
     def forward(self, id: Tensor):
         mask = (id != 0).unsqueeze(-1) # if id == 0 -> random_variable = 0
@@ -168,7 +168,7 @@ class FFN(nn.Module):
         
         net = []
         pre_dim = config.dims[0]
-        for next_dim in config.dims[1:]:
+        for next_dim in config.dims[1:-1]:
             lin = nn.Linear(pre_dim, next_dim)
             net.append(lin)
             if config.hidden_norm_layer :
@@ -180,6 +180,9 @@ class FFN(nn.Module):
             net.append(nn.Dropout(config.dropout))
             pre_dim = next_dim
         
+        lin = nn.Linear(pre_dim, config.dims[-1])
+        net.append(lin)
+
         if config.output_act_fn is not None :
             output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
             net.append(output_act_f)
@@ -276,7 +279,7 @@ class MixedEffectsModel(LightningModule):
         
     @torch.no_grad()
     def on_train_epoch_end(self) -> None:
-        self._loss_regulization = self._total_residuals_train.mean() + 1e-6
+        self._loss_regulization = self._total_residuals_train.sum() + 1e-6
 
     def training_step(self, batch, batch_idx):
         input = MixedEffectsTimeData(**batch)
@@ -292,7 +295,8 @@ class MixedEffectsModel(LightningModule):
         y_pred = torch.masked_select(y_pred, mask)
         residual = self.error_fn(y_pred, y_true)
 
-        loss = residual.mean()/self._loss_regulization
+        # loss = residual.mean()/self._loss_regulization
+        loss = residual.sum()
         
         for random_effect in self.random_effects :
             loss += random_effect.regularize(input.id)
@@ -315,7 +319,7 @@ class MixedEffectsModel(LightningModule):
         y_true = torch.masked_select(y_true, mask)
         y_pred = torch.masked_select(y_pred, mask)
 
-        loss = self.error_fn(y_pred, y_true).mean()
+        loss = self.error_fn(y_pred, y_true).sum()
         self.log('valid_loss', loss, prog_bar=True)
         return loss
     
