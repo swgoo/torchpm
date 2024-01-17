@@ -10,6 +10,8 @@ from math import prod
 from .data import Dict, Tensor
 from .data import *
 
+import lrp
+
 class ODESolver(LightningModule):
     # Ordinary Differential Equation Solver
     @torch.no_grad()
@@ -120,7 +122,7 @@ class RandomEffect(LightningModule):
         self.num_id = num_id
         self.emb = nn.Embedding(self.num_id + 1, self.config.dim, padding_idx = 0)
         self.batch_first = batch_first
-        nn.init.normal_(self.emb.weight, std=0.5)
+        nn.init.normal_(self.emb.weight, std=0.01)
         
     def forward(self, id: Tensor):
         mask = (id != 0).unsqueeze(-1) # if id == 0 -> random_variable = 0
@@ -139,14 +141,14 @@ class RandomEffect(LightningModule):
     def regularize(self, id : Tensor) -> Tensor:
         rv : Tensor = self.emb(id)
         rv = rv.unsqueeze(-2)
-        loss : Tensor =  rv @ (self.covariance_matrix().inverse()) @ rv.permute(0,2,1)
+        loss : Tensor =  rv @ (self.covariance_matrix().inverse() @ rv.permute(0,2,1))
         return loss.squeeze().sum()
     
     def covariance_matrix(self, eps : float = 1e-6) -> Tensor :
         if self.config.covariance :
-            return self.emb.weight[1:].t().cov() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
+            return (self.emb.weight[1:] + eps).t().cov().sqrt() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
         else :
-            return self.emb.weight[1:].t().std(-1).diag() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
+            return (self.emb.weight[1:] + eps).t().std(-1).diag() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
 
 
 @dataclass
@@ -156,6 +158,8 @@ class FFNConfig:
     hidden_norm_layer : bool = True
     hidden_act_fn : str | None = 'SiLU'
     output_act_fn : str | None = None
+    output_norm : bool = False
+    bias : bool = True
     dropout : float = 0.2
 
 class FFN(nn.Module):
@@ -169,7 +173,7 @@ class FFN(nn.Module):
         net = []
         pre_dim = config.dims[0]
         for next_dim in config.dims[1:-1]:
-            lin = nn.Linear(pre_dim, next_dim)
+            lin = lrp.Linear(pre_dim, next_dim, bias=config.bias)
             net.append(lin)
             if config.hidden_norm_layer :
                 norm = nn.LayerNorm(next_dim)
@@ -180,16 +184,56 @@ class FFN(nn.Module):
             net.append(nn.Dropout(config.dropout))
             pre_dim = next_dim
         
-        lin = nn.Linear(pre_dim, config.dims[-1])
+        lin = lrp.Linear(pre_dim, config.dims[-1], bias=config.bias)
         net.append(lin)
+        if config.output_norm:
+            net.append(nn.LayerNorm(config.dims[-1]))
 
         if config.output_act_fn is not None :
             output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
             net.append(output_act_f)
-        self.net = nn.Sequential(*net)
+        self.net = lrp.Sequential(*net)
+
+    def forward(self, input : Tensor, explain = False, rule="epsilon"):
+        return self.net(input, explain=explain, rule=rule)
+    
+class BatchNormFFN(nn.Module):
+    def __init__(
+            self,
+            config : FFNConfig,
+            affine : bool = True,
+            *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.config = config
+        self.act_fn = getattr(nn, config.hidden_act_fn, nn.SiLU)()
+        self.dropout = nn.Dropout(config.dropout)
+        
+        lins = []
+        norms = []
+        pre_dim = config.dims[0]
+        for next_dim in config.dims[1:-1]:
+            lins.append(nn.Linear(pre_dim, next_dim, bias=config.bias))
+            norms.append(nn.BatchNorm1d(next_dim, affine=affine) if config.hidden_norm_layer else nn.Identity())
+            pre_dim = next_dim
+        
+        lins.append(nn.Linear(pre_dim, config.dims[-1], bias=config.bias))
+        norms.append(nn.BatchNorm1d(config.dims[-1], affine=affine) if config.output_norm else nn.Identity())
+        self.lins = nn.ModuleList(lins)
+        self.norms = nn.ModuleList(norms)
+
+        self.output_act_fn = getattr(nn, config.output_act_fn, nn.SiLU)() if config.output_act_fn is not None else nn.Identity()
 
     def forward(self, input : Tensor):
-        return self.net(input)
+        hidden_state = input
+        for lin, norm in zip(self.lins[:-1], self.norms[:-1]):
+            hidden_state = lin(hidden_state)
+            hidden_state = norm(hidden_state.permute(0,2,1)).permute(0,2,1)
+            hidden_state = self.act_fn(hidden_state)
+            hidden_state = self.dropout(hidden_state)
+        hidden_state = self.lins[-1](hidden_state)
+        hidden_state = self.norms[-1](hidden_state.permute(0,2,1)).permute(0,2,1)
+        return self.output_act_fn(hidden_state)
+        
         
 
 @dataclass
@@ -250,7 +294,8 @@ class MixedEffectsModel(LightningModule):
     def __init__(self,
             random_effect_configs : List[RandomEffectConfig],
             num_id : int = 1,
-            lr: float = 3e-4,
+            lr: float = 1,
+            weight_decay: float = 0.,
             batch_first = False,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -325,7 +370,7 @@ class MixedEffectsModel(LightningModule):
     
     def predict_step(self, batch: Any, batch_idx: int = 0, dataloader_idx: int = 0) -> Tensor:
         batch : MixedEffectsTimeData = MixedEffectsTimeData(*batch)
-        id = torch.zeros_like(batch.id, device=self.device)
+        id = torch.zeros_like(batch.id, device=self.device, dtype=torch.int)
         return self.forward(
             init = batch.init,
             time = batch.time,
@@ -343,5 +388,5 @@ class MixedEffectsModel(LightningModule):
             simulation=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams['lr'])
-        return [optimizer], []
+        optimizer = torch.optim.Adamax(self.parameters(), lr=self.hparams['lr'], weight_decay=self.hparams['weight_decay'])
+        return optimizer

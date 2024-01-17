@@ -6,4 +6,7 @@
 /build/*
 /dist/*
 /lightning_logs
-nohup.out
+nohup*
+example/*
+**/false
+lrp/*
