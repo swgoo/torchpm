@@ -98,15 +98,15 @@ class MixedEffectsTimeDataset(Dataset):
 
             dv = d.filter(config.dv_column_names, axis=1).to_numpy()
             dv = tensor(dv, dtype=torch.float32)
-            self.dv.append(dv.t())
+            self.dv.append(dv)
 
             iv = d.filter(config.iv_column_names, axis=1).to_numpy()
             iv = tensor(iv, dtype=torch.float32).nan_to_num()
-            self.iv.append(iv.t())
+            self.iv.append(iv)
 
             init = d.filter(config.init_column_names, axis=1).to_numpy()
             init = tensor(init, dtype=torch.float32).nan_to_num()
-            self.init.append(init.t())
+            self.init.append(init)
 
     def __len__(self):
         return len(self.id)
@@ -115,9 +115,6 @@ class MixedEffectsTimeDataset(Dataset):
         return {f.name:getattr(self, f.name)[index] for f in fields(MixedEffectsTimeData)}
 
 class MixedEffectsTimeDataCollator:
-    def __init__(self, batch_first : bool = False):
-        self.batch_first = batch_first
-
     @torch.no_grad()
     def __call__(self, samples: List[Dict[str, Tensor]]):
         batch : Dict[str, List[Tensor]] = {}
@@ -140,17 +137,9 @@ class MixedEffectsTimeDataCollator:
                         for j,k in enumerate(range(start,len(d_t))):
                             d_t[k] = max_time.clone().detach() + j*0.1 + 0.1
                         time[i] = d_t
-                    if self.batch_first :
-                        output[key] = time
-                    else :
-                        output[key] = time.t()
+                        output[key] = time # batch, time
                 case _ :
-                    value = [v.t() for v in value]
-                    value = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=0.) #FIXME
-                    if self.batch_first :
-                        output[key] = value.permute(0, 2, 1) # batch, time, dim -> batch, dim, time
-                    else :
-                        output[key] = value.permute(2,0,1) # batch, time, dim -> dim, batch, time
+                    output[key] = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=0.)
 
         return output
 
@@ -165,18 +154,17 @@ class MixedEffectsTimeDataModule(LightningDataModule):
         batch_size: int = 100,
         num_workers: int = 0,
         na_values: str = '.',
-        batch_first: bool = False,
     ) -> None:
         super().__init__()
         self.dataset_config = dataset_config
-        self.batch_size = batch_size
         self.num_workers = num_workers
         self.na_values = na_values
         self.train_df = self._load_dataset(train_data)
         self.valid_df = self._load_dataset(valid_data if valid_data else train_data)
         self.pred_df = self._load_dataset(pred_data if pred_data else train_data)
         self.test_df = self._load_dataset(test_csv_path if test_csv_path else train_data)
-        self._collater = MixedEffectsTimeDataCollator(batch_first=batch_first)
+        self._collater = MixedEffectsTimeDataCollator()
+        self.batch_size = batch_size
     
     def _load_dataset(self, data: Path | pd.DataFrame):
         if isinstance(data, (Path, str)) :

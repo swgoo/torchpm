@@ -19,7 +19,6 @@ class ODESolver(LightningModule):
         self, 
         atol=1e-6, 
         rtol=1e-3,
-        batch_first = False,
         *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         #ODE solver
@@ -28,7 +27,6 @@ class ODESolver(LightningModule):
         step_size_controller = torchode.IntegralController(atol=atol, rtol=rtol, term=term)
         solver = torchode.AutoDiffAdjoint(step_method, step_size_controller)
         self.ode_solver = torch.compile(solver)
-        self.batch_first = batch_first
 
     @abc.abstractmethod
     def ode(self, t:Tensor, y:Tensor, kwargs:Dict[str,Tensor]):...
@@ -46,10 +44,7 @@ class ODESolver(LightningModule):
 
         ys = []
         time = time.T #[batch, time] -> [time, batch]
-        if self.batch_first :
-            init = init.permute([2,0,1]) # [batch, dim, time] -> [time, batch, dim]
-        else :
-            init = init.permute([2,1,0]) # [dim, batch, time] -> [time, batch, dim]
+        init = init.permute([1,0,2]) # [batch, time, feat.] -> [time, batch, feat.]
 
         pre_times = time[0]
         pre_ys = init[0]
@@ -71,10 +66,7 @@ class ODESolver(LightningModule):
             ys.append(cur_zs) 
             pre_ys = cur_zs
             pre_times = cur_times
-        if self.batch_first :
-            return torch.stack(ys).permute([1,2,0]) # [Time, batch, dim] -> [batch,dim,Time]
-        else :
-            return torch.stack(ys).permute([2,1,0]) # [Time, batch, dim] -> [dim,batch,Time]
+        return torch.stack(ys).permute(1,0,2) # [Time, batch, feat.] -> [batch,time,feat.]
 
 class BoundaryFixedEffect(LightningModule) :
     def __init__(
@@ -115,40 +107,41 @@ class RandomEffect(LightningModule):
             self,
             config: RandomEffectConfig,
             num_id: int,
-            batch_first: bool = False,
+            init_value: Tuple[Tuple[float, ...], ...] | None = None,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config = config
-        self.num_id = num_id
-        self.emb = nn.Embedding(self.num_id + 1, self.config.dim, padding_idx = 0)
-        self.batch_first = batch_first
-        nn.init.normal_(self.emb.weight, std=0.01)
+        self.random_variables = nn.Embedding(num_id + 1, self.config.dim, padding_idx = 0)
+        self.register_buffer('_loc', torch.zeros(self.config.dim, dtype=torch.float32))
+
+        if init_value is None :
+            nn.init.normal_(self.random_variables.weight, std=1.)
+        else :
+            init_covariance = tensor(init_value, dtype=torch.float, device=self.device)
+            weight = torch.distributions.MultivariateNormal(self._loc, init_covariance).sample(torch.Size([num_id]))
+            self.random_variables.weight[1:] = weight
         
     def forward(self, id: Tensor):
         mask = (id != 0).unsqueeze(-1) # if id == 0 -> random_variable = 0
         if self.training:
-            random_effects = self.emb(id) * mask
+            random_effects = self.random_variables(id) * mask
         else :
-            loc = torch.zeros(self.config.dim, dtype=torch.float32, device=id.device)
-            random_effects = torch.distributions.MultivariateNormal(loc, self.covariance_matrix()).sample(id.size()[:-1])
+            random_effects = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix()).sample(id.size()[:-1])
             random_effects = random_effects * mask
             
-        if self.batch_first :
-            return random_effects
-        else :
-            return random_effects.t()
+        return random_effects # batch
     
-    def regularize(self, id : Tensor) -> Tensor:
-        rv : Tensor = self.emb(id)
-        rv = rv.unsqueeze(-2)
-        loss : Tensor =  rv @ (self.covariance_matrix().inverse() @ rv.permute(0,2,1))
-        return loss.squeeze().sum()
+    def nll(self, id : Tensor) -> Tensor:
+        # negative log likelihood
+        random_variables : Tensor = self.random_variables(id)
+        dist = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix())
+        return -dist.log_prob(random_variables).sum()
     
-    def covariance_matrix(self, eps : float = 1e-6) -> Tensor :
+    def covariance_matrix(self, eps=1e-6) -> Tensor :
         if self.config.covariance :
-            return (self.emb.weight[1:] + eps).t().cov().sqrt() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
+            return (self.random_variables.weight[1:]).t().cov(correction=1)+eps
         else :
-            return (self.emb.weight[1:] + eps).t().std(-1).diag() #+ (eps * torch.ones(self.config.dim, dtype=torch.float32, device=self.device)).diag()
+            return ((self.random_variables.weight[1:]).t().var(dim=-1, correction=1)+eps).diag()
 
 
 @dataclass
@@ -165,7 +158,7 @@ class FFNConfig:
 class FFN(nn.Module):
     def __init__(
             self,
-            config : FFNConfig, 
+            config : FFNConfig,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config = config
@@ -197,45 +190,6 @@ class FFN(nn.Module):
     def forward(self, input : Tensor, explain = False, rule="epsilon"):
         return self.net(input, explain=explain, rule=rule)
     
-class BatchNormFFN(nn.Module):
-    def __init__(
-            self,
-            config : FFNConfig,
-            affine : bool = True,
-            *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.config = config
-        self.act_fn = getattr(nn, config.hidden_act_fn, nn.SiLU)()
-        self.dropout = nn.Dropout(config.dropout)
-        
-        lins = []
-        norms = []
-        pre_dim = config.dims[0]
-        for next_dim in config.dims[1:-1]:
-            lins.append(nn.Linear(pre_dim, next_dim, bias=config.bias))
-            norms.append(nn.BatchNorm1d(next_dim, affine=affine) if config.hidden_norm_layer else nn.Identity())
-            pre_dim = next_dim
-        
-        lins.append(nn.Linear(pre_dim, config.dims[-1], bias=config.bias))
-        norms.append(nn.BatchNorm1d(config.dims[-1], affine=affine) if config.output_norm else nn.Identity())
-        self.lins = nn.ModuleList(lins)
-        self.norms = nn.ModuleList(norms)
-
-        self.output_act_fn = getattr(nn, config.output_act_fn, nn.SiLU)() if config.output_act_fn is not None else nn.Identity()
-
-    def forward(self, input : Tensor):
-        hidden_state = input
-        for lin, norm in zip(self.lins[:-1], self.norms[:-1]):
-            hidden_state = lin(hidden_state)
-            hidden_state = norm(hidden_state.permute(0,2,1)).permute(0,2,1)
-            hidden_state = self.act_fn(hidden_state)
-            hidden_state = self.dropout(hidden_state)
-        hidden_state = self.lins[-1](hidden_state)
-        hidden_state = self.norms[-1](hidden_state.permute(0,2,1)).permute(0,2,1)
-        return self.output_act_fn(hidden_state)
-        
-        
-
 @dataclass
 class MaskedFFNConfig:
     # Feed Forward Net Configuration
@@ -294,37 +248,42 @@ class MixedEffectsModel(LightningModule):
     def __init__(self,
             random_effect_configs : List[RandomEffectConfig],
             num_id : int = 1,
-            lr: float = 1,
+            lr: float = 1e-2,
             weight_decay: float = 0.,
-            batch_first = False,
+            eps=1e-6,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
-        self.error_fn = nn.MSELoss(reduction='none')
-        self.batch_first = batch_first
         self.num_id = num_id
         random_effects = []
         for conf in random_effect_configs :
-            random_effects.append(RandomEffect(config=conf, num_id=num_id, batch_first=batch_first))
+            random_effects.append(RandomEffect(config=conf, num_id=num_id))
         self.random_effects = nn.ModuleList(random_effects)
-        self.register_buffer("_loss_regulization", tensor(1, dtype=float))
-        self.register_buffer("_total_residuals_train", tensor([], dtype=float))
+        self.register_buffer("error_std", tensor(1, dtype=float))
+        self.register_buffer("_y_trues", tensor([], dtype=float))
+        self.register_buffer("_y_preds", tensor([], dtype=float))
+        self.eps = eps
 
     @abc.abstractmethod
     def forward(self, init:Tensor, time:Tensor, iv:Tensor, id : Tensor) -> Tensor: ...
-    
-    @torch.no_grad()
-    def on_train_batch_end(self, outputs, batch: Any, batch_idx: int) -> None:
-        residual = outputs['residual']
-        self._total_residuals_train = torch.cat([self._total_residuals_train, residual.unsqueeze(0)], dim = 0)
+
+    def error_func(self, y_pred : Tensor, y_true : Tensor) -> tensor:
+        return y_pred - y_true
 
     @torch.no_grad()
-    def on_train_epoch_start(self) -> None:
-        self._total_residuals_train : Tensor = tensor([], dtype=torch.float, device=self.device)
-        
+    def on_train_epoch_start(self) -> None: 
+        self._y_trues : Tensor = tensor([], dtype=torch.float, device=self.device)
+        self._y_preds : Tensor = tensor([], dtype=torch.float, device=self.device)
+    
     @torch.no_grad()
     def on_train_epoch_end(self) -> None:
-        self._loss_regulization = self._total_residuals_train.sum() + 1e-6
+        self.error_std = (self._y_trues - self._y_preds).std(unbiased=True) + self.eps
+        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std)
+        error = self.error_func(self._y_preds, self._y_trues)
+        loss = -dist.log_prob(error).sum()
+        for random_effect in self.random_effects :
+            loss += random_effect.nll(torch.arange(1,self.num_id+1, dtype=torch.int, device=self.device))
+        self.log('train_loss', loss, prog_bar=True)
 
     def training_step(self, batch, batch_idx):
         input = MixedEffectsTimeData(**batch)
@@ -338,35 +297,35 @@ class MixedEffectsModel(LightningModule):
         mask = y_true.isnan().logical_not()
         y_true = torch.masked_select(y_true, mask)
         y_pred = torch.masked_select(y_pred, mask)
-        residual = self.error_fn(y_pred, y_true)
+        error = self.error_func(y_pred, y_true)
+        self._y_trues = torch.cat([self._y_trues, y_true])
+        self._y_preds = torch.cat([self._y_preds, y_pred])
 
-        # loss = residual.mean()/self._loss_regulization
-        loss = residual.sum()
-        
+        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std)
+        loss = -dist.log_prob(error).sum()
+
         for random_effect in self.random_effects :
-            loss += random_effect.regularize(input.id)
+            loss += random_effect.nll(input.id)
         
-        self.log('train_loss', loss, prog_bar=True)
-        return {"loss": loss, "residual": residual}
-    
-    # random_effect로 인한 과적합 확인 목적
-    def validation_step(self, batch, batch_idx):
-        input = MixedEffectsTimeData(**batch)
-        id = torch.zeros_like(input.id, device=self.device)
-        y_pred = self.forward(
-            init = input.init,
-            time = input.time,
-            iv = input.iv,
-            id= id)
-        
-        y_true = input.dv
-        mask = y_true.isnan().logical_not()
-        y_true = torch.masked_select(y_true, mask)
-        y_pred = torch.masked_select(y_pred, mask)
-
-        loss = self.error_fn(y_pred, y_true).sum()
-        self.log('valid_loss', loss, prog_bar=True)
         return loss
+    
+    # def validation_step(self, batch, batch_idx):
+    #     input = MixedEffectsTimeData(**batch)
+    #     id = torch.zeros_like(input.id, device=self.device)
+    #     y_pred = self.forward(
+    #         init = input.init,
+    #         time = input.time,
+    #         iv = input.iv,
+    #         id= id)
+        
+    #     y_true = input.dv
+    #     mask = y_true.isnan().logical_not()
+    #     y_true = torch.masked_select(y_true, mask)
+    #     y_pred = torch.masked_select(y_pred, mask)
+
+    #     loss = self.error_fn(y_pred, y_true).sum()
+    #     self.log('valid_loss', loss, prog_bar=True)
+    #     return loss
     
     def predict_step(self, batch: Any, batch_idx: int = 0, dataloader_idx: int = 0) -> Tensor:
         batch : MixedEffectsTimeData = MixedEffectsTimeData(*batch)
@@ -388,5 +347,5 @@ class MixedEffectsModel(LightningModule):
             simulation=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adamax(self.parameters(), lr=self.hparams['lr'], weight_decay=self.hparams['weight_decay'])
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams['lr'], weight_decay=self.hparams['weight_decay'])
         return optimizer
