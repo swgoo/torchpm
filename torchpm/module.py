@@ -17,7 +17,7 @@ class ODESolver(LightningModule):
     @torch.no_grad()
     def __init__(
         self, 
-        atol=1e-6, 
+        atol=1e-5, 
         rtol=1e-3,
         *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -100,26 +100,31 @@ class BoundaryFixedEffect(LightningModule) :
 @dataclass
 class RandomEffectConfig:
     dim: int
+    init_value: Tuple[Tuple[float, ...], ...] | None = None,
     covariance: bool = False
 
 class RandomEffect(LightningModule):
+    @torch.no_grad()
     def __init__(
             self,
             config: RandomEffectConfig,
             num_id: int,
-            init_value: Tuple[Tuple[float, ...], ...] | None = None,
+            eps : float = 1e-5,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config = config
         self.random_variables = nn.Embedding(num_id + 1, self.config.dim, padding_idx = 0)
         self.register_buffer('_loc', torch.zeros(self.config.dim, dtype=torch.float32))
+        self.eps = eps
 
-        if init_value is None :
+        if config.init_value is None :
             nn.init.normal_(self.random_variables.weight, std=1.)
         else :
-            init_covariance = tensor(init_value, dtype=torch.float, device=self.device)
-            weight = torch.distributions.MultivariateNormal(self._loc, init_covariance).sample(torch.Size([num_id]))
-            self.random_variables.weight[1:] = weight
+            init_covariance = tensor(config.init_value, dtype=torch.float, device=self.device)
+            assert init_covariance.dim() == 2
+            weight = torch.distributions.MultivariateNormal(self._loc, init_covariance).sample(torch.Size([num_id+1]))
+            self.random_variables.weight *= 0
+            self.random_variables.weight += weight
         
     def forward(self, id: Tensor):
         mask = (id != 0).unsqueeze(-1) # if id == 0 -> random_variable = 0
@@ -137,11 +142,11 @@ class RandomEffect(LightningModule):
         dist = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix())
         return -dist.log_prob(random_variables).sum()
     
-    def covariance_matrix(self, eps=1e-6) -> Tensor :
+    def covariance_matrix(self, eps=1e-5) -> Tensor :
         if self.config.covariance :
-            return (self.random_variables.weight[1:]).t().cov(correction=1)+eps
+            return (self.random_variables.weight[1:]).t().cov(correction=1).nan_to_num(eps) + eps*torch.ones(self.config.dim).diag()
         else :
-            return ((self.random_variables.weight[1:]).t().var(dim=-1, correction=1)+eps).diag()
+            return ((self.random_variables.weight[1:]).t().var(dim=-1, correction=1).nan_to_num(eps) + eps).diag()
 
 
 @dataclass
@@ -151,7 +156,6 @@ class FFNConfig:
     hidden_norm_layer : bool = True
     hidden_act_fn : str | None = 'SiLU'
     output_act_fn : str | None = None
-    output_norm : bool = False
     bias : bool = True
     dropout : float = 0.2
 
@@ -179,8 +183,6 @@ class FFN(nn.Module):
         
         lin = lrp.Linear(pre_dim, config.dims[-1], bias=config.bias)
         net.append(lin)
-        if config.output_norm:
-            net.append(nn.LayerNorm(config.dims[-1]))
 
         if config.output_act_fn is not None :
             output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
@@ -189,7 +191,84 @@ class FFN(nn.Module):
 
     def forward(self, input : Tensor, explain = False, rule="epsilon"):
         return self.net(input, explain=explain, rule=rule)
-    
+
+
+
+@dataclass
+class ResLinLayerConfig:
+    # Feed Forward Net Configuration
+    in_features : int = 1
+    out_features : int = 1
+    norm : bool = True
+    act_fn : str | None = 'SiLU'
+    bias : bool = True
+    dropout : float = 0.2
+
+class ResLinLayer(nn.Module):
+    def __init__(
+            self,
+            config:ResLinLayerConfig, 
+            *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.lin = nn.Linear(config.in_features, config.out_features, bias=config.bias)
+        if config.in_features == config.out_features :
+            self.proj = nn.Identity()
+        else :
+            self.proj = lambda x : 0
+        self.norm = nn.LayerNorm(config.out_features) if config.norm else nn.Identity()
+        self.dropout = nn.Dropout(config.dropout)
+        self.act_fn = getattr(nn, config.act_fn, nn.SiLU)()
+    def forward(self, input : Tensor):
+        x = input
+        x = self.lin(x) + self.proj(x)
+        x = self.norm(x)
+        x = self.dropout(x)
+        x = self.act_fn(x)
+        return x
+
+@dataclass
+class ResFFNConfig:
+    # Feed Forward Net Configuration
+    dims : Tuple[int,...] = (1, 1)
+    hidden_norm_layer : bool = True
+    hidden_act_fn : str | None = 'SiLU'
+    output_act_fn : str | None = None
+    bias : bool = True
+    dropout : float = 0.2
+
+
+class ResFFN(nn.Module):
+    def __init__(
+            self,
+            config : ResFFNConfig,
+            *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.config = config
+        net = []
+        pre_dim = config.dims[0]
+        for next_dim in config.dims[1:-1]:
+            layer_config = ResLinLayerConfig(
+                pre_dim,
+                next_dim,
+                bias = config.bias,
+                norm = config.hidden_norm_layer,
+                dropout= config.dropout,
+                act_fn=config.hidden_act_fn,
+            )
+            net.append(ResLinLayer(layer_config))
+            pre_dim = next_dim
+        
+        lin = nn.Linear(pre_dim, config.dims[-1], bias=config.bias)
+        net.append(lin)
+
+        if config.output_act_fn is not None :
+            output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
+            net.append(output_act_f)
+        self.net = nn.Sequential(*net)
+    def forward(self, input : Tensor):
+        return self.net(input)
+
+        
 @dataclass
 class MaskedFFNConfig:
     # Feed Forward Net Configuration
@@ -250,7 +329,7 @@ class MixedEffectsModel(LightningModule):
             num_id : int = 1,
             lr: float = 1e-2,
             weight_decay: float = 0.,
-            eps=1e-6,
+            eps=1e-5,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
@@ -259,9 +338,12 @@ class MixedEffectsModel(LightningModule):
         for conf in random_effect_configs :
             random_effects.append(RandomEffect(config=conf, num_id=num_id))
         self.random_effects = nn.ModuleList(random_effects)
-        self.register_buffer("error_std", tensor(1, dtype=float))
-        self.register_buffer("_y_trues", tensor([], dtype=float))
-        self.register_buffer("_y_preds", tensor([], dtype=float))
+        self.register_buffer("error_std_train", tensor(0.5, dtype=float))
+        self.register_buffer("error_std_val", tensor(0.5, dtype=float))
+        self.register_buffer("_y_preds_train", tensor([], dtype=float))
+        self.register_buffer("_y_preds_val", tensor([], dtype=float))
+        self.register_buffer("_y_trues_train", tensor([], dtype=float))
+        self.register_buffer("_y_trues_val", tensor([], dtype=float))
         self.eps = eps
 
     @abc.abstractmethod
@@ -277,13 +359,27 @@ class MixedEffectsModel(LightningModule):
     
     @torch.no_grad()
     def on_train_epoch_end(self) -> None:
-        self.error_std = (self._y_trues - self._y_preds).std(unbiased=True) + self.eps
-        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std)
+        self.error_std_train = (self._y_trues - self._y_preds).std(correction=1) + self.eps
+        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std_train)
         error = self.error_func(self._y_preds, self._y_trues)
         loss = -dist.log_prob(error).sum()
         for random_effect in self.random_effects :
             loss += random_effect.nll(torch.arange(1,self.num_id+1, dtype=torch.int, device=self.device))
         self.log('train_loss', loss, prog_bar=True)
+
+    @torch.no_grad()
+    def on_train_epoch_start(self) -> None: 
+        self._y_trues_val : Tensor = tensor([], dtype=torch.float, device=self.device)
+        self._y_preds_val : Tensor = tensor([], dtype=torch.float, device=self.device)
+
+    def on_validation_epoch_end(self) -> None:
+        self.error_std_val = (self._y_trues_val - self._y_preds_val).std(correction=1) + self.eps
+        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std_val)
+        error = self.error_func(self._y_preds_val, self._y_trues_val)
+        loss = -dist.log_prob(error).sum()
+        for random_effect in self.random_effects :
+            loss += random_effect.nll(torch.arange(1,self.num_id+1, dtype=torch.int, device=self.device))
+        self.log('val_loss', loss, prog_bar=True)
 
     def training_step(self, batch, batch_idx):
         input = MixedEffectsTimeData(**batch)
@@ -294,38 +390,47 @@ class MixedEffectsModel(LightningModule):
             id = input.id)
         y_true = input.dv
 
+        batch_size = batch['id'].size(0)
         mask = y_true.isnan().logical_not()
         y_true = torch.masked_select(y_true, mask)
         y_pred = torch.masked_select(y_pred, mask)
         error = self.error_func(y_pred, y_true)
-        self._y_trues = torch.cat([self._y_trues, y_true])
-        self._y_preds = torch.cat([self._y_preds, y_pred])
+        self._y_trues = torch.cat([self._y_trues_train, y_true])
+        self._y_preds = torch.cat([self._y_preds_train, y_pred])
 
-        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std)
-        loss = -dist.log_prob(error).sum()
+        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std_train)
+        loss = -dist.log_prob(error).sum()*batch_size/self.num_id 
 
         for random_effect in self.random_effects :
-            loss += random_effect.nll(input.id)
+            loss += random_effect.nll(input.id)*batch_size/self.num_id
         
         return loss
     
-    # def validation_step(self, batch, batch_idx):
-    #     input = MixedEffectsTimeData(**batch)
-    #     id = torch.zeros_like(input.id, device=self.device)
-    #     y_pred = self.forward(
-    #         init = input.init,
-    #         time = input.time,
-    #         iv = input.iv,
-    #         id= id)
-        
-    #     y_true = input.dv
-    #     mask = y_true.isnan().logical_not()
-    #     y_true = torch.masked_select(y_true, mask)
-    #     y_pred = torch.masked_select(y_pred, mask)
+    def validation_step(self, batch, batch_idx):
+        input = MixedEffectsTimeData(**batch)
+        input.id = torch.zeros_like(input.id, device=self.device)
+        y_pred = self(
+            init = input.init,
+            time = input.time,
+            iv = input.iv,
+            id = input.id)
+        y_true = input.dv
 
-    #     loss = self.error_fn(y_pred, y_true).sum()
-    #     self.log('valid_loss', loss, prog_bar=True)
-    #     return loss
+        batch_size = batch['id'].size(0)
+        mask = y_true.isnan().logical_not()
+        y_true = torch.masked_select(y_true, mask)
+        y_pred = torch.masked_select(y_pred, mask)
+        error = self.error_func(y_pred, y_true)
+        self._y_trues_val = torch.cat([self._y_trues_val, y_true])
+        self._y_preds_val = torch.cat([self._y_preds_val, y_pred])
+
+        dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std_val)
+        loss = -dist.log_prob(error).sum()*batch_size/self.num_id 
+
+        for random_effect in self.random_effects :
+            loss += random_effect.nll(input.id)*batch_size/self.num_id
+        
+        return loss
     
     def predict_step(self, batch: Any, batch_idx: int = 0, dataloader_idx: int = 0) -> Tensor:
         batch : MixedEffectsTimeData = MixedEffectsTimeData(*batch)
