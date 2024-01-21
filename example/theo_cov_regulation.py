@@ -1,4 +1,5 @@
 import math
+import datetime
 from torch import Tensor, tensor
 from torchpm.data import List, Tensor, tensor
 from torchpm.module import *
@@ -80,15 +81,15 @@ class TheoModel(MixedEffectsModel) :
             eps=1e-6, 
             *args, **kwargs) -> None:
         super().__init__(random_effect_configs, num_id, lr, weight_decay, eps, *args, **kwargs)
-        self.v = BoundaryFixedEffect([30.], [20.], [40.])
-        # self.v = lambda : 30.7611
-        self.k_a = BoundaryFixedEffect([1.5], [1.], [3])
-        # self.k_a = lambda : 1.4786
-        self.k_e = BoundaryFixedEffect([0.1], [0.05], [1.])
-        # self.k_e = lambda : 0.0991
+        # self.v = BoundaryFixedEffect([30.], [20.], [40.])
+        self.v = lambda : 30
+        # self.k_a = BoundaryFixedEffect([1.5], [1.], [3])
+        self.k_a = lambda : 1.5
+        # self.k_e = BoundaryFixedEffect([0.1], [0.05], [1.])
+        self.k_e = lambda : 0.1
 
         ffn_dims = (iv_dim, iv_dim, iv_dim, 1)
-        ffn_config = FFNConfig(ffn_dims, dropout=0.0, hidden_norm_layer=False, bias=True, hidden_act_fn="SiLU")
+        ffn_config = FFNConfig(ffn_dims, dropout=0.0, hidden_norm_layer=False, bias=False, hidden_act_fn="SiLU")
         self.v_ffn = FFN(config=ffn_config)
     
     # def error_func(self, y_pred: Tensor, y_true: Tensor) -> tensor:
@@ -99,7 +100,7 @@ class TheoModel(MixedEffectsModel) :
         random_effects = self.random_effects[0](id) # batch, feat.
 
         # v = self.v()*random_effects[:,0].exp().unsqueeze(-1) # batch, time 
-        v_cov = self.v_ffn(iv).squeeze(-1) # batch, time, 1 -> batch, time
+        v_cov = self.v_ffn(iv).squeeze(-1) if iv.size(-1) != 0 else tensor(0., device=self.device)
         v = self.v()*v_cov.exp()*random_effects[:,0].exp().unsqueeze(-1) # :batch, time 
 
         k_a = self.k_a()*random_effects[:,1].exp().unsqueeze(-1) # batch
@@ -128,7 +129,7 @@ def main(
         max_epochs = 3_000,
         iv_column_names = ['V_COV1'],
         lr = 1e-3,):
-    random_effect_config = RandomEffectConfig(3, init_value=[[0.3,0.,0.],[0.,0.3,0.],[0.,0.,0.3]])
+    random_effect_config = RandomEffectConfig(3, init_value=[[0.1,0.,0.],[0.,0.1,0.],[0.,0.,0.1]])
 
     df = make_dataset(num_id=num_id, seed=seed)
     
@@ -163,11 +164,12 @@ def main(
 
 if __name__ == "__main__":
     lr = 5e-3
-    max_epochs = 10_000
+    max_epochs = 20_000
     num_id= 50
-    date = "012020"
+    date = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     for i in range(100):
         try:
+            main(date, 'base_model', i, iv_column_names=[], max_epochs=max_epochs, lr=lr)
             main(date, 'cov_1_2_3_model', i, iv_column_names=['V_COV1', 'V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(date, 'cov_1_2_model', i, iv_column_names=['V_COV1', 'V_COV2',], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(date, 'cov_1_3_model', i, iv_column_names=['V_COV1', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
@@ -175,7 +177,6 @@ if __name__ == "__main__":
             main(date, 'cov_1_model', i, iv_column_names=['V_COV1'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(date, 'cov_2_model', i, iv_column_names=['V_COV2'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(date, 'cov_3_model', i, iv_column_names=['V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(date, 'base_model', i, iv_column_names=[], max_epochs=max_epochs, lr=lr)
         except:
             continue
 

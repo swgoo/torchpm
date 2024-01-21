@@ -170,7 +170,7 @@ class FFN(nn.Module):
         net = []
         pre_dim = config.dims[0]
         for next_dim in config.dims[1:-1]:
-            lin = lrp.Linear(pre_dim, next_dim, bias=config.bias)
+            lin = nn.Linear(pre_dim, next_dim, bias=config.bias)
             net.append(lin)
             if config.hidden_norm_layer :
                 norm = nn.LayerNorm(next_dim)
@@ -181,16 +181,16 @@ class FFN(nn.Module):
             net.append(nn.Dropout(config.dropout))
             pre_dim = next_dim
         
-        lin = lrp.Linear(pre_dim, config.dims[-1], bias=config.bias)
+        lin = nn.Linear(pre_dim, config.dims[-1], bias=config.bias)
         net.append(lin)
 
         if config.output_act_fn is not None :
             output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
             net.append(output_act_f)
-        self.net = lrp.Sequential(*net)
+        self.net = nn.Sequential(*net)
 
-    def forward(self, input : Tensor, explain = False, rule="epsilon"):
-        return self.net(input, explain=explain, rule=rule)
+    def forward(self, input : Tensor):
+        return self.net(input)
 
 
 
