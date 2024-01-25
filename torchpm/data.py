@@ -138,6 +138,8 @@ class MixedEffectsTimeDataCollator:
                             d_t[k] = max_time.clone().detach() + j*0.1 + 0.1
                         time[i] = d_t
                         output[key] = time # batch, time
+                case "dv":
+                    output[key] = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=float('nan'))
                 case _ :
                     output[key] = torch.nn.utils.rnn.pad_sequence(value, True, padding_value=0.)
 

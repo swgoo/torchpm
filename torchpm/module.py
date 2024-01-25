@@ -10,8 +10,6 @@ from math import prod
 from .data import Dict, Tensor
 from .data import *
 
-import lrp
-
 class ODESolver(LightningModule):
     # Ordinary Differential Equation Solver
     @torch.no_grad()
@@ -138,7 +136,8 @@ class RandomEffect(LightningModule):
     
     def nll(self, id : Tensor) -> Tensor:
         # negative log likelihood
-        random_variables : Tensor = self.random_variables(id)
+        mask = (id != 0).unsqueeze(-1)
+        random_variables : Tensor = self.random_variables(id) * mask
         dist = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix())
         return -dist.log_prob(random_variables).sum()
     
@@ -340,10 +339,10 @@ class MixedEffectsModel(LightningModule):
         self.random_effects = nn.ModuleList(random_effects)
         self.register_buffer("error_std_train", tensor(0.5, dtype=float))
         self.register_buffer("error_std_val", tensor(0.5, dtype=float))
-        self.register_buffer("_y_preds_train", tensor([], dtype=float))
-        self.register_buffer("_y_preds_val", tensor([], dtype=float))
-        self.register_buffer("_y_trues_train", tensor([], dtype=float))
-        self.register_buffer("_y_trues_val", tensor([], dtype=float))
+        self._y_preds_train = tensor([], dtype=float, device=self.device)
+        self._y_preds_val = tensor([], dtype=float, device=self.device)
+        self._y_trues_train = tensor([], dtype=float, device=self.device)
+        self._y_trues_val = tensor([], dtype=float, device=self.device)
         self.eps = eps
 
     @abc.abstractmethod
@@ -354,21 +353,21 @@ class MixedEffectsModel(LightningModule):
 
     @torch.no_grad()
     def on_train_epoch_start(self) -> None: 
-        self._y_trues : Tensor = tensor([], dtype=torch.float, device=self.device)
-        self._y_preds : Tensor = tensor([], dtype=torch.float, device=self.device)
+        self._y_trues_train : Tensor = tensor([], dtype=torch.float, device=self.device)
+        self._y_preds_train : Tensor = tensor([], dtype=torch.float, device=self.device)
     
     @torch.no_grad()
     def on_train_epoch_end(self) -> None:
-        self.error_std_train = (self._y_trues - self._y_preds).std(correction=1) + self.eps
+        self.error_std_train = (self._y_trues_train - self._y_preds_train).std(correction=1) + self.eps
         dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std_train)
-        error = self.error_func(self._y_preds, self._y_trues)
+        error = self.error_func(self._y_preds_train, self._y_trues_train)
         loss = -dist.log_prob(error).sum()
         for random_effect in self.random_effects :
             loss += random_effect.nll(torch.arange(1,self.num_id+1, dtype=torch.int, device=self.device))
         self.log('train_loss', loss, prog_bar=True)
 
     @torch.no_grad()
-    def on_train_epoch_start(self) -> None: 
+    def on_validation_epoch_start(self) -> None: 
         self._y_trues_val : Tensor = tensor([], dtype=torch.float, device=self.device)
         self._y_preds_val : Tensor = tensor([], dtype=torch.float, device=self.device)
 
@@ -378,7 +377,7 @@ class MixedEffectsModel(LightningModule):
         error = self.error_func(self._y_preds_val, self._y_trues_val)
         loss = -dist.log_prob(error).sum()
         for random_effect in self.random_effects :
-            loss += random_effect.nll(torch.arange(1,self.num_id+1, dtype=torch.int, device=self.device))
+            loss += random_effect.nll(torch.zeros(self.num_id, dtype=torch.int, device=self.device))
         self.log('val_loss', loss, prog_bar=True)
 
     def training_step(self, batch, batch_idx):
@@ -395,11 +394,11 @@ class MixedEffectsModel(LightningModule):
         y_true = torch.masked_select(y_true, mask)
         y_pred = torch.masked_select(y_pred, mask)
         error = self.error_func(y_pred, y_true)
-        self._y_trues = torch.cat([self._y_trues_train, y_true])
-        self._y_preds = torch.cat([self._y_preds_train, y_pred])
+        self._y_trues_train = torch.cat([self._y_trues_train, y_true])
+        self._y_preds_train = torch.cat([self._y_preds_train, y_pred])
 
         dist = torch.distributions.Normal(tensor([0.], device=self.device), self.error_std_train)
-        loss = -dist.log_prob(error).sum()*batch_size/self.num_id 
+        loss = -dist.log_prob(error).sum()*batch_size/self.num_id
 
         for random_effect in self.random_effects :
             loss += random_effect.nll(input.id)*batch_size/self.num_id
