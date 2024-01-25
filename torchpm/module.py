@@ -5,7 +5,6 @@ import torchode
 from lightning import LightningModule
 from torch import nn, Tensor, tensor
 import torch
-from math import prod
 
 from .data import Dict, Tensor
 from .data import *
@@ -191,143 +190,11 @@ class FFN(nn.Module):
     def forward(self, input : Tensor):
         return self.net(input)
 
-
-
-@dataclass
-class ResLinLayerConfig:
-    # Feed Forward Net Configuration
-    in_features : int = 1
-    out_features : int = 1
-    norm : bool = True
-    act_fn : str | None = 'SiLU'
-    bias : bool = True
-    dropout : float = 0.2
-
-class ResLinLayer(nn.Module):
-    def __init__(
-            self,
-            config:ResLinLayerConfig, 
-            *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.lin = nn.Linear(config.in_features, config.out_features, bias=config.bias)
-        if config.in_features == config.out_features :
-            self.proj = nn.Identity()
-        else :
-            self.proj = lambda x : 0
-        self.norm = nn.LayerNorm(config.out_features) if config.norm else nn.Identity()
-        self.dropout = nn.Dropout(config.dropout)
-        self.act_fn = getattr(nn, config.act_fn, nn.SiLU)()
-    def forward(self, input : Tensor):
-        x = input
-        x = self.lin(x) + self.proj(x)
-        x = self.norm(x)
-        x = self.dropout(x)
-        x = self.act_fn(x)
-        return x
-
-@dataclass
-class ResFFNConfig:
-    # Feed Forward Net Configuration
-    dims : Tuple[int,...] = (1, 1)
-    hidden_norm_layer : bool = True
-    hidden_act_fn : str | None = 'SiLU'
-    output_act_fn : str | None = None
-    bias : bool = True
-    dropout : float = 0.2
-
-
-class ResFFN(nn.Module):
-    def __init__(
-            self,
-            config : ResFFNConfig,
-            *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.config = config
-        net = []
-        pre_dim = config.dims[0]
-        for next_dim in config.dims[1:-1]:
-            layer_config = ResLinLayerConfig(
-                pre_dim,
-                next_dim,
-                bias = config.bias,
-                norm = config.hidden_norm_layer,
-                dropout= config.dropout,
-                act_fn=config.hidden_act_fn,
-            )
-            net.append(ResLinLayer(layer_config))
-            pre_dim = next_dim
-        
-        lin = nn.Linear(pre_dim, config.dims[-1], bias=config.bias)
-        net.append(lin)
-
-        if config.output_act_fn is not None :
-            output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
-            net.append(output_act_f)
-        self.net = nn.Sequential(*net)
-    def forward(self, input : Tensor):
-        return self.net(input)
-
-        
-@dataclass
-class MaskedFFNConfig:
-    # Feed Forward Net Configuration
-    input_dim : int
-    output_mask : Tuple[float,...] | Tensor
-    hidden_state_dims : Tuple[int,...] = (1, 1)
-    hidden_norm_layer : bool = True
-    hidden_act_fn : str | None = 'SiLU'
-    output_act_fn : str | None = None
-    dropout : float = 0.2
-
-    @torch.no_grad()
-    def __post_init__(self):
-        if not isinstance(self.output_mask, Tensor) :
-            self.output_mask = tensor(self.output_mask, dtype=float)
-
-
-class MaskedFFN(nn.Module):   
-    # Feed Forward Net
-    def __init__(
-            self,
-            config : MaskedFFNConfig,
-            *args, 
-            **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.config = config
-        self.register_buffer('output_mask', config.output_mask)
-        
-        net = []
-        pre_dim = config.input_dim
-        for next_dim in config.hidden_state_dims:
-            lin = nn.Linear(pre_dim, next_dim)
-            net.append(lin)
-            if config.hidden_norm_layer :
-                norm = nn.LayerNorm(next_dim)
-                net.append(norm)
-            if config.hidden_act_fn is not None:
-                act_f = getattr(nn, config.hidden_act_fn, nn.SiLU)()
-                net.append(act_f)
-            net.append(nn.Dropout(config.dropout))
-            pre_dim = next_dim
-        
-        output_layer = nn.Linear(pre_dim, prod(config.output_mask.size()))
-        net.append(output_layer)
-        if config.output_act_fn is not None :
-            output_act_f = getattr(nn, config.output_act_fn, nn.SiLU)()
-            net.append(output_act_f)
-        self.net = nn.Sequential(*net)
-
-    def forward(self, input : Tensor) -> Tensor :
-        output : Tensor = self.net(input)
-        output = output.reshape(*output.size()[:-1], *self.output_mask.size())
-        return output * self.output_mask
-
 class MixedEffectsModel(LightningModule):
     def __init__(self,
             random_effect_configs : List[RandomEffectConfig],
             num_id : int = 1,
             lr: float = 1e-2,
-            weight_decay: float = 0.,
             eps=1e-5,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
