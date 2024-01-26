@@ -32,21 +32,14 @@ class ODESolver(LightningModule):
             time : Tensor,
             init : Tensor,
             kwargs : Dict[str,Tensor]):
-        
-        for td, id in zip(time.size(), init.size()[:2]):
-            assert td == id
-        for v in kwargs.values():
-            for td, vd in zip(time.size(), v.size()[:2]):
-                assert td == vd
+        for time_d, init_d in zip(time.size(), init.size()[:2]):
+            assert time_d == init_d
 
         ys = []
-        time = time.T #[batch, time] -> [time, batch]
-        init = init.permute([1,0,2]) # [batch, time, feat.] -> [time, batch, feat.]
-
-        pre_times = time[0]
-        pre_ys = init[0]
+        pre_times = time[:,0]
+        pre_ys = init[:,0,:]
         ys.append(pre_ys)
-        for i, (cur_times, cur_init_values) in enumerate(zip(time[1:], init[1:])) :
+        for i, (cur_times, cur_init_values) in enumerate(zip(time.T[1:], init.permute(1,0,2)[1:])) :
             init_values = pre_ys + cur_init_values
             init_state = torchode.InitialValueProblem(
                 y0=init_values,
@@ -318,5 +311,5 @@ class MixedEffectsModel(LightningModule):
             simulation=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams['lr'], weight_decay=self.hparams['weight_decay'])
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams['lr'])
         return optimizer
