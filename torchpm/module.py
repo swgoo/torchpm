@@ -116,13 +116,14 @@ class RandomEffect(LightningModule):
             self.random_variables.weight *= 0
             self.random_variables.weight += weight
         
-    def forward(self, id: Tensor):
+    def forward(self, id: Tensor, simulation: bool = False):
         mask = (id != 0).unsqueeze(-1) # if id == 0 -> random_variable = 0
-        if self.training:
-            random_effects = self.random_variables(id) * mask
-        else :
+        if simulation :
             random_effects = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix()).sample(id.size()[:-1])
             random_effects = random_effects * mask
+        else :
+            random_effects = self.random_variables(id) * mask
+
             
         return random_effects # batch
     
@@ -267,7 +268,6 @@ class MixedEffectsModel(LightningModule):
     
     def validation_step(self, batch, batch_idx):
         input = MixedEffectsTimeData(**batch)
-        input.id = torch.zeros_like(input.id, device=self.device)
         y_pred = self(
             init = input.init,
             time = input.time,
