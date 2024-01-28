@@ -66,7 +66,7 @@ class TheoODEModel(TheoModel) :
             random_effect_configs: List[RandomEffectConfig], 
             num_id: int = 1, 
             lr: float = 0.001, 
-            eps=1e-5, 
+            eps=1e-3, 
             *args, **kwargs) -> None:
         super().__init__(random_effect_configs, num_id, lr, eps, *args, **kwargs)
         self.ode_solver = TheoODESolver(atol=1e-3, rtol=1e-2)

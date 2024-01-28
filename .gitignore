@@ -1,6 +1,6 @@
 /lightning_logs
 nohup*
-
+false/
 
 .vscode/
 lightning_logs/

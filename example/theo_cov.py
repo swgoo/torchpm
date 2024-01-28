@@ -14,7 +14,7 @@ from torchpm.module import RandomEffectConfig
 from lightning.pytorch import seed_everything
 
 def cov_fn(typical_value, cov1, cov2, cov3):
-    return typical_value*np.exp(cov1) + cov2 + typical_value*cov3
+    return typical_value*np.exp(cov1) + np.exp(cov2) + np.exp(cov3)
     
 def pred_gut_one_compartment_model(amt: np.array, v: np.array, k_a: np.array, k_e: np.array, time: np.array) -> np.array:
     return (amt / v * k_a) / (k_a - k_e) * (np.exp(-k_e*time) - np.exp(-k_a*time))
@@ -25,14 +25,14 @@ def make_dataset(
         v_cov2_std: float = 1.,
         v_cov3_std: float = 1.,
         v_tv : float = 30.,
-        v_std: float = 0.5,
+        v_std: float = 1.,
         k_a_tv: float = 1.5,
-        k_a_std: float = 0.5,
+        k_a_std: float = 1.,
         k_e_tv: float = 0.1,
-        k_e_std: float = 0.5,
-        eps : float = 0.5,
+        k_e_std: float = 1.,
+        eps : float = 0.05,
         num_id: int = 12,
-        time: List[float] = [0.25,0.5,0.75,1.,2.,4.,8.,12.,24.],
+        time: List[float] = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.,2.,4.,8.,12.,24.],
         amt: float = 320.,
         seed : int = 42):
     rng = np.random.default_rng(seed)
@@ -40,13 +40,11 @@ def make_dataset(
     dataset = []
     record_len = len(time)
     for i in range(num_id):
-        v = 0
-        while v < 10 or v > 100 :
-            v_cov1 = rng.standard_normal([])*v_cov1_std
-            v_cov2 = rng.standard_normal([])*v_cov2_std
-            v_cov3 = rng.standard_normal([])*v_cov3_std
-            v_eta = rng.standard_normal([])*v_std
-            v = v_cov_fn(v_tv, v_cov1, v_cov2, v_cov3)*np.exp(v_eta)
+        v_cov1 = rng.standard_normal([])*v_cov1_std
+        v_cov2 = rng.standard_normal([])*v_cov2_std
+        v_cov3 = rng.standard_normal([])*v_cov3_std
+        v_eta = rng.standard_normal([])*v_std
+        v = v_cov_fn(v_tv, v_cov1, v_cov2, v_cov3)*np.exp(v_eta)
 
         k_a_eta = rng.standard_normal([])*k_a_std
         k_a = k_a_tv * np.exp(k_a_eta)
@@ -54,7 +52,7 @@ def make_dataset(
         k_e_eta = rng.standard_normal([])*k_e_std
         k_e = k_e_tv * np.exp(k_e_eta)
         dv_col = pred_gut_one_compartment_model(amt,v,k_a,k_e,time)
-        dv_col = dv_col + rng.standard_normal(np.size(dv_col))*eps
+        dv_col = np.log(dv_col) * np.exp(rng.standard_normal(np.size(dv_col))*eps)
         id_col = np.array([i+1]).repeat(record_len)
         v_cov_cols = np.array([[v_cov1/v_cov1_std], [v_cov2/v_cov2_std], [v_cov3/v_cov3_std]]).repeat(record_len, -1)
         amt_col = np.array(amt).repeat(record_len)
@@ -74,19 +72,16 @@ class TheoModel(MixedEffectsModel) :
             iv_column_names,
             num_id: int = 1, 
             lr: float = 0.001, 
-            eps=1e-6, 
+            eps=1e-3, 
             *args, **kwargs) -> None:
         super().__init__(random_effect_configs, num_id, lr, eps, *args, **kwargs)
-        # self.v = lambda : 30
-        # self.k_a = lambda : 1.5
-        # self.k_e = lambda : 0.1
         self.v = BoundaryFixedEffect([30.], [10.], [50.])
-        self.k_a = BoundaryFixedEffect([1.5], [1.], [10])
-        self.k_e = BoundaryFixedEffect([0.1], [0.05], [5.])
+        self.k_a = BoundaryFixedEffect([1.5], [1.], [5])
+        self.k_e = BoundaryFixedEffect([0.1], [0.05], [0.25])
         self.iv_column_names = iv_column_names
 
-        ffn_dims = (iv_dim, 3*iv_dim, 2*iv_dim, iv_dim, 1)
-        ffn_config = FFNConfig(ffn_dims, dropout=0.2, hidden_norm_layer=False, bias=False, hidden_act_fn="SiLU")
+        ffn_dims = (iv_dim, 2*iv_dim, 4, 4, 2, 2, 1)
+        ffn_config = FFNConfig(ffn_dims, dropout=0.0, hidden_norm_layer=False, bias=False, hidden_act_fn="SiLU")
         self.v_ffn = FFN(config=ffn_config)
     
     def forward(self, init: Tensor, time: Tensor, iv: Tensor, id: Tensor) -> Tensor:
@@ -100,12 +95,16 @@ class TheoModel(MixedEffectsModel) :
         
         k_e = self.k_e()*random_effects[:,2].exp().unsqueeze(-1) # batch
 
-        return ((320 / v * k_a) / (k_a - k_e) * ((-k_e*time).exp() - (-k_a*time).exp())).unsqueeze(-1)
+        pred = ((320 / v * k_a) / (k_a - k_e) * ((-k_e*time).exp() - (-k_a*time).exp())).unsqueeze(-1)
+        return pred.log()
     
     @torch.no_grad()
     def on_train_epoch_end(self) -> None:
         super().on_train_epoch_end()
         self.log("error", self.error_std_train)
+        self.log("v", self.v().squeeze())
+        self.log("k_a", self.k_a().squeeze())
+        self.log("k_e", self.k_e().squeeze())
         omega = self.random_effects[0].covariance_matrix()
         self.log("omega_v", omega[0,0])
         self.log("omega_k_a", omega[1,1])
@@ -113,14 +112,14 @@ class TheoModel(MixedEffectsModel) :
     
     def training_step(self, batch, batch_idx):
         loss = super().training_step(batch, batch_idx)
-        batch_size = batch['id'].size(0)
         for para in self.v_ffn.parameters():
-            loss += 1e-2 * para.abs().sum() * batch_size/self.num_id
+            loss += 1e-2*para.abs().sum() * batch['id'].size(0)/self.num_id
         return loss
-    
+
+
     def configure_optimizers(self):
         optimizer = super().configure_optimizers()
-        lr_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer)
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=100)
         return [optimizer], [lr_scheduler]
     
 def main(
@@ -155,7 +154,7 @@ def main(
         num_id=id_len)
 
     # early_stop = EarlyStopping(monitor='train_loss', patience=10, min_delta=1)
-    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"lightning_logs/{dir}", name=f"{model_name}", version=f"seed_{seed}")
+    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"lightning_logs/{dir}/seed_{seed}", name=f"{model_name}")
     trainer = Trainer(
         max_epochs=max_epochs, 
         check_val_every_n_epoch=100, 
@@ -167,19 +166,18 @@ def main(
 
 if __name__ == "__main__":
     lr = 5e-3
-    dir = "theo_cov_more_dimension"
-    max_epochs = 20_000
-    num_id= 30
-    torch.set_printoptions(precision=3)
-    for seed in range(100):
+    dir = "theo_cov"
+    max_epochs = 15_000
+    num_id= 50
+    for seed in range(1,51):
         try:
+            main(dir, 'cov_3_model', seed, iv_column_names=['V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(dir, 'cov_1_2_3_model', seed, iv_column_names=['V_COV1', 'V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
+            main(dir, 'cov_1_3_model', seed, iv_column_names=['V_COV1', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(dir, 'cov_2_3_model', seed, iv_column_names=['V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(dir, 'cov_1_2_model', seed, iv_column_names=['V_COV1', 'V_COV2',], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_1_3_model', seed, iv_column_names=['V_COV1', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(dir, 'cov_1_model', seed, iv_column_names=['V_COV1'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(dir, 'cov_2_model', seed, iv_column_names=['V_COV2'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_3_model', seed, iv_column_names=['V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(dir, 'base_model', seed, iv_column_names=[], max_epochs=max_epochs, lr=lr)
         except:
             continue

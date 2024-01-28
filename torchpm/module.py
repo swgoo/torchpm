@@ -99,7 +99,7 @@ class RandomEffect(LightningModule):
             self,
             config: RandomEffectConfig,
             num_id: int,
-            eps : float = 1e-5,
+            eps : float = 1e-3,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.config = config
@@ -134,11 +134,11 @@ class RandomEffect(LightningModule):
         dist = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix())
         return -dist.log_prob(random_variables).sum()
     
-    def covariance_matrix(self, eps=1e-5) -> Tensor :
+    def covariance_matrix(self) -> Tensor :
         if self.config.covariance :
-            return (self.random_variables.weight[1:]).t().cov(correction=1).nan_to_num(eps) + eps*torch.ones(self.config.dim).diag()
+            return (self.random_variables.weight[1:]).t().cov(correction=1).nan_to_num(self.eps) + self.eps*torch.ones(self.config.dim).diag()
         else :
-            return ((self.random_variables.weight[1:]).t().var(dim=-1, correction=1).nan_to_num(eps) + eps).diag()
+            return ((self.random_variables.weight[1:]).t().var(dim=-1, correction=1).nan_to_num(self.eps) + self.eps).diag()
 
 
 @dataclass
@@ -189,14 +189,14 @@ class MixedEffectsModel(LightningModule):
             random_effect_configs : List[RandomEffectConfig],
             num_id : int = 1,
             lr: float = 1e-2,
-            eps=1e-5,
+            eps=1e-3,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
         self.num_id = num_id
         random_effects = []
         for conf in random_effect_configs :
-            random_effects.append(RandomEffect(config=conf, num_id=num_id))
+            random_effects.append(RandomEffect(config=conf, num_id=num_id, eps=eps))
         self.random_effects = nn.ModuleList(random_effects)
         self.register_buffer("error_std_train", tensor(0.5, dtype=float))
         self.register_buffer("error_std_val", tensor(0.5, dtype=float))
@@ -238,7 +238,7 @@ class MixedEffectsModel(LightningModule):
         error = self.error_func(self._y_preds_val, self._y_trues_val)
         loss = -dist.log_prob(error).sum()
         for random_effect in self.random_effects :
-            loss += random_effect.nll(torch.zeros(self.num_id, dtype=torch.int, device=self.device))
+            loss += random_effect.nll(torch.arange(1,self.num_id+1, dtype=torch.int, device=self.device))
         self.log('val_loss', loss, prog_bar=True)
 
     def training_step(self, batch, batch_idx):
