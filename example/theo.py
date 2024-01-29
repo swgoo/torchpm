@@ -94,7 +94,7 @@ def main(
         batch_size = 12,
         ode_mode = False,
         lr = 5e-3,):
-    random_effect_config = RandomEffectConfig(3, init_value=[[0.1,0.,0.],[0.,0.1,0.],[0.,0.,0.1]])
+    random_effect_config = RandomEffectConfig(3, init_value=[[1.,0.,0.],[0.,1.,0.],[0.,0.,1.]])
 
     df = pd.read_csv('example/THEO.csv', na_values='.')
     

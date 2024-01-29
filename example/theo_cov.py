@@ -25,7 +25,7 @@ def make_dataset(
         v_cov2_std: float = 0.3,
         v_cov3_std: float = 0.3,
         v_tv : float = 30.,
-        v_std: float = 1.,
+        # v_std: float = 1.,
         k_a_tv: float = 1.5,
         k_a_std: float = 1.,
         k_e_tv: float = 0.1,
@@ -41,12 +41,12 @@ def make_dataset(
     record_len = len(time)
     for i in range(num_id):
         v = 0
-        while v < 0.1 :
+        while v < 0.1:
             v_cov1 = rng.standard_normal([])*v_cov1_std
             v_cov2 = rng.standard_normal([])*v_cov2_std
             v_cov3 = rng.standard_normal([])*v_cov3_std
-            v_eta = rng.standard_normal([])*v_std
-            v = v_cov_fn(v_tv, v_cov1, v_cov2, v_cov3)*np.exp(v_eta)
+            # v_eta = rng.standard_normal([])*v_std
+            v = v_cov_fn(v_tv, v_cov1, v_cov2, v_cov3)#*np.exp(v_eta)
 
         k_a_eta = rng.standard_normal([])*k_a_std
         k_a = k_a_tv * np.exp(k_a_eta)
@@ -72,59 +72,67 @@ class TheoModel(MixedEffectsModel) :
             random_effect_configs: List[RandomEffectConfig], 
             iv_dim,
             iv_column_names,
-            num_id: int = 1, 
+            num_id: int = 1,
+            total_steps: int = 15_000, 
             lr: float = 0.001, 
-            eps=1e-3, 
+            eps=1e-5, 
             *args, **kwargs) -> None:
         super().__init__(random_effect_configs, num_id, lr, eps, *args, **kwargs)
-        # self.v = BoundaryFixedEffect([30.], [10.], [50.])
-        self.v = lambda : 30.
-        # self.k_a = BoundaryFixedEffect([1.5], [1.], [5])
+        self.v = BoundaryFixedEffect([30.], [15.], [60.])
+        # self.v = lambda : 30.
+        # self.k_a = BoundaryFixedEffect([1.5], [0.75], [3])
         self.k_a = lambda : 1.5
-        # self.k_e = BoundaryFixedEffect([0.1], [0.05], [0.25])
+        # self.k_e = BoundaryFixedEffect([0.1], [0.05], [0.2])
         self.k_e = lambda : 0.1
         self.iv_column_names = iv_column_names
 
-        ffn_dims = (iv_dim, 6, 4, 4, 2, 2, 1)
+        ffn_dims = (iv_dim, 6, 4, 2, 1)
         ffn_config = FFNConfig(ffn_dims, dropout=0.0, hidden_norm_layer=False, bias=False, hidden_act_fn="SiLU")
         self.v_ffn = FFN(config=ffn_config)
     
     def forward(self, init: Tensor, time: Tensor, iv: Tensor, id: Tensor) -> Tensor:
-        
-        random_effects = self.random_effects[0](id) # batch, feat.
-        # v = self.v()*random_effects[:,0].exp().unsqueeze(-1) # batch, time 
-        v_cov = self.v_ffn(iv).squeeze(-1) if iv.size(-1) != 0 else tensor(0., device=self.device)
-        v = self.v()*v_cov.exp()*random_effects[:,0].exp().unsqueeze(-1) # :batch, time 
+        time= time.unsqueeze(-1)
+        random_effects = self.random_effects[0](id) # batch, feat.        
+        k_a = self.k_a()*random_effects[:,0:1,None].exp() # batch, 1, 1
+        k_e = self.k_e()*random_effects[:,1:2,None].exp() # batch, 1, 1
+        if iv.size(-1) != 0 :
+            v_cov = self.v_ffn(iv)
+            v = self.v()*v_cov.exp() # :batch, time 
+        else :
+            v = self.v()*random_effects[:,2:3,None].exp() # :batch, 1, 1 
 
-        k_a = self.k_a()*random_effects[:,1].exp().unsqueeze(-1) # batch
-        
-        k_e = self.k_e()*random_effects[:,2].exp().unsqueeze(-1) # batch
-
-        pred = ((320 / v * k_a) / (k_a - k_e) * ((-k_e*time).exp() - (-k_a*time).exp())).unsqueeze(-1)
-        return pred.log()
+        pred = (320 / v * k_a) / ((k_a - k_e).abs() + 1e-6) * ((-k_e*time).exp() - (-k_a*time).exp() + 1e-6)
+        return pred.log().nan_to_num(nan=0.0, posinf=1000, neginf=0)
     
     @torch.no_grad()
     def on_train_epoch_end(self) -> None:
         super().on_train_epoch_end()
         self.log("error", self.error_std_train)
-        # self.log("v", self.v().squeeze())
+        self.log("v", self.v().squeeze())
         # self.log("k_a", self.k_a().squeeze())
         # self.log("k_e", self.k_e().squeeze())
         omega = self.random_effects[0].covariance_matrix()
-        self.log("omega_v", omega[0,0])
-        self.log("omega_k_a", omega[1,1])
-        self.log("omega_k_e", omega[2,2])
+        self.log("omega_k_a", omega[0,0])
+        self.log("omega_k_e", omega[1,1])
+        if len(self.iv_column_names) == 0 :
+            self.log("omega_v", omega[2,2])
+
     
     def training_step(self, batch, batch_idx):
         loss = super().training_step(batch, batch_idx)
-        for para in self.v_ffn.parameters():
-            loss += 1e-2*para.abs().sum() * batch['id'].size(0)/self.num_id
+        if batch['iv'].size(-1) != 0 :
+            for para in self.v_ffn.parameters():
+                loss += 1e-2*para.abs().sum() * batch['id'].size(0)/self.num_id
         return loss
 
 
     def configure_optimizers(self):
         optimizer = super().configure_optimizers()
-        lr_scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=100)
+        lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, 
+            max_lr=0.01, 
+            total_steps=self.hparams['total_steps'], 
+            anneal_strategy='cos')
         return [optimizer], [lr_scheduler]
     
 def main(
@@ -135,7 +143,11 @@ def main(
         max_epochs = 3_000,
         iv_column_names = ['V_COV1'],
         lr = 1e-3,):
-    random_effect_config = RandomEffectConfig(3, init_value=[[0.1,0.,0.],[0.,0.1,0.],[0.,0.,0.1]])
+    iv_len = len(iv_column_names)
+    if iv_len > 0 :
+        random_effect_config = RandomEffectConfig(2, init_value=[[0.8,0.],[0.,0.8]])
+    else :
+        random_effect_config = RandomEffectConfig(3, init_value=[[0.8,0.,0.],[0.,0.8,0.],[0.,0.,0.8]])
     batch_size = num_id
     df = make_dataset(num_id=num_id, seed=seed)
     
@@ -155,6 +167,7 @@ def main(
         random_effect_configs=[random_effect_config],
         iv_dim=len(iv_column_names), 
         iv_column_names = iv_column_names,
+        total_steps=max_epochs,
         lr=lr, 
         num_id=id_len)
 
@@ -170,19 +183,19 @@ def main(
     print(seed)
 
 if __name__ == "__main__":
-    lr = 5e-3
-    dir = "theo_cov_0129"
+    lr = 3e-3
+    dir = "theo_cov_012913"
     max_epochs = 15_000
     num_id= 50
-    for seed in range(11,62):
-        try:
-            main(dir, 'cov_3_model', seed, iv_column_names=['V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_1_2_3_model', seed, iv_column_names=['V_COV1', 'V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_1_3_model', seed, iv_column_names=['V_COV1', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_2_3_model', seed, iv_column_names=['V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_1_2_model', seed, iv_column_names=['V_COV1', 'V_COV2',], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_1_model', seed, iv_column_names=['V_COV1'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'cov_2_model', seed, iv_column_names=['V_COV2'], max_epochs=max_epochs, lr=lr, num_id=num_id)
-            main(dir, 'base_model', seed, iv_column_names=[], max_epochs=max_epochs, lr=lr)
-        except:
-            continue
+    for seed in range(3,50):
+        # try:
+        main(dir, 'cov_3_model', seed, iv_column_names=['V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
+        main(dir, 'cov_2_3_model', seed, iv_column_names=['V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
+        main(dir, 'base_model', seed, iv_column_names=[], max_epochs=max_epochs, lr=lr)
+        main(dir, 'cov_1_2_3_model', seed, iv_column_names=['V_COV1', 'V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
+        main(dir, 'cov_1_3_model', seed, iv_column_names=['V_COV1', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
+        main(dir, 'cov_1_2_model', seed, iv_column_names=['V_COV1', 'V_COV2',], max_epochs=max_epochs, lr=lr, num_id=num_id)
+        main(dir, 'cov_1_model', seed, iv_column_names=['V_COV1'], max_epochs=max_epochs, lr=lr, num_id=num_id)
+        main(dir, 'cov_2_model', seed, iv_column_names=['V_COV2'], max_epochs=max_epochs, lr=lr, num_id=num_id)
+        # except:
+        #     continue

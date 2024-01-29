@@ -108,7 +108,7 @@ class RandomEffect(LightningModule):
         self.eps = eps
 
         if config.init_value is None :
-            nn.init.normal_(self.random_variables.weight, std=1.)
+            nn.init.normal_(self.random_variables.weight, std=0.01)
         else :
             init_covariance = tensor(config.init_value, dtype=torch.float, device=self.device)
             assert init_covariance.dim() == 2
@@ -131,14 +131,17 @@ class RandomEffect(LightningModule):
         # negative log likelihood
         mask = (id != 0).unsqueeze(-1)
         random_variables : Tensor = self.random_variables(id) * mask
-        dist = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix())
+        if self.config.covariance :
+            dist = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix())
+        else :
+            dist = torch.distributions.MultivariateNormal(self._loc, precision_matrix=(1/self.covariance_matrix().diag()).diag())
         return -dist.log_prob(random_variables).sum()
     
     def covariance_matrix(self) -> Tensor :
         if self.config.covariance :
-            return (self.random_variables.weight[1:]).t().cov(correction=1).nan_to_num(self.eps) + self.eps*torch.ones(self.config.dim).diag()
+            return (self.random_variables.weight[1:]).t().cov(correction=1).nan_to_num(0.) + self.eps*torch.ones(self.config.dim).diag()
         else :
-            return ((self.random_variables.weight[1:]).t().var(dim=-1, correction=1).nan_to_num(self.eps) + self.eps).diag()
+            return (self.random_variables.weight[1:].t().var(dim=-1, correction=1).nan_to_num(0.) + self.eps).diag()
 
 
 @dataclass
@@ -189,7 +192,7 @@ class MixedEffectsModel(LightningModule):
             random_effect_configs : List[RandomEffectConfig],
             num_id : int = 1,
             lr: float = 1e-2,
-            eps=1e-3,
+            eps=1e-5,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
