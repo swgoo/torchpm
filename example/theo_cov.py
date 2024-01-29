@@ -14,16 +14,16 @@ from torchpm.module import RandomEffectConfig
 from lightning.pytorch import seed_everything
 
 def cov_fn(typical_value, cov1, cov2, cov3):
-    return typical_value*np.exp(cov1) + np.exp(cov2) + np.exp(cov3)
+    return typical_value*np.exp(cov1)+typical_value*cov2+cov3
     
 def pred_gut_one_compartment_model(amt: np.array, v: np.array, k_a: np.array, k_e: np.array, time: np.array) -> np.array:
     return (amt / v * k_a) / (k_a - k_e) * (np.exp(-k_e*time) - np.exp(-k_a*time))
 
 def make_dataset(
         v_cov_fn: callable = cov_fn,
-        v_cov1_std: float = 1.,
-        v_cov2_std: float = 1.,
-        v_cov3_std: float = 1.,
+        v_cov1_std: float = 0.3,
+        v_cov2_std: float = 0.3,
+        v_cov3_std: float = 0.3,
         v_tv : float = 30.,
         v_std: float = 1.,
         k_a_tv: float = 1.5,
@@ -40,11 +40,13 @@ def make_dataset(
     dataset = []
     record_len = len(time)
     for i in range(num_id):
-        v_cov1 = rng.standard_normal([])*v_cov1_std
-        v_cov2 = rng.standard_normal([])*v_cov2_std
-        v_cov3 = rng.standard_normal([])*v_cov3_std
-        v_eta = rng.standard_normal([])*v_std
-        v = v_cov_fn(v_tv, v_cov1, v_cov2, v_cov3)*np.exp(v_eta)
+        v = 0
+        while v < 0.1 :
+            v_cov1 = rng.standard_normal([])*v_cov1_std
+            v_cov2 = rng.standard_normal([])*v_cov2_std
+            v_cov3 = rng.standard_normal([])*v_cov3_std
+            v_eta = rng.standard_normal([])*v_std
+            v = v_cov_fn(v_tv, v_cov1, v_cov2, v_cov3)*np.exp(v_eta)
 
         k_a_eta = rng.standard_normal([])*k_a_std
         k_a = k_a_tv * np.exp(k_a_eta)
@@ -75,12 +77,15 @@ class TheoModel(MixedEffectsModel) :
             eps=1e-3, 
             *args, **kwargs) -> None:
         super().__init__(random_effect_configs, num_id, lr, eps, *args, **kwargs)
-        self.v = BoundaryFixedEffect([30.], [10.], [50.])
-        self.k_a = BoundaryFixedEffect([1.5], [1.], [5])
-        self.k_e = BoundaryFixedEffect([0.1], [0.05], [0.25])
+        # self.v = BoundaryFixedEffect([30.], [10.], [50.])
+        self.v = lambda : 30.
+        # self.k_a = BoundaryFixedEffect([1.5], [1.], [5])
+        self.k_a = lambda : 1.5
+        # self.k_e = BoundaryFixedEffect([0.1], [0.05], [0.25])
+        self.k_e = lambda : 0.1
         self.iv_column_names = iv_column_names
 
-        ffn_dims = (iv_dim, 2*iv_dim, 4, 4, 2, 2, 1)
+        ffn_dims = (iv_dim, 6, 4, 4, 2, 2, 1)
         ffn_config = FFNConfig(ffn_dims, dropout=0.0, hidden_norm_layer=False, bias=False, hidden_act_fn="SiLU")
         self.v_ffn = FFN(config=ffn_config)
     
@@ -102,9 +107,9 @@ class TheoModel(MixedEffectsModel) :
     def on_train_epoch_end(self) -> None:
         super().on_train_epoch_end()
         self.log("error", self.error_std_train)
-        self.log("v", self.v().squeeze())
-        self.log("k_a", self.k_a().squeeze())
-        self.log("k_e", self.k_e().squeeze())
+        # self.log("v", self.v().squeeze())
+        # self.log("k_a", self.k_a().squeeze())
+        # self.log("k_e", self.k_e().squeeze())
         omega = self.random_effects[0].covariance_matrix()
         self.log("omega_v", omega[0,0])
         self.log("omega_k_a", omega[1,1])
@@ -166,10 +171,10 @@ def main(
 
 if __name__ == "__main__":
     lr = 5e-3
-    dir = "theo_cov"
+    dir = "theo_cov_0129"
     max_epochs = 15_000
     num_id= 50
-    for seed in range(1,51):
+    for seed in range(11,62):
         try:
             main(dir, 'cov_3_model', seed, iv_column_names=['V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
             main(dir, 'cov_1_2_3_model', seed, iv_column_names=['V_COV1', 'V_COV2', 'V_COV3'], max_epochs=max_epochs, lr=lr, num_id=num_id)
