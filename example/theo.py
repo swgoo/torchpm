@@ -69,7 +69,7 @@ class TheoODEModel(TheoModel) :
             eps=1e-3, 
             *args, **kwargs) -> None:
         super().__init__(random_effect_configs, num_id, lr, eps, *args, **kwargs)
-        self.ode_solver = TheoODESolver(atol=1e-3, rtol=1e-2)
+        self.ode_solver = TheoODESolver(atol=1e-5, rtol=1e-3)
 
     def forward(self, init: Tensor, time: Tensor, iv: Tensor, id: Tensor) -> Tensor:
         
@@ -131,7 +131,7 @@ def main(
         train_data=df
     )
 
-    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"lightning_logs/{dir}", name=f"{model_name}", version=f"seed_{seed}")
+    tb_logger = pl_loggers.TensorBoardLogger(save_dir=f"lightning_logs/{dir}", name=f"{model_name}_seed_{seed}")
     trainer = Trainer(
         max_epochs=max_epochs, 
         check_val_every_n_epoch=100,
@@ -145,18 +145,18 @@ if __name__ == "__main__":
     dir = 'theo_dataset'
     main(
         dir=dir, 
-        model_name='ode_base_model', 
-        seed=42, 
-        max_epochs=3_000, 
-        lr=1e-3, 
-        batch_size=batch_size,
-        ode_mode=True)
-    main(
-        dir=dir, 
         model_name='base_model', 
         seed=42, 
-        max_epochs=3_000, 
+        max_epochs=10_000, 
         lr=1e-3, 
         batch_size=batch_size,
         ode_mode=False)
+    main(
+        dir=dir, 
+        model_name='ode_base_model', 
+        seed=42, 
+        max_epochs=10_000, 
+        lr=1e-3, 
+        batch_size=batch_size,
+        ode_mode=True)
     

@@ -106,6 +106,7 @@ class RandomEffect(LightningModule):
         self.random_variables = nn.Embedding(num_id + 1, self.config.dim, padding_idx = 0)
         self.register_buffer('_loc', torch.zeros(self.config.dim, dtype=torch.float32))
         self.eps = eps
+        self._simulation = False
 
         if config.init_value is None :
             nn.init.normal_(self.random_variables.weight, std=0.01)
@@ -116,9 +117,9 @@ class RandomEffect(LightningModule):
             self.random_variables.weight *= 0
             self.random_variables.weight += weight
         
-    def forward(self, id: Tensor, simulation: bool = False):
+    def forward(self, id: Tensor):
         mask = (id != 0).unsqueeze(-1) # if id == 0 -> random_variable = 0
-        if simulation :
+        if self._simulation :
             random_effects = torch.distributions.MultivariateNormal(self._loc, self.covariance_matrix()).sample(id.size()[:-1])
             random_effects = random_effects * mask
         else :
@@ -142,6 +143,10 @@ class RandomEffect(LightningModule):
             return (self.random_variables.weight[1:]).t().cov(correction=1).nan_to_num(0.) + self.eps*torch.ones(self.config.dim).diag()
         else :
             return (self.random_variables.weight[1:].t().var(dim=-1, correction=1).nan_to_num(0.) + self.eps).diag()
+    
+    def simulation(self, simulation = True):
+        self._simulation =  simulation
+
 
 
 @dataclass
@@ -192,7 +197,7 @@ class MixedEffectsModel(LightningModule):
             random_effect_configs : List[RandomEffectConfig],
             num_id : int = 1,
             lr: float = 1e-2,
-            eps=1e-5,
+            eps=1e-3,
             *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.save_hyperparameters()
@@ -294,18 +299,32 @@ class MixedEffectsModel(LightningModule):
         
         return loss
     
+    #ipred는 id를 0이상으로 해서 입력, pred는 id를 0으로 입력해서 알아서 처리
+    @torch.no_grad()
     def predict_step(self, batch: Any, batch_idx: int = 0, dataloader_idx: int = 0) -> Tensor:
-        batch : MixedEffectsTimeData = MixedEffectsTimeData(*batch)
-        id = torch.zeros_like(batch.id, device=self.device, dtype=torch.int)
-        return self.forward(
-            init = batch.init,
-            time = batch.time,
-            iv = batch.iv,
-            id= id)
+        input = MixedEffectsTimeData(**batch)
+        y_pred = self.forward(
+            init = input.init,
+            time = input.time,
+            iv = input.iv,
+            id = input.id)
+        y_true = input.dv
+        mask = y_true.isnan()
+        return y_pred.masked_fill(mask, float('nan'))
+
     
+    def on_test_start(self) -> None:
+        for random_effect in self.random_effects:
+            random_effect.simulation()
+
+    def on_test_end(self) -> None:
+        for random_effect in self.random_effects:
+            random_effect.simulation(False)
+
     # simulation
     def test_step(self, batch, batch_idx):
         input = MixedEffectsTimeData(**batch)
+        
         return self.forward(
             init = input.init,
             time = input.time,
@@ -314,5 +333,5 @@ class MixedEffectsModel(LightningModule):
             simulation=True)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams['lr'])
+        optimizer = torch.optim.Adamax(self.parameters(), lr=self.hparams['lr'])
         return optimizer
