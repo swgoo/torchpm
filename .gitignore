@@ -1,6 +1,9 @@
 /lightning_logs
 nohup*
 false/
+bs*/
+/*.ipynb
+/example/results*
 
 .vscode/
 lightning_logs/
